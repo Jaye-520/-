@@ -10,7 +10,7 @@ using UnityEngine.EventSystems;
 namespace MOD_YtxSQ1.UI
 {
     // 原生窗口只承载生命周期和字体。布局使用自己的单一边界，不借用未知 Sprite。
-    internal sealed class BookView
+    internal sealed partial class BookView
     {
         private const float MaximumWidth = 1760;
         private const float MaximumHeight = 900;
@@ -45,7 +45,7 @@ namespace MOD_YtxSQ1.UI
         private CharacterFate[] fates = new CharacterFate[0];
         private string fateReason, fateUnitId;
         private float nextCharacterRefresh;
-        private string lastReadFailure;
+        private string lastReadFailure, lastFateFailure;
         private float contentWidth;
         private float contentHeight;
         private float bookWidth, targetWidth;
@@ -150,7 +150,7 @@ namespace MOD_YtxSQ1.UI
             for (int i = 0; i < Modules.Length; i++)
             {
                 int index = i;
-                var tab = MakeButton(navigation, "卷目" + i, i * (tabWidth + 12), 0, tabWidth, 42, Modules[i], () => Select(index));
+                var tab = MakeButton(navigation, "卷目" + i, i * (tabWidth + 12), 0, tabWidth, 42, Modules[i], () => { if (index == 6) SaveEdits(); else Select(index); });
                 if (skin != null)
                 {
                     var brush = Texture(tab.GetComponent<RectTransform>(), "页签墨迹", 0, 0, tabWidth, 42, skin.Brush, new Rect(0, 0, 1, 1));
@@ -172,14 +172,16 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.27 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.28 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.27：气运介绍按条目层级坐标定位；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.28：原位编辑草稿/逐槽下拉；气运逐项回退；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
         {
             if (index == selectedIndex) return;
+            if (!FinishInlineEdit(false)) return;
+            ClearEditingView();
             ReleasePortrait();
             attributeTexts.Clear();
             HideFateTips();
@@ -212,7 +214,7 @@ namespace MOD_YtxSQ1.UI
                 Border(overview, panelWidth, panelHeight);
             }
             Label(content, index == 0 ? "属性总览" : Modules[index], index == 0 ? 12 : 0, 4, contentWidth - 132, 30, 25, Ink);
-            Label(content, index == 0 ? "角色信息 · 只读；灰色操作尚未开放" : "功能尚未开放", index == 0 ? 12 : 0, 34, contentWidth - 132, 24, 16, Muted);
+            editStatus = Label(content, index == 0 ? "点击数值修改；选择字段可下拉，修改待保存" : "功能尚未开放", index == 0 ? 12 : 0, 34, contentWidth - 132, 24, 16, Muted);
             selectedIndex = index;
             if (index != 0)
             {
@@ -410,7 +412,8 @@ namespace MOD_YtxSQ1.UI
 
         private void SelectTarget(int slot)
         {
-            if (rowIds[slot] == null) return;
+            if (rowIds[slot] == null || !FinishInlineEdit(false)) return;
+            CloseDropdown(); HideFateTips();
             selectedUnitId = rowIds[slot];
             ReleasePortrait();
             RefreshCharacter(true);
@@ -538,6 +541,7 @@ namespace MOD_YtxSQ1.UI
             scroll.inertia = false;
             scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.scrollSensitivity = 32;
+            scroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { CloseDropdown(); HideFateTips(); })));
             if (scroll.vertical)
             {
                 var track = Fill(content, "滚动轨", contentWidth - 10, 64, 7, viewportHeight, new Color(.30f, .30f, .24f, .12f), true);
@@ -661,6 +665,7 @@ namespace MOD_YtxSQ1.UI
                 fields[index].resizeTextForBestFit = true;
                 fields[index].resizeTextMinSize = 12;
                 fields[index].resizeTextMaxSize = 17;
+                BuildFieldEditors(group, index, fields[index]);
             }
             if (group >= 2 && group <= 4)
             {
@@ -700,6 +705,7 @@ namespace MOD_YtxSQ1.UI
 
         public void RefreshCharacter(bool force = false)
         {
+            TickEditing();
             if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
             if (root == null || selectedIndex != 0 || characterName == null) return;
             var now = Time.unscaledTime;
@@ -708,6 +714,7 @@ namespace MOD_YtxSQ1.UI
             var currentContext = CharacterReader.ContextKey();
             if (currentContext != contextKey)
             {
+                FinishInlineEdit(true); CloseDropdown(); edits.Sync(currentContext);
                 selectedUnitId = null;
                 contextKey = currentContext;
                 ReleasePortrait();
@@ -722,6 +729,7 @@ namespace MOD_YtxSQ1.UI
                 characterRealm.text = "—";
                 ReleasePortrait();
                 foreach (var group in attributeTexts) foreach (var value in group) value.text = "—";
+                FinishInlineEdit(true); CloseDropdown(); RefreshEditors();
                 UpdateFates(new CharacterFate[0], reason);
                 var failure = CharacterReader.LastFailure;
                 if (failure != null && failure != lastReadFailure)
@@ -732,6 +740,8 @@ namespace MOD_YtxSQ1.UI
             lastReadFailure = null;
             characterName.text = snapshot.Name;
             characterRealm.text = snapshot.Realm;
+            if (selectedUnitId == null) selectedUnitId = CharacterReader.Resolve(null).data.unitData.unitID;
+            RefreshEditors();
             UpdatePortrait();
             for (int group = 0; group < attributeTexts.Count; group++)
                 for (int i = 0; i < attributeTexts[group].Length; i++) attributeTexts[group][i].text = snapshot.Groups[group][i];
@@ -739,6 +749,9 @@ namespace MOD_YtxSQ1.UI
             string fateError;
             CharacterFates.TryRead(selectedUnitId, out entries, out fateError);
             UpdateFates(entries, fateError);
+            var fateFailure = CharacterFates.LastFailure;
+            if (fateFailure != null && fateFailure != lastFateFailure) Debug.LogWarning("[八荒秘录] 气运读取：" + fateFailure);
+            lastFateFailure = fateFailure;
         }
 
         private List<CharacterFate> FilterFates(int filter)
@@ -779,10 +792,12 @@ namespace MOD_YtxSQ1.UI
                 var items = FilterFates(i);
                 var rowPitch = Mathf.Min(36, Mathf.Max(24, column.viewport.sizeDelta.y / 3));
                 var rowHeight = rowPitch - 4;
-                var pageHeight = Mathf.Max(column.viewport.sizeDelta.y, items.Count * rowPitch);
+                var pageHeight = Mathf.Max(column.viewport.sizeDelta.y, (items.Count + (items.Count > 0 && fateReason != null ? 1 : 0)) * rowPitch);
                 page.sizeDelta = new Vector2(page.sizeDelta.x, pageHeight);
                 if (items.Count == 0)
                     Label(page, fateReason ?? "无", 4, 4, page.sizeDelta.x - 8, 28, 15, Muted, TextAnchor.MiddleCenter);
+                else if (fateReason != null)
+                    Label(page, fateReason, 4, items.Count * rowPitch, page.sizeDelta.x - 8, rowHeight, 12, Cinnabar, TextAnchor.MiddleCenter);
                 for (int n = 0; n < items.Count; n++)
                 {
                     var rowWidth = page.sizeDelta.x;
@@ -900,7 +915,7 @@ namespace MOD_YtxSQ1.UI
             var rowBounds = FateRowBounds(row, content);
             var position = FateTipBounds(rowBounds, width, height, content.sizeDelta);
             fateTip.anchoredPosition = new Vector2(position.x, -position.y);
-            Debug.Log("[八荒秘录] 07.27气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
+            Debug.Log("[八荒秘录] 07.28气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
                 "；介绍=" + position.x + "," + position.y);
             if (textHeight > height - 52)
             {
@@ -1040,6 +1055,7 @@ namespace MOD_YtxSQ1.UI
 
         public void Dispose()
         {
+            ClearEditingView();
             ReleasePortrait();
             Cleanup(HideFateTips, "关闭气运提示");
             var previousRoot = root; root = null;
@@ -1087,9 +1103,3 @@ namespace MOD_YtxSQ1.UI
         }
     }
 }
-
-
-
-
-
-

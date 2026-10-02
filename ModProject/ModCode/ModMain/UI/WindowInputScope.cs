@@ -12,6 +12,10 @@ namespace MOD_YtxSQ1.UI
     {
         private static UIBase owner;
         private static InputField input;
+        private static readonly List<InputField> editors = new List<InputField>();
+        internal static void Register(InputField field) { if (field != null && !editors.Contains(field)) editors.Add(field); }
+        internal static void Unregister(InputField field) { editors.Remove(field); }
+        private static bool Owns(InputField field) { return field != null && (field == input || editors.Contains(field)); }
         private static Harmony patches;
         private static int diagnostics;
         private static bool ownerOperation;
@@ -53,9 +57,18 @@ namespace MOD_YtxSQ1.UI
 
         private static bool IsSelected()
         {
-            return input != null && input.gameObject.activeInHierarchy &&
-                (input.isFocused || (EventSystem.current != null &&
-                 EventSystem.current.currentSelectedGameObject == input.gameObject));
+            return SelectedInput() != null;
+        }
+        private static InputField SelectedInput()
+        {
+            if (IsActive(input)) return input;
+            foreach (var field in editors) if (IsActive(field)) return field;
+            return null;
+        }
+        private static bool IsActive(InputField field)
+        {
+            return field != null && field.gameObject.activeInHierarchy &&
+                (field.isFocused || (EventSystem.current != null && EventSystem.current.currentSelectedGameObject == field.gameObject));
         }
 
         private static void DisableGroup(UIOperationGroup group)
@@ -71,7 +84,8 @@ namespace MOD_YtxSQ1.UI
 
         private static bool AllowSelection(GameObject __0)
         {
-            if (!IsSelected() || __0 == input.gameObject) return true;
+            var selected = SelectedInput();
+            if (selected == null || __0 == selected.gameObject) return true;
             if (__0 == null)
             {
                 Trace("搜索焦点正常清空");
@@ -95,14 +109,15 @@ namespace MOD_YtxSQ1.UI
 
         private static void ObserveDeactivation(InputField __instance)
         {
-            if (input == null || __instance != input || !IsSelected()) return;
+            if (!Owns(__instance) || !IsSelected()) return;
             Trace("搜索DeactivateInputField");
         }
 
         private static void AlignCaret(InputField __instance, VertexHelper __0, Vector2 __1)
         {
             // 只改本搜索框的光标四边形，不改输入、闪烁、选区和焦点状态。
-            if (input == null || __instance != input || __0.currentVertCount != 4) return;
+            if (!Owns(__instance) || __0.currentVertCount != 4) return;
+            var input = __instance;
             var text = input.textComponent;
             if (text == null) return;
             var visual = text;
@@ -162,6 +177,7 @@ namespace MOD_YtxSQ1.UI
             var previousOwner = owner;
             owner = null;
             input = null;
+            editors.Clear();
             var previous = patches;
             patches = null;
             try { if (previous != null) previous.UnpatchSelf(); }

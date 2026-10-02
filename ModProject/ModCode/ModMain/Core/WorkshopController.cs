@@ -1,5 +1,6 @@
 using System;
 using MOD_YtxSQ1.UI;
+using MOD_YtxSQ1.Services;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -12,6 +13,7 @@ namespace MOD_YtxSQ1.Core
 
         public void Update()
         {
+            if (g.isDestroy || g.world == null || g.world.isDestroy || !g.world.isIntoWorld) CharacterEditSession.Shared.Sync(null);
             if (g.isDestroy || g.ui == null) return;
             window.RefreshOwnership();
             var map = g.ui.GetUI(UIType.MapMain);
@@ -38,6 +40,6 @@ namespace MOD_YtxSQ1.Core
             return tmp != null && tmp.isFocused;
         }
 
-        public void Dispose() { window.Close(); }
+        public void Dispose() { window.Close(); CharacterEditSession.Shared.Sync(null); }
     }
 }

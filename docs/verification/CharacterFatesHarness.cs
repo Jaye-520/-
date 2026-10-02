@@ -39,7 +39,10 @@ internal static class CharacterFatesHarness
         npc.isDie=true;
         Check(!CharacterFates.TryRead("npc",out entries,out reason) && entries.Length==0 && reason!=null,"dead target rejects stale values");
         g.conf.roleCreateFeature.Throw=true;
-        Check(!CharacterFates.TryRead(null,out entries,out reason) && entries.Length==0,"mid-read failure discards partial list");
+        Check(CharacterFates.TryRead(null,out entries,out reason) && entries.Length==5 && reason!=null && CharacterFates.LastFailure.Contains("配置#1"),"config errors preserve all owned IDs and expose partial status");
+        g.conf.roleCreateFeature.Throw=false; g.conf.roleCreateFeature.ThrowId=3;
+        Check(CharacterFates.TryRead(null,out entries,out reason) && entries[0].Name=="天赋" && entries[2].Name=="未知气运 #3" && entries[3].Category==1,"one bad config cannot erase independent rows");
+        g.conf.roleCreateFeature.ThrowId=0;
         g.conf.roleCreateFeature.Throw=false;
         Check(property.bornLuck.Length==3 && property.addLuck.Count==5,"reads do not mutate owned records");
         g.world.isIntoWorld=false;

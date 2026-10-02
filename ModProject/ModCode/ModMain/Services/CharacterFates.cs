@@ -17,55 +17,84 @@ namespace MOD_YtxSQ1.Services
     internal static class CharacterFates
     {
         public static readonly string[] Categories = { "先天气运", "后天气运", "逆天改命", "所有气运" };
+        internal static string LastFailure { get; private set; }
         public static bool TryRead(string unitId, out CharacterFate[] entries, out string reason)
         {
             entries = new CharacterFate[0];
             reason = "气运暂不可读取";
+            LastFailure = null;
+            var failures = new List<string>();
+            var result = new List<CharacterFate>();
+            var seen = new HashSet<string>();
             try
             {
                 var unit = CharacterReader.Resolve(unitId);
                 if (unit == null || unit.data == null || unit.data.unitData == null ||
-                    unit.data.unitData.propertyData == null || g.conf == null ||
-                    g.conf.roleCreateFeature == null || g.conf.localText == null) return false;
+                    unit.data.unitData.propertyData == null || g.conf == null || g.conf.roleCreateFeature == null)
+                { LastFailure = "对象/气运配置未就绪"; return false; }
                 var property = unit.data.unitData.propertyData;
-                var result = new List<CharacterFate>();
-                var seen = new HashSet<string>();
-                if (property.bornLuck != null)
-                    foreach (var luck in property.bornLuck)
-                        if (luck != null) Add(result, seen, unit, luck, 0);
-                if (property.addLuck != null)
-                    foreach (var luck in property.addLuck)
-                        if (luck != null) Add(result, seen, unit, luck, 1);
-                entries = result.ToArray();
-                reason = null;
-                return true;
-            }
-            catch { return false; } // 不用部分列表冒充完整读取，也不影响独立的数值属性。
-        }
-
-        private static void Add(List<CharacterFate> result, HashSet<string> seen, WorldUnitBase unit, DataUnit.LuckData luck, int source)
-        {
-            var id = luck.id;
-            if (id <= 0 || !seen.Add(source + ":" + id)) return;
-            var item = g.conf.roleCreateFeature.GetItem(id);
-            var category = item != null && item.type == 3 ? 2 : source;
-            var fallback = "未知气运 #" + id.ToString(CultureInfo.InvariantCulture);
-            var name = item == null ? fallback : LocalText(item.name, fallback);
-            var description = item == null ? "当前配置中未找到此气运。" : LocalText(item.tips, "暂无说明");
-            var tooltip = name + "\n" + description;
-            if (item != null)
-            {
+                // 使用索引，避免特殊人物的原生集合枚举器使整批读取中断。
                 try
                 {
-                    // 与原生UIAddLuckItem一致的bgType=2；使用选中人物及真实拥有记录。
-                    var native = ConfRoleCreateFeatureEx.tips(item, unit, luck, 2);
-                    if (!string.IsNullOrEmpty(native)) tooltip = native;
+                    var born = property.bornLuck;
+                    if (born != null) for (int i = 0; i < born.Length; i++)
+                    {
+                        try { Add(result, seen, unit, born[i], 0, failures); }
+                        catch (Exception ex) { failures.Add("先天条目[" + i + "]:" + ex.GetType().Name); }
+                    }
                 }
-                catch { } // 特殊/缺失效果配置失败仍保留条目与基础说明。
+                catch (Exception ex) { failures.Add("先天来源:" + ex.GetType().Name); }
+                try
+                {
+                    var acquired = property.addLuck;
+                    if (acquired != null) for (int i = 0; i < acquired.Count; i++)
+                    {
+                        try { Add(result, seen, unit, acquired[i], 1, failures); }
+                        catch (Exception ex) { failures.Add("后天条目[" + i + "]:" + ex.GetType().Name); }
+                    }
+                }
+                catch (Exception ex) { failures.Add("后天来源:" + ex.GetType().Name); }
+                entries = result.ToArray();
+                LastFailure = failures.Count == 0 ? null : string.Join("；", failures.ToArray());
+                reason = failures.Count == 0 ? null : "部分气运信息未读取";
+                return failures.Count == 0 || entries.Length > 0;
             }
-            result.Add(new CharacterFate(id, category, name, tooltip));
+            catch (Exception ex)
+            {
+                LastFailure = "拥有记录:" + ex.GetType().Name + ":" + ex.Message;
+                return false;
+            }
         }
 
+        private static void Add(List<CharacterFate> result, HashSet<string> seen, WorldUnitBase unit,
+            DataUnit.LuckData luck, int source, List<string> failures)
+        {
+            if (luck == null) return;
+            var id = luck.id;
+            if (id <= 0 || !seen.Add(source + ":" + id)) return;
+            var fallback = "未知气运 #" + id.ToString(CultureInfo.InvariantCulture);
+            var name = fallback;
+            var description = "当前配置中未找到此气运。";
+            var category = source;
+            var tooltip = "";
+            try
+            {
+                var item = g.conf.roleCreateFeature.GetItem(id);
+                if (item != null)
+                {
+                    category = item.type == 3 ? 2 : source;
+                    try { name = LocalText(item.name, fallback); }
+                    catch (Exception ex) { failures.Add("名称#" + id + ":" + ex.GetType().Name); }
+                    try { description = LocalText(item.tips, "暂无说明"); }
+                    catch (Exception ex) { failures.Add("说明#" + id + ":" + ex.GetType().Name); }
+                    try { tooltip = ConfRoleCreateFeatureEx.tips(item, unit, luck, 2); }
+                    catch { /* 原生介绍失败仍可显示基础说明。 */ }
+                }
+            }
+            catch (Exception ex) { failures.Add("配置#" + id + ":" + ex.GetType().Name); }
+            if (string.IsNullOrEmpty(tooltip)) tooltip = name + "\n" + description;
+            result.Add(new CharacterFate(id, category, name, tooltip));
+        }
         private static string LocalText(string key, string fallback)
         {
             if (string.IsNullOrEmpty(key) || key == "0") return fallback;

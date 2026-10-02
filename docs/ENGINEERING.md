@@ -17,11 +17,16 @@
 | Services/CharacterRoster.cs | 名单查询、存活有效过滤、ID去重 |
 | Services/CharacterReader.cs | 对象解析、存档上下文、只读快照及数值格式 |
 | Services/CharacterFates.cs | 拥有气运只读快照、逆天分类及原生介绍格式化/回退 |
+| Services/CharacterEditSession.cs | 纯托管字段键、草稿、输入校验及原值冲突预检；不写游戏 |
+| Services/CharacterEditData.cs | 数字/槽位真实字段绑定、配置候选及本地化；不写游戏 |
+| UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
 | Services/CharacterPortrait.cs | 原生身份解析与ConfDramaNpc.CreateTexture分流，普通修士保持原路径 |
 | Example/Example.cs | 参与编译的官方示例；不是产品功能清单 |
 | Properties/AssemblyInfo.cs | 程序集元数据；与界面版本分别核对 |
 
 调用关系：ModMain → WorkshopController → WorkshopWindow → BookView。视图使用只读服务与PaperSkin；窗口负责输入补丁生命周期。当前没有独立Modules目录或持久写入服务；业务接入现有边界，按需要增加抽象，不为整理文档重构稳定代码。
+
+07.28用partial将编辑交互与BookView既有布局分开，新增文件已登记csproj。共享草稿跨视图重建保留，WorkshopController在世界失效/销毁时清理；编辑服务只返回托管值。候选读取本机配置具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽配置真实type匹配。输入复制本搜索控件时须清空回调和占位文字，及时Register/Unregister到WindowInputScope；Attach/Detach仍归窗口所有。保存当前只做预检及未启用反馈，没有写入服务。新增run-character-editing.ps1及布局中的输入/选择回归；替身不能证明IL2CPP和IME行为。
 
 ## 构建和调试
 
@@ -82,8 +87,8 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 - PropertyData.SetGradeID(int)为官方“设置境界”入口（CHM html/584766fa-3002-6749-56d6-5e8b0fe1d879.htm）。本机原生实现写gradeID、查询roleGrade、写exp并调用EventsMgr.Emit；事件名与完整外部订阅依赖未核实，不能当成仅改显示标签，也不能据此声称已处理所有成长依赖。
 - DataMgr.SaveData(Il2CppSystem.Action<bool>)存在，官方注明“保存存档数据”（CHM html/bd748597-bf4e-e5d1-0350-c2d04167c49e.htm）；回调成功/失败契约、并发保存限制和当前世界存档路径须测试验证。不自行序列化或修改实际存档文件。
 - 兴趣是PropertyData.hobby数组，WorldUnitData另有cacheHobbyItems和allHobby运行对象；性格是inTrait/outTrait1/outTrait2，另有lastUpdateTrait/cacheCharacterWeight缓存。修改不能只更新字符串，缓存/运行对象重建路径仍待核实。候选来自roleCreateHobby/roleCreateCharacter/roleGrade配置，过滤条件须参照官方表头及原UI。
-- 当前CharacterFates仅读取普通人物bornLuck/addLuck，顶层catch不记录异常。五朵金花有GetFiveFlowerDramaNpcID身份识别；另存在DLCMgr.dlcUnitData.luckData、DLCLuckData、UIDLCLuckItem和ConfDLCUnitFateFeature，但不能仅因名字含DLC就认定属于金花世界人物。根因需要只读阶段日志和原游戏气运对照，不将其他玩法的DLC角色数据填进敖瑶栏。
-- 当前WindowInputScope只登记一个搜索输入框；新增内联编辑必须扩展输入登记生命周期。WorkshopController已保护选中InputField/TMP_InputField时F8不切窗口，仍须验证新控件焦点/IME。
+- 07.27的CharacterFates仅读取普通人物bornLuck/addLuck，顶层catch不记录异常；07.28已补逐项回退与阶段日志。五朵金花有GetFiveFlowerDramaNpcID身份识别；另存在DLCMgr.dlcUnitData.luckData、DLCLuckData、UIDLCLuckItem和ConfDLCUnitFateFeature，但不能仅因名字含DLC就认定属于金花世界人物。根因需要只读阶段日志和原游戏气运对照，不将其他玩法的DLC角色数据填进敖瑶栏。
+- 07.27的WindowInputScope只登记一个搜索输入框；07.28已扩展输入登记生命周期。WorkshopController保护选中InputField/TMP_InputField时F8不切窗口，仍须验证新控件焦点/IME。
 
 以上为接口/源码依据，不是写入或修复的游戏内验收。产品交互与执行顺序仅在长期计划维护。
 

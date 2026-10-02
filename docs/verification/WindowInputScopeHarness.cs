@@ -136,6 +136,13 @@ internal static class WindowInputScopeHarness
         var start=UnityEngine.Debug.Logs;
         for(int i=0;i<12;i++) Call("ObserveDeactivation",field);
         Check(UnityEngine.Debug.Logs-start==0,"diagnostics remain capped after repeated blocked transfers");
+        field.isFocused=false;
+        var editor=new UnityEngine.UI.InputField { isFocused=true, text="123" };
+        WindowInputScope.Register(editor);
+        UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject=editor.gameObject;
+        Check(!Allows(hidden) && Allows(field.gameObject),"registered property input gets invalid-focus protection while legitimate search focus is allowed");
+        WindowInputScope.Unregister(editor);
+        Check(Allows(hidden),"unregistered property input no longer affects focus handling");
         WindowInputScope.Detach();WindowInputScope.Detach();
         Check(HarmonyLib.Harmony.Count==0 && owner.isActiveOperation && child.enabled && child.isAutoSelect && child.m_isActiveOperation,"closing restores original navigation and removes patches");
         Check(!cached.enabled && !cached.isAutoSelect && cached.m_isActiveOperation,"restores originally disabled group flags exactly");
