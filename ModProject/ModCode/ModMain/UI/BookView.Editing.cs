@@ -83,6 +83,7 @@ namespace MOD_YtxSQ1.UI
             CharacterSave.Sync(CharacterReader.ContextKey());
             var pending = edits.Count + CharacterSave.Pending;
             if (tabLabels.Count > 6) tabLabels[6].text = CharacterSave.Busy ? "保存中…" : pending == 0 ? "保存" : "保存（" + pending + "）";
+            RefreshActions();
         }
 
         private void SetEditStatus(string message, bool error = false)
@@ -105,6 +106,7 @@ namespace MOD_YtxSQ1.UI
             rect.anchorMin = rect.anchorMax = new Vector2(0, 1);
             rect.pivot = new Vector2(0, 1); rect.localScale = Vector3.one;
             inlineInput = clone.GetComponent<InputField>();
+            ResetClonedInput(inlineInput, 2);
             foreach (var trigger in clone.GetComponentsInChildren<UnityEngine.EventSystems.EventTrigger>(true))
             { trigger.enabled = false; UnityEngine.Object.Destroy(trigger); }
             inlineInput.onValueChanged = new InputField.OnChangeEvent();
@@ -115,6 +117,7 @@ namespace MOD_YtxSQ1.UI
             inlineInput.textComponent.alignment = binding.Label.alignment;
             inlineInput.textComponent.rectTransform.offsetMin = new Vector2(2, 2);
             inlineInput.textComponent.rectTransform.offsetMax = new Vector2(-2, -2);
+            inlineInput.textComponent.resizeTextForBestFit = false;
             var placeholder = inlineInput.placeholder == null ? null : inlineInput.placeholder.TryCast<Text>();
             if (placeholder != null) placeholder.text = "";
             if (inlineInput.placeholder != null) inlineInput.placeholder.gameObject.SetActive(false);
@@ -129,6 +132,8 @@ namespace MOD_YtxSQ1.UI
             })));
             WindowInputScope.Register(inlineInput);
             clone.SetActive(true);
+            inlineInput.AssignPositioningIfNeeded();
+            inlineInput.UpdateLabel();
             inlineInput.ActivateInputField();
             inlineInput.selectionAnchorPosition = 0;
             inlineInput.selectionFocusPosition = value.Length;
@@ -165,12 +170,21 @@ namespace MOD_YtxSQ1.UI
         {
             if (inlineInput == null || activeBinding == null) return;
             var area = activeBinding.Rect.sizeDelta;
-            var width = activeBinding.Field.Name ? area.x : Mathf.Min(area.x, Mathf.Max(28, inlineInput.textComponent.preferredWidth + 10));
+            // OnValueChanged在原生UpdateLabel之前触发，不能拿上一帧/空文本计算宽度。
+            inlineInput.textComponent.text = inlineInput.text;
+            inlineInput.textComponent.fontSize = 16;
+            var limit = Mathf.Max(area.x, 96);
+            if (!activeBinding.Field.Name)
+                while (inlineInput.textComponent.fontSize > 11 && inlineInput.textComponent.preferredWidth + 14 > limit)
+                    inlineInput.textComponent.fontSize--;
+            var width = activeBinding.Field.Name ? area.x : Mathf.Max(28, inlineInput.textComponent.preferredWidth + 14);
+            width = Mathf.Min(limit, width);
             var height = Mathf.Min(area.y, 24);
             var left = activeBinding.Label.alignment == TextAnchor.MiddleCenter ? (area.x - width) / 2 : area.x - width;
             var rect = inlineInput.GetComponent<RectTransform>();
             rect.sizeDelta = new Vector2(width, height);
             rect.anchoredPosition = new Vector2(left, -(area.y - height) / 2);
+            inlineInput.AssignPositioningIfNeeded();
         }
 
         private bool StageField(EditBinding binding, string value, out string error, string original = null)
@@ -269,7 +283,7 @@ namespace MOD_YtxSQ1.UI
         }
         private void ClearEditingView()
         {
-            FinishInlineEdit(true); CloseDropdown(); ClearFateLibraryView(); editBindings.Clear();
+            FinishInlineEdit(true); CloseDropdown(); ClearFateLibraryView(); ClearActions(); editBindings.Clear();
         }
         private void SaveEdits()
         {

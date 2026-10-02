@@ -22,18 +22,8 @@ namespace MOD_YtxSQ1.Services
                 var item = g.conf.roleCreateFeature.GetItem(id);
                 if (item == null || item.conceal == 1) throw new InvalidOperationException("隐藏效果或无效配置不能手动添加");
                 if (unit.GetLuck(id) != null || HasRecord(unit, id)) throw new InvalidOperationException("人物已拥有该气运");
-                // 同组效果可能互相替换；禁止静默删除旧效果或覆盖剧情锁定项。
-                for (int i = 0; i < unit.allLuck.Count; i++)
-                {
-                    var existing = unit.allLuck[i];
-                    if (existing == null) continue;
-                    var conf = g.conf.roleCreateFeature.GetItem(existing.luckData.id);
-                    if (conf != null && item.group > 0 && conf.group == item.group)
-                        throw new InvalidOperationException("已有同组气运，请先核对并移除旧项");
-                }
+                // 修改器主动赋予，不套用随机生成时的成就、同组和全局名额限制。
                 if (item.type == 6) throw new InvalidOperationException("壶妖专属气运不能添加给修士");
-                if (item.lockLuck != 0) throw new InvalidOperationException("该气运有成就解锁条件，暂不绕过解锁添加");
-                if (item.globalMax != 0) throw new InvalidOperationException("该气运有全局数量限制，暂不绕过限制添加");
                 if (CharacterFateCatalog.Category(item.type) == 0)
                 {
                     // 先天记录必须留在bornLuck；普通LuckAdd只写addLuck，不能用于替代。

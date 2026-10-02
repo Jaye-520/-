@@ -30,7 +30,7 @@
 
 调用关系：ModMain → WorkshopController → WorkshopWindow → BookView。视图使用读取/草稿/写入服务与PaperSkin；窗口负责输入补丁生命周期。当前没有独立Modules目录，写入通过明确字段适配和原生动作接入，不提供反射任意写入。
 
-07.28用partial分开编辑与布局，07.29再拆图鉴；新增文件须登记csproj。共享草稿跨视图重建保留，世界失效清理。候选读取本机具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽真实type匹配。输入复制搜索控件须清空旧回调，及时Register/Unregister到WindowInputScope；Attach/Detach归窗口所有；Attach清空旧登记后，从当前承载重新登记BHML_前缀的本视图输入，避免Build期间登记的气运搜索丢失保护。07.29的CharacterSave负责全批预检、原生字段写入/缓存维护、保存回调及主线程Poll；CharacterFateOperations负责即时气运生命周期，不能和只读/草稿服务混淆。替身不证明IL2CPP、Windows IME或保存重载结果。
+07.28用partial分开编辑与布局，07.29再拆图鉴；新增文件须登记csproj。共享窗口打开期间保留草稿；07.30每次打开清空未应用草稿，世界失效清理。候选读取本机具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽真实type匹配。输入复制搜索控件须清空旧回调，及时Register/Unregister到WindowInputScope；Attach/Detach归窗口所有；Attach清空旧登记后，从当前承载重新登记BHML_前缀的本视图输入，避免Build期间登记的气运搜索丢失保护。07.29的CharacterSave负责全批预检、原生字段写入/缓存维护、保存回调及主线程Poll；CharacterFateOperations负责即时气运生命周期，不能和只读/草稿服务混淆。替身不证明IL2CPP、Windows IME或保存重载结果。
 
 ## 构建和调试
 
@@ -83,6 +83,16 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 同一症状连续两次修复失败，先补真实事件证据；区分安装、分支命中和行为改变。不要把禁用控件状态、托管测试或模拟预览当成原生游戏验证。
 
+### 07.30反馈修复与快捷操作依据
+
+- 数值输入在OnValueChanged回调中先设置textComponent.text，再读preferredWidth；Unity回调发生在UpdateLabel之前，不能用旧字符串的宽度。克隆InputField清理继承的caretRectTrans/m_CachedInputRenderer/m_InputTextCache，销毁属于克隆的Caret，规范文字/占位矩形并AssignPositioningIfNeeded/UpdateLabel；不销毁原搜索框Caret，保留已认可GenerateCaret平移补丁。真实光标仍需游戏核对。
+- 气运底图Image.Type.Simple/preserveAspect=true。取消修改器自加的同组、lockLuck/globalMax限制，不改配置或成就全局状态；重复、隐藏、无运行类和壶妖类型仍保护。UnitActionLuckAdd.IsCreate原生检查并不使用成就/全局名额条件，不能把随机角色生成条件套入主动修改。
+- CharacterActions独立处理AddExp、背包propsCount/UpdateAllShowProps、UnitActionSetPoint、双向SetIntim；传送仅读回位置且动作结果为0才成功，无移动拒绝不增加Pending。原位置按上下文/人物缓存，重复来不覆盖。原生RelationData.SetIntim保留游戏关系上限；读取原浮点值叠加，不能先GetIntim取整，也不能把双方合并一个字段。
+- 物品isOverlay只有0/1，不是数量上限；本机PropsData.propsCount setter直接存整数，无各物品最大堆叠配置。用户明确选择9999，因此补满现有可叠加物品到9999，不增加独立物品记录，也不降低已有更大数量。不能称9999为游戏官方最大值。
+- CharacterRealmChange读取玩家DataWorld.World.playerLog.upGrade或NPC的npcUpGrade品质历史，按阶段调用原GetAddAttr(conf)累加，目标减原成长差额写DynInt持久setter，寿命growAddLife按月，道点abilityPoint。SetGradeID同步经验基线与事件；不执行ActionUpGradeComplete剧情、材料、随机气运奖励及历史任务回滚。旧材料/丹药/装备额外部分保留，不声称还原所有历史成长率。
+- RoleGrade.lockFeature配置120等对应RoleEffect1201=limitGradeExp_1_1；旧瓶颈不注销会继续限制新境界经验。直接改境界通过LuckDel注销这些实际拥有记录，回退通过原LuckData/CreateLuck/NewCreateLuck恢复。满修为只走PropertyData.AddExp，其原生路径处理锁定效果、瓶颈及经验事件，不直接赋exp，也不改境界。
+- 降阶的体力/寿命/道点下限及截断差额存人物objData的BHML.realm.debt:*键，下一次升阶补偿截断，避免反复升降加值；失败回退恢复原字段/经验/品质/扩展记录。复杂原生回调仍可能产生不能简单撤销的事件，托管回退不等于游戏事务。数字草稿和境界不能混批保存。
+- WorkshopWindow成功取得承载后、Build之前Clear未应用草稿；切页/切人物仍保留当次草稿。真正磁盘保存失败的已应用内存Pending继续保留，原生保存成功回调才清零。预检错误包含具体人物和字段，范围以原生DynInt为准，不为消除报错而盲目扩大寿命/资源范围。
 ## 按变更验证
 
 ### 07.29写入与配置依据（原生游戏结果待验证）

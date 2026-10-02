@@ -30,6 +30,29 @@ namespace MOD_YtxSQ1.UI
         private const float FateTilePitch = 38;
         private string catalogContext;
 
+        private static void ResetClonedInput(InputField field, float padding = 8)
+        {
+            // Instantiate会复制模板编辑时生成的Caret引用和矩形缓存，让新框重建。
+            var caret = field.caretRectTrans;
+            if (caret != null && caret.IsChildOf(field.transform))
+            { caret.gameObject.SetActive(false); UnityEngine.Object.Destroy(caret.gameObject); }
+            field.caretRectTrans = null; field.m_CachedInputRenderer = null; field.m_InputTextCache = null;
+            var text = field.textComponent;
+            text.rectTransform.anchorMin = Vector2.zero; text.rectTransform.anchorMax = Vector2.one;
+            text.rectTransform.pivot = new Vector2(.5f, .5f); text.rectTransform.localScale = Vector3.one;
+            text.rectTransform.offsetMin = new Vector2(padding, 2); text.rectTransform.offsetMax = new Vector2(-padding, -2);
+            text.resizeTextForBestFit = false; text.alignByGeometry = false; text.lineSpacing = 1;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow; text.verticalOverflow = VerticalWrapMode.Truncate;
+            var hint = field.placeholder == null ? null : field.placeholder.TryCast<Text>();
+            if (hint != null)
+            {
+                hint.rectTransform.anchorMin = Vector2.zero; hint.rectTransform.anchorMax = Vector2.one;
+                hint.rectTransform.pivot = text.rectTransform.pivot; hint.rectTransform.localScale = Vector3.one;
+                hint.rectTransform.offsetMin = text.rectTransform.offsetMin; hint.rectTransform.offsetMax = text.rectTransform.offsetMax;
+                hint.alignByGeometry = false; hint.lineSpacing = 1; hint.alignment = text.alignment;
+            }
+        }
+
         private InputField CreateFateSearch(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed)
         {
             var host = Box(name, parent, x, y, width, height);
@@ -38,6 +61,7 @@ namespace MOD_YtxSQ1.UI
             var rect = clone.GetComponent<RectTransform>();
             rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
             var field = clone.GetComponent<InputField>();
+            ResetClonedInput(field);
             foreach (var trigger in clone.GetComponentsInChildren<UnityEngine.EventSystems.EventTrigger>(true))
             { trigger.enabled = false; UnityEngine.Object.Destroy(trigger); }
             field.onValueChanged = new InputField.OnChangeEvent(); field.onEndEdit = new InputField.SubmitEvent();
@@ -49,6 +73,7 @@ namespace MOD_YtxSQ1.UI
             field.SetTextWithoutNotify("");
             field.onValueChanged.AddListener((UnityAction<string>)(new Action<string>(changed)));
             WindowInputScope.Register(field); clone.SetActive(true);
+            field.AssignPositioningIfNeeded(); field.UpdateLabel();
             return field;
         }
         private void BuildFateSearch(RectTransform heading, float width)
@@ -105,6 +130,8 @@ namespace MOD_YtxSQ1.UI
                 tile.Image.color = Color.white;
                 try { tile.Image.sprite = SpriteTool.GetLuckBG(g.conf.roleCreateFeature.GetItem(tile.Entry.Id)); }
                 catch { tile.Image.sprite = null; }
+                tile.Image.type = Image.Type.Simple;
+                tile.Image.preserveAspect = true;
                 tile.Label.color = tile.Image.sprite == null ? Ink : new Color(.98f, .95f, .86f, 1);
             }
         }

@@ -66,6 +66,7 @@ namespace MOD_YtxSQ1.UI
         public void Dispose() { Disposals++; if (ThrowDispose) throw new Exception("dispose failure"); }
     }
 }
+namespace MOD_YtxSQ1.Services { internal class CharacterEditSession { internal static CharacterEditSession Shared=new CharacterEditSession(); internal int Count; internal void Clear(){Count=0;} } }
 namespace MOD_YtxSQ1.Core
 {
     internal sealed class WorkshopController
@@ -97,7 +98,7 @@ internal static class LifecycleHarness
     public static void Main()
     {
         Reset();
-        var window = new WorkshopWindow(); window.Toggle();
+        MOD_YtxSQ1.Services.CharacterEditSession.Shared.Count=5; var window = new WorkshopWindow(); window.Toggle(); Check(MOD_YtxSQ1.Services.CharacterEditSession.Shared.Count==0,"opening discards unapplied drafts before building fresh view");
         BookView.ThrowDispose = true; window.Close(); window.Close();
         Check(g.ui.Closes == 1 && BookView.Disposals == 1 && !window.IsOpen && !WindowInputScope.Active, "cleanup failure still closes window and releases input patches; repeated close is safe");
 

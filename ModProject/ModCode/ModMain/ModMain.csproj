@@ -41,6 +41,8 @@
     <Compile Include="Services\CharacterFateCatalog.cs" />
     <Compile Include="Services\CharacterFateOperations.cs" />
     <Compile Include="Services\CharacterSave.cs" />
+    <Compile Include="Services\CharacterActions.cs" />
+    <Compile Include="Services\CharacterRealmChange.cs" />
     <Compile Include="Services\CharacterEditSession.cs" />
     <Compile Include="Services\CharacterEditData.cs" />
     <Compile Include="Services\CharacterRoster.cs" />
@@ -49,6 +51,7 @@
     <Compile Include="UI\WindowInputScope.cs" />
     <Compile Include="UI\BookView.cs" />
     <Compile Include="UI\BookView.Editing.cs" />
+    <Compile Include="UI\BookView.Actions.cs" />
     <Compile Include="UI\BookView.FateLibrary.cs" />
     <Compile Include="UI\PaperSkin.cs" />
     <EmbeddedResource Include="Art\InkLandscape-v1.png">

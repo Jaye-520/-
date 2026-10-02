@@ -31,6 +31,7 @@ namespace MOD_YtxSQ1.UI
             }
             ownedWindow = g.ui.OpenUI<UITextInfoLong>(UIType.TextInfoLong);
             if (ownedWindow == null) throw new InvalidOperationException("游戏未返回文本窗口。");
+            MOD_YtxSQ1.Services.CharacterEditSession.Shared.Clear();
             ownedWindow.InitData("八荒秘录", "界面正在装订，修改功能尚未接入。", "合上秘录");
             view = new BookView();
             try

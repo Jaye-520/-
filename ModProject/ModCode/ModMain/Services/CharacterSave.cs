@@ -45,7 +45,8 @@ namespace MOD_YtxSQ1.Services
                 {
                     if (c.Field.Group == 1 && c.Field.Index == 11 && changes.Count != 1)
                         throw new InvalidOperationException("境界突破会改变属性，请单独保存境界，再修改数值");
-                    writes.Add(Prepare(c, changes));
+                    try { writes.Add(Prepare(c, changes)); }
+                    catch (Exception ex) { throw new InvalidOperationException(CharacterEditData.Read(CharacterReader.Resolve(c.UnitId), new CharacterField(0, 11)) + " · " + CharacterSnapshot.Labels[c.Field.Group][c.Field.Index] + "：" + ex.Message); }
                 }
                 writes.Sort((a, b) => a.Order.CompareTo(b.Order));
             }
@@ -163,20 +164,8 @@ namespace MOD_YtxSQ1.Services
         }
         private static Write PrepareRealm(WorldUnitBase unit, int id)
         {
-            var old = g.conf.roleGrade.GetItem(unit.data.dynUnitData.gradeID.value);
-            var next = g.conf.roleGrade.GetItem(id);
-            if (old == null || next == null) throw new InvalidOperationException("境界配置缺失");
-            bool adjacent = next.grade == old.grade && next.phase == old.phase + 1 || next.grade == old.grade + 1 && old.phase == 3 && next.phase == 1;
-            if (!adjacent) throw new InvalidOperationException("当前仅开放下一阶段的原生突破；跨境界、降境界和重选历史品质尚未开放");
-            if (unit.Pointer == g.world.playerUnit.Pointer && (next.growItemNum != 0 || next.materialsNum != 0))
-                throw new InvalidOperationException("此突破需要材料选择，暂不能直接修改；请通过游戏突破界面完成品质选择");
-            return new Write { Order = 1, Apply = () =>
-            {
-                var action = new UnitActionRoleUpGrade(id, new Il2CppStringArray(0), new Il2CppStringArray(0));
-                action.upgradePhaseForceSuccess = true;
-                var result = unit.CreateAction(action, false);
-                if (unit.data.dynUnitData.gradeID.value != id) throw new InvalidOperationException("游戏拒绝突破（" + result + "）");
-            } };
+            var plan = CharacterRealmChange.Prepare(unit, id);
+            return new Write { Order = 1, Apply = plan.Apply, Undo = plan.Undo };
         }
         private static void ValidateHobbies(int[] ids)
         {

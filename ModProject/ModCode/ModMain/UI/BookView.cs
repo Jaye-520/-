@@ -174,9 +174,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.29 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.30 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.29：全量气运检索/图鉴/增删，内联编辑与原生保存；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.30：全量气运检索/图鉴/增删，内联编辑与原生保存；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -673,24 +673,7 @@ namespace MOD_YtxSQ1.UI
             if (group >= 2 && group <= 4)
             {
                 var buttonTop = 54 + 6 * rowHeight;
-                if (group == 2)
-                {
-                    var w = (width - 26) / 2;
-                    UnavailableButton(panel, "满修为", 10, buttonTop, w, 32);
-                    UnavailableButton(panel, "满材料", 16 + w, buttonTop, w, 32);
-                }
-                else if (group == 3)
-                {
-                    var w = (width - 32) / 3;
-                    string[] actions = { "去", "来", "返" };
-                    for (int a = 0; a < actions.Length; a++) UnavailableButton(panel, actions[a], 10 + a * (w + 6), buttonTop, w, 32);
-                }
-                else
-                {
-                    var w = width - 82;
-                    UnavailableButton(panel, "双向好感度", 10, buttonTop, w, 32);
-                    UnavailableButton(panel, "执行", 16 + w, buttonTop, 56, 32);
-                }
+                BuildActions(panel, group, width, buttonTop);
             }
         }
 
@@ -922,7 +905,7 @@ namespace MOD_YtxSQ1.UI
             var rowBounds = FateRowBounds(row, content);
             var position = FateTipBounds(rowBounds, width, height, content.sizeDelta);
             fateTip.anchoredPosition = new Vector2(position.x, -position.y);
-            Debug.Log("[八荒秘录] 07.29气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
+            Debug.Log("[八荒秘录] 07.30气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
                 "；介绍=" + position.x + "," + position.y);
             if (textHeight > height - 52)
             {
