@@ -451,6 +451,14 @@ internal static class BookLayoutHarness
         for(int s=0;s<sizes.Length;s++)
         {
             g.world.playerUnit.data.dynUnitData.attack.Stored=77;
+            g.world.playerUnit.data.unitData.propertyData.bornLuck=new[]{new DataUnit.LuckData{id=1},new DataUnit.LuckData{id=2},new DataUnit.LuckData{id=3}};
+            g.world.playerUnit.data.unitData.propertyData.addLuck=new List<DataUnit.LuckData>{new DataUnit.LuckData{id=4}};
+            string[] previewNames={"聪明谢顶","倾国倾城","天三才","陷入瓶颈"};
+            for(int f=0;f<4;f++)
+            {
+                g.conf.roleCreateFeature.Items[f+1]=new FateItem{type=f==3?2:1,name="preview"+f,tips="0"};
+                ConfLocalText.Texts["preview"+f]=previewNames[f];
+            }
             var canvas=new UnityEngine.GameObject("canvas");canvas.transform.sizeDelta=new UnityEngine.Vector2(sizes[s][0],sizes[s][1]);g.ui=new LayoutUI { canvas=canvas.transform };
             bool closeRequested=false;
             var window=new UITextInfoLong();var bookView=new BookView();bookView.Build(window,()=>{closeRequested=true;});
@@ -473,6 +481,12 @@ internal static class BookLayoutHarness
             Check(cells.Length==46 && cells.All(c=>c.sizeDelta.y>=26 && c.GetComponentsInChildren<UnityEngine.UI.Text>(true).Length==2),"46 framed read-only fields have room for label and value at "+sizes[s][0]);
             Check(texts.Any(t=>t.text=="玉器 · 书籍") && texts.Any(t=>t.text=="无私 · 义气 · 忠贞"),"reference hobby and personality values bind to view");
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_所有气运") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待接入_") && !t.GetComponent<UnityEngine.UI.Button>().interactable)==7,"four fate regions and seven deferred write entries exist and cannot write");
+            Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_气运行_0_"))==3 && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2").GetComponentInChildren<UnityEngine.UI.Text>().text=="天三才","all three born entries render as individual rows");
+            var bornColumn=Walk(book).First(t=>t.gameObject.name=="BHML_气运条目视口_0").GetComponent<UnityEngine.UI.ScrollRect>();
+            var thirdBorn=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2");
+            Check(-thirdBorn.anchoredPosition.y+thirdBorn.sizeDelta.y<=bornColumn.viewport.sizeDelta.y+.1f,"three ordinary born rows fit without scrolling at "+sizes[s][0]);
+            Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待验证移除_"))==4 && Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_待验证移除_")).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"owned row x entries are visibly disabled and cannot write");
+            Check(!Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_查看气运_")) && !texts.Any(t=>t.text.Contains("点击查看")),"large summary buttons and count prompt removed");
             foreach(var panelName in MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames)
             {
                 var panel=Walk(book).First(t=>t.gameObject.name=="BHML_"+panelName);
@@ -504,7 +518,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-23-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-24-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -560,8 +574,18 @@ internal static class BookLayoutHarness
                 ConfLocalText.Texts["fate"+f]="气运测试"+f;
                 ConfLocalText.Texts["tip"+f]=new string('长',1600);
             }
+            g.world.playerUnit.data.unitData.propertyData.bornLuck=null;
             g.world.playerUnit.data.unitData.propertyData.addLuck=ownedFates; bookView.RefreshCharacter(true);
-            Check(Walk(book).First(t=>t.gameObject.name=="BHML_查看气运_2").GetComponentInChildren<UnityEngine.UI.Text>().text.Contains("气运测试0"),"fate summary binds fate category at "+sizes[s][0]);
+            Check(Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponentInChildren<UnityEngine.UI.Text>().text=="气运测试0","fate individual row binds fate category at "+sizes[s][0]);
+            var columnScroll=Walk(book).First(t=>t.gameObject.name=="BHML_气运条目视口_1").GetComponent<UnityEngine.UI.ScrollRect>();
+            columnScroll.verticalNormalizedPosition=.4f;
+            var stableRow=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0");
+            bookView.RefreshCharacter(true);
+            Check(columnScroll.content.childCount==34 && columnScroll.content.sizeDelta.y>columnScroll.viewport.sizeDelta.y && columnScroll.verticalScrollbar.gameObject.activeSelf,"all acquired entries live in clipped scrollable column");
+            Check(columnScroll.verticalNormalizedPosition==.4f && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0")==stableRow,"unchanged refresh preserves inline rows and scroll position");
+            Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_20").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(Walk(book).First(t=>t.gameObject.name=="BHML_气运查看页").GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="后天气运 · #1021"),"clicking inline entry opens corresponding description and page");
+            Walk(book).First(t=>t.gameObject.name=="BHML_返回属性").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             Walk(book).First(t=>t.gameObject.name=="BHML_气运列表").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             var fatePageRoot=Walk(book).First(t=>t.gameObject.name=="BHML_气运查看页");
             Check(fatePageRoot.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="逆天改命 · #1000"),"owned list opens with selected entry metadata");
@@ -570,7 +594,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"fates-07-23-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"fates-07-24-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var detailScroll=Walk(fatePageRoot).First(t=>t.gameObject.name=="BHML_气运说明视口").GetComponent<UnityEngine.UI.ScrollRect>();
             Check(detailScroll.content.sizeDelta.y>detailScroll.viewport.sizeDelta.y && detailScroll.verticalScrollbar!=null,"long fate description scrolls inside clipped viewport");
