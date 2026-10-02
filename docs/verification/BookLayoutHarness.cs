@@ -17,12 +17,6 @@ namespace UnityEngine
     public static class RectTransformUtility
     {
         public static bool Inside=true;public static bool RectangleContainsScreenPoint(RectTransform rect,Vector2 point,Camera camera) { return Inside; }
-        public static Bounds CalculateRelativeRectTransformBounds(Transform parent,Transform child)
-        {
-            var rect=(RectTransform)child;float x=0,y=0;
-            for(var item=child;item!=parent;item=item.parent) { var node=(RectTransform)item;x+=node.anchoredPosition.x;y+=node.anchoredPosition.y; }
-            return new Bounds(new Vector3(x+rect.sizeDelta.x/2,y-rect.sizeDelta.y/2,0),new Vector3(rect.sizeDelta.x,rect.sizeDelta.y,0));
-        }
     }
     public class Object
     {
@@ -449,6 +443,13 @@ internal static class BookLayoutHarness
         Check(leftTip.x+leftTip.width==792,"tooltip switches to left near right edge");
         Check(bottomTip.y+bottomTip.height==492,"tooltip stays within bottom boundary");
         Check(belowTip.y==60,"very wide row places tooltip below when neither side fits");
+        var testArea=new UnityEngine.GameObject("area").transform;
+        var testViewport=new UnityEngine.GameObject("viewport").transform;testViewport.SetParent(testArea,false);testViewport.anchoredPosition=new UnityEngine.Vector2(40,-100);
+        var testPage=new UnityEngine.GameObject("scroll page").transform;testPage.SetParent(testViewport,false);testPage.anchoredPosition=new UnityEngine.Vector2(0,36);
+        var testRow=new UnityEngine.GameObject("row").transform;testRow.SetParent(testPage,false);testRow.anchoredPosition=new UnityEngine.Vector2(5,-72);testRow.sizeDelta=new UnityEngine.Vector2(200,32);
+        var beforeScroll=BookView.FateRowBounds(testRow,testArea);testPage.anchoredPosition=new UnityEngine.Vector2(0,72);
+        var afterScroll=BookView.FateRowBounds(testRow,testArea);
+        Check(beforeScroll.x==45 && beforeScroll.y==136 && afterScroll.y==100,"real anchored hierarchy includes scroll displacement");
         PaperSkin.ArtDirectory=args[0];
         g.world.playerUnit.data.unitData.propertyData.Name="示例修士";
         for(int i=0;i<300;i++)
@@ -544,7 +545,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-26-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-27-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -609,6 +610,16 @@ internal static class BookLayoutHarness
             bookView.RefreshCharacter(true);
             Check(columnScroll.content.childCount==34 && columnScroll.content.sizeDelta.y>columnScroll.viewport.sizeDelta.y && columnScroll.verticalScrollbar.gameObject.activeSelf,"all acquired entries live in clipped scrollable column");
             Check(columnScroll.verticalNormalizedPosition==.4f && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0")==stableRow,"unchanged refresh preserves inline rows and scroll position");
+            ConfLocalText.Texts["tip1"]="第一条介绍";ConfLocalText.Texts["tip2"]="第二条介绍";bookView.RefreshCharacter(true);
+            Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0").GetComponent<UIEventListener>().OnPointerEnter(null);
+            var firstTip=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍");var firstY=firstTip.anchoredPosition.y;
+            Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_1").GetComponent<UIEventListener>().OnPointerEnter(null);
+            var secondTip=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍");
+            Check(secondTip.anchoredPosition.y<firstY,"different visible rows produce different tooltip heights at "+sizes[s][0]);
+            var secondX=secondTip.anchoredPosition.x;
+            Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UIEventListener>().OnPointerEnter(null);
+            Check(((UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍")).anchoredPosition.x!=secondX,"different columns produce different tooltip positions at "+sizes[s][0]);
+            ConfLocalText.Texts["tip1"]=new string('长',1600);ConfLocalText.Texts["tip2"]=new string('长',1600);bookView.RefreshCharacter(true);
             var hovered=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_20");
             var hover=hovered.GetComponent<UIEventListener>();
             Check(hovered.GetComponent<UnityEngine.UI.Button>()==null && hover!=null,"owned rows have hover listener without navigation button");
@@ -644,7 +655,7 @@ internal static class BookLayoutHarness
             Check(tip.sizeDelta.y<150,"short introduction has compact content-driven height");
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
-            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-26-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-27-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");
             bookView.Dispose();bookView.Dispose();Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍") && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
         }

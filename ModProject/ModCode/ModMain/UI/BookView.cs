@@ -172,9 +172,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.26 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.27 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.26：气运旁紧凑悬停介绍；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.27：气运介绍按条目层级坐标定位；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -850,6 +850,24 @@ namespace MOD_YtxSQ1.UI
             return new Rect(x, y, width, height);
         }
 
+        internal static Rect FateRowBounds(RectTransform row, RectTransform area)
+        {
+            // 本视图所有祖先均为左上锚点/左上pivot、固定尺寸且单位localScale。
+            // 累加实际anchoredPosition，包含两个ScrollRect长页的实时滚动偏移。
+            // 不依赖原生CalculateRelativeRectTransformBounds的跨IL2CPP返回值。
+            float x = 0, y = 0;
+            var node = row;
+            while (node != area)
+            {
+                if (node == null || node.parent == null) throw new InvalidOperationException("气运条目已离开正文层级");
+                x += node.anchoredPosition.x;
+                y += node.anchoredPosition.y;
+                // parent在IL2CPP中可能只是Transform包装，显式取RectTransform组件。
+                node = node.parent.GetComponent<RectTransform>();
+            }
+            return new Rect(x, -y, row.sizeDelta.x, row.sizeDelta.y);
+        }
+
         private void ShowFateTip(RectTransform row, CharacterFate entry)
         {
             HideFateTips();
@@ -879,10 +897,11 @@ namespace MOD_YtxSQ1.UI
             text.rectTransform.sizeDelta = page.sizeDelta;
             Border(fateTip, width, height);
             Fill(fateTip, "介绍分隔线", 12, 35, width - 24, 1, new Color(.55f, .48f, .32f, .3f));
-            var bounds = RectTransformUtility.CalculateRelativeRectTransformBounds(content, row);
-            var position = FateTipBounds(new Rect(bounds.center.x - bounds.size.x / 2, -bounds.center.y - bounds.size.y / 2,
-                bounds.size.x, bounds.size.y), width, height, content.sizeDelta);
+            var rowBounds = FateRowBounds(row, content);
+            var position = FateTipBounds(rowBounds, width, height, content.sizeDelta);
             fateTip.anchoredPosition = new Vector2(position.x, -position.y);
+            Debug.Log("[八荒秘录] 07.27气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
+                "；介绍=" + position.x + "," + position.y);
             if (textHeight > height - 52)
             {
                 var scroll = viewport.gameObject.AddComponent<ScrollRect>();

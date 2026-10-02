@@ -2,7 +2,13 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
-## 07.26：气运旁紧凑介绍框（待游戏验证）
+## 07.27：修正介绍固定左上角定位（待游戏验证）
+
+2026-10-02。用户[实际截图](screenshots/fate-tip-07-26-position-failure.png)显示介绍尺寸已改变，但无论悬停哪项均固定左上角。上一版GDI替身的Bounds转换通过，未证明原生CalculateRelativeRectTransformBounds返回值；目前不能断言具体原生返回异常。改为FateRowBounds按本视图固定左上锚点/pivot、单位局部缩放层级累加实际anchoredPosition，含主正文与气运栏两个ScrollRect长页偏移；parent通过GetComponent<RectTransform>取明确包装，保持既有换侧/边缘约束。每次悬停记录条目名索引、条目与提示坐标，供实际异常诊断，不记录人物私有信息。
+
+仅修改定位、版本与验证，保留介绍内容/尺寸/悬停清理。编译零警告零错误，四画布既有回归及新增实际视图同栏不同行提示Y变化、不同栏提示X变化、祖先滚动偏移检查通过；不再以伪造原生Bounds的替身证明定位。Release/debug DLL一致，SHA256：AFB811FAA08BF6D6BDAEC5496E40AB8F5C6F95B6AEB05A5028698CA5F6D885AB。旧debug备份.tools/backups/before-07.27，PDB未手动同步；保留ModProject.cache既有改动。未写存档或终止游戏，待加载悬停第一/第三项及不同栏确认，并检查滚动后位置。
+
+## 07.26：气运旁紧凑介绍框（实测定位失败，已替换定位）
 
 2026-10-02。用户[实际悬停截图](screenshots/fate-tip-07-25-in-game.png)证明原生提示能显示，但指出过大并盖住气运。保留气运内容的ConfRoleCreateFeatureEx.tips路径，替换UISkyTipEffect默认窗口为本视图管理的宣纸提示面板；行仍用原生UIEventListener的onMouseEnter/onMouseExit，无点击导航。固定宽280、正文14、标题17、高度随preferredHeight收紧（最低72，最高300）；原生字号/样式标签转纯文以防覆盖本框字号，保留正文换行。
 
