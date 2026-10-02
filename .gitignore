@@ -1,0 +1,42 @@
+.tools/
+debug/
+docs/api-reference/
+**/bin/
+**/obj/
+**/.vs/
+**/Library/
+**/Temp/
+**/Logs/
+**/UserSettings/
+**/MemoryCaptures/
+**/Recordings/
+**/Build/
+**/Builds/
+*.user
+*.suo
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# 游戏程序集引用和Unity自动生成工程，源码工程的csproj/sln仍跟踪。
+/ModProject/ModCode/ModMain/dll/
+/ModProject/ModRes/ResBuildABProject/*.csproj
+/ModProject/ModRes/ResBuildABProject/*.sln
+
+# 可重建的模拟截图；游戏实测截图、参考图和文档归档仍跟踪。
+/docs/screenshots/*-layout-*.png
+
+# 本地凭据和秘密不入库。
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.pfx
+*.p12
+*.keystore
+
+# 不忽略ModProject.cache/ModData.cache：二者是官方项目配置，并非临时缓存。

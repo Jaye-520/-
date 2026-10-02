@@ -1,0 +1,775 @@
+using System;
+using System.Collections.Generic;
+using MOD_YtxSQ1.Services;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+
+namespace MOD_YtxSQ1.UI
+{
+    // 原生窗口只承载生命周期和字体。布局使用自己的单一边界，不借用未知 Sprite。
+    internal sealed class BookView
+    {
+        private const float MaximumWidth = 1760;
+        private const float MaximumHeight = 900;
+        private static readonly Color Ink = new Color(.18f, .19f, .17f, 1f);
+        private static readonly Color Muted = new Color(.37f, .38f, .33f, 1f);
+        private static readonly Color Paper = new Color(.862f, .855f, .832f, 1f);
+        private static readonly Color Gold = new Color(.48f, .49f, .41f, 1f);
+        private static readonly Color Cinnabar = new Color(.56f, .25f, .19f, 1f);
+        private static readonly string[] Modules = { "角色", "物品", "修炼", "功法", "人物关系", "宗门世界", "战斗", "设置" };
+        private readonly List<Graphic> hiddenGraphics = new List<Graphic>();
+        private readonly List<Button> nativeButtons = new List<Button>();
+        private readonly List<bool> nativeButtonStates = new List<bool>();
+        private readonly List<bool> nativeButtonActiveStates = new List<bool>();
+        private readonly List<Image> tabImages = new List<Image>();
+        private readonly List<Text> tabLabels = new List<Text>();
+        private readonly List<Image> tabMarks = new List<Image>();
+        private readonly List<RawImage> tabBrushes = new List<RawImage>();
+        private GameObject root;
+        private RectTransform content;
+        private Font font;
+        private Font calligraphyFont;
+        private PaperSkin skin;
+        private int selectedIndex = -1;
+        private Text characterName;
+        private Text characterRealm;
+        private readonly List<Text[]> attributeTexts = new List<Text[]>();
+        private float nextCharacterRefresh;
+        private string lastReadFailure;
+        private float contentWidth;
+        private float contentHeight;
+        private float bookWidth, targetWidth;
+        private RectTransform targetPanel, rosterContent;
+        private ScrollRect rosterScroll;
+        private InputField targetSearch;
+        internal InputField SearchInput { get { return targetSearch; } }
+        private string searchQuery = "";
+        private int inputFocusDiagnostics;
+        private Text rosterCount, portraitStatus;
+        private RawImage portraitImage;
+        private RawImage specialPortraitImage;
+        private GameObject ownedPortraitRoot;
+        private ModelRenderTexture portraitRenderer;
+        private string portraitKey, selectedUnitId, contextKey;
+        private List<CharacterEntry> roster = new List<CharacterEntry>();
+        private readonly List<CharacterEntry> filteredRoster = new List<CharacterEntry>();
+        private readonly List<Button> rosterRows = new List<Button>();
+        private readonly List<string> rowIds = new List<string>();
+        private float rosterHeight;
+        private const float RosterRowHeight = 38;
+
+        public void Build(UITextInfoLong window, Action close)
+        {
+            foreach (var text in window.GetComponentsInChildren<Text>(true))
+            {
+                if (text.font != null && (font == null || text.text.Length > 20)) font = text.font;
+            }
+            if (font == null) throw new InvalidOperationException("未找到原生中文字体。");
+            try
+            {
+                calligraphyFont = Font.CreateDynamicFontFromOSFont("KaiTi", 24);
+                if (calligraphyFont != null && !calligraphyFont.HasCharacter('荒'))
+                {
+                    UnityEngine.Object.Destroy(calligraphyFont);
+                    calligraphyFont = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                var failedFont = calligraphyFont;
+                calligraphyFont = null;
+                if (failedFont != null) Cleanup(() => UnityEngine.Object.Destroy(failedFont), "失败字体");
+                Debug.LogWarning("[八荒秘录] 楷体回退为游戏字体：" + ex.Message);
+            }
+            try { skin = new PaperSkin(); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 纸墨材质回退为纯色：" + ex.Message); }
+            foreach (var graphic in window.GetComponentsInChildren<Graphic>(true))
+            {
+                if (!graphic.enabled) continue;
+                hiddenGraphics.Add(graphic);
+                graphic.enabled = false;
+            }
+            foreach (var button in window.GetComponentsInChildren<Button>(true))
+            {
+                nativeButtons.Add(button);
+                nativeButtonStates.Add(button.interactable);
+                nativeButtonActiveStates.Add(button.gameObject.activeSelf);
+                button.interactable = false;
+                button.gameObject.SetActive(false);
+            }
+
+            var overlay = NewRect("界面遮罩", window.transform);
+            root = overlay.gameObject;
+            overlay.anchorMin = Vector2.zero;
+            overlay.anchorMax = Vector2.one;
+            overlay.offsetMin = overlay.offsetMax = Vector2.zero;
+            var veil = overlay.gameObject.AddComponent<Image>();
+            veil.color = new Color(0, 0, 0, .34f);
+
+            var book = NewRect("秘录外框", overlay);
+            book.anchorMin = book.anchorMax = new Vector2(.5f, .5f);
+            book.pivot = new Vector2(.5f, .5f);
+            book.anchoredPosition = Vector2.zero;
+            var available = g.ui.canvas.GetComponent<RectTransform>().rect.size;
+            var width = Mathf.Min(MaximumWidth, available.x * .96f);
+            var height = Mathf.Min(MaximumHeight, available.y * .94f);
+            bookWidth = width;
+            if (width < 850 || height < 620) throw new InvalidOperationException("当前画布过小，无法清晰显示综合面板。");
+            book.sizeDelta = new Vector2(width, height);
+
+            // 外框、页眉、正文、页脚共享同一个完整矩形，不使用带留白的背景素材。
+            Fill(book, "完整纸底", 0, 0, width, height, Paper, true);
+            if (skin != null && skin.Landscape != null)
+                Texture(book, "山水宣纸", 0, 0, width, height, skin.Landscape, new Rect(0, 0, 1, 1));
+            else if (skin != null) Texture(book, "纸纤维", 6, 6, width - 12, height - 12, skin.Paper,
+                new Rect(0, 0, (width - 12) / 192f, (height - 12) / 192f));
+            var header = Box("题签区", book, 16, 10, width - 32, 72);
+            Label(header, "鬼谷八荒 / 修改器", 16, 19, 240, 30, 18, Ink);
+            var title = Box("墨迹题签", header, (width - 32 - 380) / 2f, 5, 380, 54);
+            // UV取透明素材的墨迹范围，避免图像上下留白使标题墨底过薄。
+            if (skin != null && skin.TitleBrush != null)
+                Texture(title, "参考标题墨底", 0, 0, 380, 54, skin.TitleBrush,
+                    new Rect(24f / 2172f, 170f / 724f, 2128f / 2172f, 376f / 724f));
+            else if (skin != null) Texture(title, "墨迹", 0, 0, 380, 54, skin.Brush, new Rect(0, 0, 1, 1));
+            else Fill(title, "墨底", 12, 6, 356, 42, Ink);
+            Label(title, "八荒秘录", 0, 0, 380, 54, 34, new Color(.95f, .94f, .90f, 1f), TextAnchor.MiddleCenter);
+            var closeButton = MakeButton(header, "关闭", width - 138, 18, 90, 36, "关闭", close);
+            closeButton.GetComponent<Image>().color = new Color(.46f, .45f, .39f, .13f);
+            Fill(book, "标题分界", 20, 85, width - 40, 1, Gold);
+
+            var navigation = Box("卷目区", book, 24, 98, width - 48, 44);
+            var tabWidth = (width - 48 - 7 * 12) / 8f;
+            for (int i = 0; i < Modules.Length; i++)
+            {
+                int index = i;
+                var tab = MakeButton(navigation, "卷目" + i, i * (tabWidth + 12), 0, tabWidth, 42, Modules[i], () => Select(index));
+                if (skin != null)
+                {
+                    var brush = Texture(tab.GetComponent<RectTransform>(), "页签墨迹", 0, 0, tabWidth, 42, skin.Brush, new Rect(0, 0, 1, 1));
+                    brush.transform.SetAsFirstSibling();
+                    tabBrushes.Add(brush);
+                }
+                tabImages.Add(tab.GetComponent<Image>());
+                tabLabels.Add(tab.GetComponentInChildren<Text>());
+                tabMarks.Add(Fill(tab.GetComponent<RectTransform>(), "选中标记", 8, 12, 3, 18, Cinnabar));
+            }
+            targetWidth = width < 1300 ? 190f : 224f;
+            var bodyHeight = height - 224;
+            BuildTargetPanel(book, bodyHeight);
+            contentWidth = width - targetWidth - 76;
+            contentHeight = bodyHeight;
+            content = Box("卷页", book, targetWidth + 52, 158, contentWidth, contentHeight);
+
+            Fill(book, "页脚分界", 24, height - 54, width - 48, 1, Gold);
+            var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
+            // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
+            Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
+            Label(footer, "07.15 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Select(0);
+            Debug.Log("[八荒秘录] 07.15：原生特殊立绘入口；画布=" + available + "；窗口=" + width + "×" + height);
+        }
+
+        private void Select(int index)
+        {
+            if (index == selectedIndex) return;
+            ReleasePortrait();
+            attributeTexts.Clear();
+            targetPanel.gameObject.SetActive(index == 0);
+            contentWidth = index == 0 ? bookWidth - targetWidth - 76 : bookWidth - 48;
+            content.anchoredPosition = new Vector2(index == 0 ? targetWidth + 52 : 24, -158);
+            content.sizeDelta = new Vector2(contentWidth, contentHeight);
+            for (int i = content.childCount - 1; i >= 0; i--)
+            {
+                var old = content.GetChild(i).gameObject;
+                old.SetActive(false);
+                UnityEngine.Object.Destroy(old);
+            }
+            for (int i = 0; i < tabImages.Count; i++)
+            {
+                tabImages[i].color = i == index ? (skin != null ? new Color(1, 1, 1, 0) : Ink) : new Color(.38f, .38f, .32f, .025f);
+                tabLabels[i].color = i == index ? new Color(.95f, .94f, .90f, 1f) : Ink;
+                tabMarks[i].gameObject.SetActive(i == index);
+                if (i < tabBrushes.Count) tabBrushes[i].gameObject.SetActive(i == index);
+            }
+            Label(content, index == 0 ? "属性总览" : Modules[index], 0, 0, contentWidth - 120, 34, 25, Ink);
+            Label(content, index == 0 ? "五类属性 · 41项 · 只读" : "功能尚未开放", 0, 34, contentWidth - 120, 24, 16, Muted);
+            if (index == 0) MakeButton(content, "刷新角色", contentWidth - 96, 5, 96, 34, "刷新", () => { ReloadRoster(); RefreshCharacter(true); });
+            selectedIndex = index;
+            if (index != 0)
+            {
+                var blank = Card(content, "待编纂", 0, 76, contentWidth, contentHeight - 76);
+                Label(blank, "此卷待编纂", 16, 80, contentWidth - 32, 42, 25, Ink, TextAnchor.MiddleCenter);
+                Label(blank, "功能尚未开放", 16, 140, contentWidth - 32, 30, 16, Muted, TextAnchor.MiddleCenter);
+                RefreshCharacter(true);
+                return;
+            }
+            ReloadRoster();
+            BuildAttributeOverview();
+            RefreshCharacter(true);
+        }
+
+        private void BuildTargetPanel(RectTransform book, float height)
+        {
+            targetPanel = Card(book, "对象栏", 24, 158, targetWidth, height);
+            Label(targetPanel, "操作对象", 14, 12, targetWidth - 28, 30, 21, Ink);
+            rosterCount = Label(targetPanel, "", 14, 43, targetWidth - 28, 20, 14, Muted);
+            BuildSearchInput();
+            rosterHeight = height > 600 ? 248 : Mathf.Max(112, height * .30f);
+            var viewport = Box("名单视口", targetPanel, 12, 116, targetWidth - 24, rosterHeight);
+            Fill(viewport, "名单底", 0, 0, targetWidth - 24, rosterHeight, new Color(1, 1, 1, .01f), true);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            rosterContent = NewRect("名单长页", viewport);
+            rosterContent.anchorMin = rosterContent.anchorMax = new Vector2(0, 1);
+            rosterContent.pivot = new Vector2(0, 1);
+            rosterContent.sizeDelta = new Vector2(targetWidth - 38, rosterHeight);
+            rosterScroll = viewport.gameObject.AddComponent<ScrollRect>();
+            rosterScroll.viewport = viewport; rosterScroll.content = rosterContent;
+            rosterScroll.horizontal = false; rosterScroll.vertical = true;
+            rosterScroll.inertia = false; rosterScroll.movementType = ScrollRect.MovementType.Clamped;
+            rosterScroll.scrollSensitivity = 32;
+            var track = Fill(viewport, "名单滚动轨", targetWidth - 32, 0, 6, rosterHeight, new Color(.35f, .34f, .27f, .12f), true);
+            var handle = Fill(track.rectTransform, "名单滚动柄", 0, 0, 6, 36, new Color(.36f, .34f, .27f, .6f), true);
+            var scrollbar = track.gameObject.AddComponent<Scrollbar>();
+            scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle;
+            scrollbar.direction = Scrollbar.Direction.BottomToTop; rosterScroll.verticalScrollbar = scrollbar;
+            int poolSize = (int)Math.Ceiling(rosterHeight / RosterRowHeight) + 1;
+            for (int i = 0; i < poolSize; i++)
+            {
+                int slot = i;
+                var row = MakeButton(rosterContent, "修士行" + i, 0, 0, targetWidth - 38, 34, "", () => SelectTarget(slot));
+                row.GetComponentInChildren<Text>().fontSize = 16;
+                rosterRows.Add(row); rowIds.Add(null);
+            }
+            rosterScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderRosterRows())));
+            float summaryTop = 116 + rosterHeight + 12;
+            characterName = Label(targetPanel, "正在读取", 14, summaryTop, targetWidth - 28, 28, 20, Ink);
+            characterRealm = Label(targetPanel, "—", 14, summaryTop + 30, targetWidth - 28, 24, 17, Muted);
+            float portraitTop = summaryTop + 62;
+            float portraitHeight = height - portraitTop - 12;
+            var portraitBox = Box("立绘区", targetPanel, 12, portraitTop, targetWidth - 24, portraitHeight);
+            portraitBox.gameObject.AddComponent<RectMask2D>();
+            portraitImage = Texture(portraitBox, "人物立绘", 0, 0, targetWidth - 24, portraitHeight, null, new Rect(0, 0, 1, 1));
+            portraitImage.color = Color.white;
+            portraitImage.enabled = false;
+            // 裁去上方空白并保留底边，使已验证位置上的人物放大30%。
+            var visible = 1f / 1.30f;
+            portraitImage.uvRect = new Rect((1 - visible) / 2, 0, visible, visible);
+            portraitStatus = Label(portraitBox, "", 6, 0, targetWidth - 36, portraitHeight, 16, Muted, TextAnchor.MiddleCenter);
+        }
+
+        private void ReloadRoster()
+        {
+            contextKey = CharacterReader.ContextKey();
+            string reason;
+            var ready = CharacterRoster.TryRead(out roster, out reason);
+            FilterRoster();
+            if (!ready) rosterCount.text = reason;
+        }
+
+        private void BuildSearchInput()
+        {
+            var uiName = UIType.ModWorkshopUpload.uiName;
+            var path = uiName.StartsWith("UI/", StringComparison.Ordinal) ? uiName : "UI/" + uiName;
+            var prefab = g.res.Load<GameObject>(path);
+            if (prefab == null) throw new InvalidOperationException("未加载输入预制体：" + path);
+            var source = prefab.GetComponentInChildren<InputField>(true);
+            if (source == null || source.textComponent == null)
+                throw new InvalidOperationException("原生InputField模板缺少文字组件");
+            var host = Box("对象搜索", targetPanel, 12, 70, targetWidth - 24, 36);
+            var clone = UnityEngine.Object.Instantiate(source.gameObject, host, false);
+            clone.SetActive(false);
+            clone.name = "BHML_姓名输入";
+            var rect = clone.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            rect.localScale = Vector3.one;
+            targetSearch = clone.GetComponent<InputField>();
+            // 模板的EventTrigger仍带有原窗口回调，替换文字事件并不会清除它们。
+            // 参照鬼谷ModLib的控件复制初始化，先停用并移除这些事件代理。
+            foreach (var trigger in clone.GetComponentsInChildren<EventTrigger>(true))
+            {
+                trigger.enabled = false;
+                UnityEngine.Object.Destroy(trigger);
+            }
+            var inheritedActivation = targetSearch.shouldActivateOnSelect;
+            targetSearch.shouldActivateOnSelect = true;
+            targetSearch.onValidateInput = null;
+            targetSearch.navigation = new Navigation { mode = Navigation.Mode.None };
+            targetSearch.onValueChanged = new InputField.OnChangeEvent();
+            targetSearch.onEndEdit = new InputField.SubmitEvent();
+            targetSearch.contentType = InputField.ContentType.Standard;
+            targetSearch.lineType = InputField.LineType.SingleLine;
+            targetSearch.characterValidation = InputField.CharacterValidation.None;
+            targetSearch.readOnly = false; targetSearch.interactable = true;
+            targetSearch.characterLimit = 48;
+            var textRect = targetSearch.textComponent.rectTransform;
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.pivot = new Vector2(.5f, .5f);
+            textRect.localScale = Vector3.one;
+            textRect.offsetMin = new Vector2(8, 4);
+            textRect.offsetMax = new Vector2(-8, -4);
+            targetSearch.textComponent.fontSize = 17;
+            targetSearch.textComponent.resizeTextForBestFit = false;
+            targetSearch.textComponent.alignment = TextAnchor.MiddleLeft;
+            // 光标按字体行度量生成；不要继承模板的几何对齐或多行行距。
+            targetSearch.textComponent.alignByGeometry = false;
+            targetSearch.textComponent.lineSpacing = 1f;
+            targetSearch.textComponent.horizontalOverflow = HorizontalWrapMode.Overflow;
+            targetSearch.textComponent.verticalOverflow = VerticalWrapMode.Truncate;
+            targetSearch.textComponent.color = Ink;
+            var placeholder = targetSearch.placeholder.TryCast<Text>();
+            if (placeholder != null)
+            {
+                placeholder.text = "搜索修士姓名"; placeholder.fontSize = 16; placeholder.color = Muted;
+                placeholder.alignment = TextAnchor.MiddleLeft;
+                placeholder.alignByGeometry = false; placeholder.lineSpacing = 1f;
+                placeholder.rectTransform.pivot = new Vector2(.5f, .5f);
+                placeholder.rectTransform.localScale = Vector3.one;
+                placeholder.rectTransform.anchorMin = Vector2.zero; placeholder.rectTransform.anchorMax = Vector2.one;
+                placeholder.rectTransform.offsetMin = new Vector2(8, 4); placeholder.rectTransform.offsetMax = new Vector2(-8, -4);
+                placeholder.raycastTarget = false;
+            }
+            targetSearch.textComponent.raycastTarget = false;
+            var background = clone.GetComponent<Image>();
+            if (background != null) { background.sprite = null; background.color = new Color(.94f, .92f, .85f, .65f); }
+            targetSearch.SetTextWithoutNotify(searchQuery);
+            targetSearch.onValueChanged.AddListener((UnityAction<string>)(new Action<string>(query =>
+            {
+                searchQuery = query ?? "";
+                FilterRoster();
+            })));
+            // 有限诊断：保留实际取消选中的调用栈，不逐帧重抢焦点。
+            targetSearch.onEndEdit.AddListener((UnityAction<string>)(new Action<string>(_ =>
+            {
+                if (inputFocusDiagnostics++ >= 2) return;
+                Debug.Log("[八荒秘录] 搜索结束编辑；isFocused=" + targetSearch.isFocused +
+                    "；调用栈=" + Environment.StackTrace);
+            })));
+            Border(host, targetWidth - 24, 36);
+            clone.SetActive(true);
+            targetSearch.AssignPositioningIfNeeded();
+            targetSearch.UpdateLabel();
+            Debug.Log("[八荒秘录] 内联输入模板：" + path + "；模板自动编辑=" + inheritedActivation +
+                "；已清除EventTrigger并启用自动编辑");
+        }
+
+        private void FilterRoster()
+        {
+            filteredRoster.Clear();
+            var query = searchQuery;
+            foreach (var entry in roster)
+                if (entry.Name.IndexOf(query.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) filteredRoster.Add(entry);
+            rosterContent.sizeDelta = new Vector2(targetWidth - 38, Mathf.Max(rosterHeight, filteredRoster.Count * RosterRowHeight));
+            rosterScroll.verticalNormalizedPosition = 1;
+            rosterCount.text = roster.Count == 0 ? "暂无可选修士" : filteredRoster.Count + " / " + roster.Count + " 位修士";
+            RenderRosterRows();
+        }
+
+        private void RenderRosterRows()
+        {
+            if (rosterScroll == null) return;
+            var range = Mathf.Max(0, rosterContent.sizeDelta.y - rosterHeight);
+            int start = (int)Math.Floor((1 - rosterScroll.verticalNormalizedPosition) * range / RosterRowHeight);
+            for (int i = 0; i < rosterRows.Count; i++)
+            {
+                int index = start + i;
+                var row = rosterRows[i];
+                var valid = index >= 0 && index < filteredRoster.Count;
+                row.gameObject.SetActive(valid);
+                rowIds[i] = valid ? filteredRoster[index].Id : null;
+                if (!valid) continue;
+                var entry = filteredRoster[index];
+                row.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -index * RosterRowHeight);
+                var text = row.GetComponentInChildren<Text>();
+                text.text = (entry.IsPlayer ? "自己 · " : "") + entry.Name;
+                var selected = entry.Id == selectedUnitId || (selectedUnitId == null && entry.IsPlayer);
+                text.color = selected ? Cinnabar : Ink;
+                row.GetComponent<Image>().color = selected ? new Color(.70f, .59f, .40f, .20f) : new Color(.94f, .92f, .84f, .24f);
+            }
+        }
+
+        private void SelectTarget(int slot)
+        {
+            if (rowIds[slot] == null) return;
+            selectedUnitId = rowIds[slot];
+            ReleasePortrait();
+            RefreshCharacter(true);
+        }
+
+        private void UpdatePortrait()
+        {
+            var key = contextKey + ":" + selectedUnitId;
+            var stage = "解析人物身份";
+            try
+            {
+                var unit = CharacterReader.Resolve(selectedUnitId);
+                if (unit == null) { ReleasePortrait(); return; }
+                var dramaId = CharacterPortrait.GetDramaId(unit);
+                key += ":" + dramaId;
+                if (portraitKey == key) return;
+                ReleasePortrait();
+                portraitKey = key;
+                if (dramaId > 0)
+                {
+                    stage = "原生特殊立绘创建，剧情ID=" + dramaId;
+                    var rect = portraitImage.rectTransform;
+                    specialPortraitImage = Texture(rect, "特殊人物立绘", 0, 0, rect.sizeDelta.x, rect.sizeDelta.y, null, portraitImage.uvRect);
+                    CharacterPortrait.CreateSpecialTexture(dramaId, specialPortraitImage, null);
+                    // 原生预制体分支会关闭RawImage，由其子模型直接显示。
+                    if (specialPortraitImage.enabled && specialPortraitImage.texture == null)
+                        throw new InvalidOperationException("原生入口未返回立绘纹理");
+                    portraitStatus.text = "";
+                    return;
+                }
+                stage = "普通立绘模型创建";
+                var model = PortraitModel.CreateModel(unit, false, false, null);
+                if (model == null || model.root == null) throw new InvalidOperationException("未返回立绘模型");
+                ownedPortraitRoot = model.root;
+                portraitRenderer = new ModelRenderTexture(ownedPortraitRoot, portraitImage, new Vector2(0, -8));
+                portraitImage.enabled = true;
+                stage = "普通立绘取景";
+                FitPortraitCamera();
+                portraitStatus.text = "";
+            }
+            catch (Exception ex)
+            {
+                ReleasePortrait();
+                portraitKey = key;
+                portraitStatus.text = "立绘暂不可用";
+                Debug.LogWarning("[八荒秘录] 立绘加载失败（" + stage + "）：" + ex);
+            }
+        }
+
+        private void ReleasePortrait()
+        {
+            portraitKey = null;
+            if (portraitImage != null) { portraitImage.texture = null; portraitImage.enabled = false; }
+            var special = specialPortraitImage; specialPortraitImage = null;
+            if (special != null)
+            {
+                special.enabled = false;
+                special.gameObject.SetActive(false);
+                // 专属承载销毁后，原生autoDestroy检测释放模型/RenderTexture并停止计时器。
+                Cleanup(() => UnityEngine.Object.Destroy(special.gameObject), "特殊立绘承载控件");
+            }
+            var renderer = portraitRenderer; portraitRenderer = null;
+            if (renderer != null) Cleanup(renderer.Destroy, "立绘渲染资源");
+            var model = ownedPortraitRoot; ownedPortraitRoot = null;
+            if (model != null) Cleanup(() => UnityEngine.Object.Destroy(model), "立绘模型");
+        }
+
+        private void FitPortraitCamera()
+        {
+            // 使用创建后的世界边界，包含模型原点偏移；不再猜测模型缩放系数。
+            var renderers = ownedPortraitRoot.GetComponentsInChildren<Renderer>(true);
+            var found = false;
+            var bounds = new Bounds();
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                var current = renderer.bounds;
+                if (current.size.x <= .001f || current.size.y <= .001f) continue;
+                if (!found) { bounds = current; found = true; }
+                else bounds.Encapsulate(current);
+            }
+            var camera = portraitRenderer.camera;
+            if (!found || camera == null) throw new InvalidOperationException("立绘边界或相机未就绪");
+            var aspect = portraitImage.rectTransform.rect.width / portraitImage.rectTransform.rect.height;
+            camera.orthographic = true;
+            camera.aspect = aspect;
+            camera.orthographicSize = Mathf.Max(bounds.extents.y, bounds.extents.x / aspect) * 1.28f;
+            var position = camera.transform.position;
+            // 降低画面中的人物：取景中心上移，给头部留出空间，不改变模型本体。
+            camera.transform.position = new Vector3(bounds.center.x, bounds.center.y + bounds.size.y * .12f, position.z);
+        }
+
+        private void BuildAttributeOverview()
+        {
+            var viewportHeight = contentHeight - 64;
+            var flowWidth = contentWidth - 20;
+            var wide = flowWidth >= 1180;
+            var firstHeight = wide ? 342f : 506f;
+            // 宽版卡片向视口底部对齐，保持紧凑行距；上方空间留给气运内容。
+            var groupTop = wide ? Mathf.Max(136, viewportHeight - firstHeight - 12) : 136;
+            var fateHeight = groupTop - 18;
+            var flowHeight = wide ? groupTop + firstHeight : groupTop + firstHeight + 18 + 332;
+            var viewport = Box("属性视口", content, 0, 64, flowWidth, viewportHeight);
+            // 透明接收层使滚轮命中内容区；RectMask2D限制长页绘制。
+            Fill(viewport, "滚动命中区", 0, 0, flowWidth, viewportHeight, new Color(1, 1, 1, .001f), true);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            // 可滚动内容允许高于视口，内部控件仍由Box检查自身边界。
+            var flow = NewRect("属性长页", viewport);
+            flow.anchorMin = flow.anchorMax = new Vector2(0, 1);
+            flow.pivot = new Vector2(0, 1);
+            flow.anchoredPosition = Vector2.zero;
+            flow.sizeDelta = new Vector2(flowWidth, flowHeight);
+            var scroll = viewport.gameObject.AddComponent<ScrollRect>();
+            scroll.viewport = viewport;
+            scroll.content = flow;
+            scroll.horizontal = false;
+            scroll.vertical = flowHeight > viewportHeight + 1;
+            scroll.inertia = false;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 32;
+            if (scroll.vertical)
+            {
+                var track = Fill(content, "滚动轨", contentWidth - 10, 64, 7, viewportHeight, new Color(.30f, .30f, .24f, .12f), true);
+                var handle = Fill(track.rectTransform, "滚动柄", 0, 0, 7, 40, new Color(.36f, .34f, .27f, .65f), true);
+                var scrollbar = track.gameObject.AddComponent<Scrollbar>();
+                scrollbar.handleRect = handle.rectTransform;
+                scrollbar.targetGraphic = handle;
+                scrollbar.direction = Scrollbar.Direction.BottomToTop;
+                scroll.verticalScrollbar = scrollbar;
+            }
+
+            string[] fates = { "先天气运", "后天气运", "逆天改命" };
+            var fateWidth = (flowWidth - 24) / 3;
+            for (int i = 0; i < fates.Length; i++)
+            {
+                var panel = Card(flow, fates[i], i * (fateWidth + 12), 0, fateWidth, fateHeight);
+                GroupHeading(panel, fates[i], fateWidth);
+                Label(panel, "气运信息尚未接入", 16, 64, fateWidth - 32, 26, 16, Muted, TextAnchor.MiddleCenter);
+            }
+
+            if (wide)
+            {
+                var usable = flowWidth - 48;
+                float[] weights = { .28f, .25f, .15666667f, .15666667f, .15666666f };
+                var x = 0f;
+                for (int group = 0; group < 5; group++)
+                {
+                    var panelWidth = usable * weights[group];
+                    BuildAttributeGroup(flow, group, x, groupTop, panelWidth, firstHeight, group < 2 ? 2 : 1);
+                    x += panelWidth + 12;
+                }
+            }
+            else
+            {
+                var pairWidth = (flowWidth - 12) / 2;
+                BuildAttributeGroup(flow, 0, 0, groupTop, pairWidth, firstHeight, 1);
+                BuildAttributeGroup(flow, 1, pairWidth + 12, groupTop, pairWidth, firstHeight, 1);
+                var thirdWidth = (flowWidth - 24) / 3;
+                for (int group = 2; group < 5; group++)
+                    BuildAttributeGroup(flow, group, (group - 2) * (thirdWidth + 12), groupTop + firstHeight + 18, thirdWidth, 332, 1);
+            }
+        }
+
+        private void GroupHeading(RectTransform panel, string title, float width)
+        {
+            var titleWidth = Mathf.Min(176, width - 24);
+            var heading = Box("分组题签", panel, (width - titleWidth) / 2, 12, titleWidth, 34);
+            if (skin != null) Texture(heading, "题签墨迹", 0, 0, titleWidth, 34, skin.Brush, new Rect(0, 0, 1, 1));
+            else Fill(heading, "墨底", 0, 0, titleWidth, 34, Ink);
+            Label(heading, title, 0, 0, titleWidth, 34, 19, new Color(.95f, .94f, .90f, 1), TextAnchor.MiddleCenter);
+        }
+
+        private void BuildAttributeGroup(RectTransform parent, int group, float x, float y, float width, float height, int columns)
+        {
+            var panel = Card(parent, CharacterSnapshot.GroupNames[group], x, y, width, height);
+            GroupHeading(panel, CharacterSnapshot.GroupNames[group], width);
+            var labels = CharacterSnapshot.Labels[group];
+            var fields = new Text[labels.Length];
+            attributeTexts.Add(fields);
+            var cellWidth = (width - 24 - (columns - 1) * 12) / columns;
+            var rows = (labels.Length + columns - 1) / columns;
+            var rowHeight = Mathf.Min(38, (height - 66) / rows);
+            int[] order = null;
+            if (columns == 2 && group == 0) order = new[] { 0, 4, 1, 5, 2, 6, 3, 7, 9, 8, 10, 11, 12 };
+            if (columns == 2 && group == 1) order = new[] { 0, 5, 1, 6, 2, 7, 3, 8, 4, 9 };
+            for (int i = 0; i < labels.Length; i++)
+            {
+                var index = order == null ? i : order[i];
+                var left = 12 + (i % columns) * (cellWidth + 12);
+                var top = 58 + (i / columns) * rowHeight;
+                var labelWidth = group == 1 ? 76f : 62f;
+                Label(panel, labels[index], left, top, labelWidth, 28, 17, Muted);
+                fields[index] = Label(panel, "—", left + labelWidth + 4, top, cellWidth - labelWidth - 4, 28, 19, Ink, TextAnchor.MiddleRight);
+                fields[index].resizeTextForBestFit = true;
+                fields[index].resizeTextMinSize = 14;
+                fields[index].resizeTextMaxSize = 19;
+                Fill(panel, "属性细线", left, top + 31, cellWidth, 1, new Color(.36f, .36f, .29f, .13f));
+            }
+        }
+
+        public void RefreshCharacter(bool force = false)
+        {
+            if (root == null || selectedIndex != 0 || characterName == null) return;
+            var now = Time.unscaledTime;
+            if (!force && now < nextCharacterRefresh) return;
+            nextCharacterRefresh = now + 1f;
+            var currentContext = CharacterReader.ContextKey();
+            if (currentContext != contextKey)
+            {
+                selectedUnitId = null;
+                contextKey = currentContext;
+                ReleasePortrait();
+                ReloadRoster();
+            }
+            RenderRosterRows();
+            CharacterSnapshot snapshot;
+            string reason;
+            if (!CharacterReader.TryRead(selectedUnitId, out snapshot, out reason))
+            {
+                characterName.text = reason;
+                characterRealm.text = "—";
+                ReleasePortrait();
+                foreach (var group in attributeTexts) foreach (var value in group) value.text = "—";
+                var failure = CharacterReader.LastFailure;
+                if (failure != null && failure != lastReadFailure)
+                    Debug.LogWarning("[八荒秘录] 角色读取失败：" + failure);
+                lastReadFailure = failure;
+                return;
+            }
+            lastReadFailure = null;
+            characterName.text = snapshot.Name;
+            characterRealm.text = snapshot.Realm;
+            UpdatePortrait();
+            for (int group = 0; group < attributeTexts.Count; group++)
+                for (int i = 0; i < attributeTexts[group].Length; i++) attributeTexts[group][i].text = snapshot.Groups[group][i];
+        }
+
+        private RectTransform NewRect(string name, Transform parent)
+        {
+            var go = new GameObject("BHML_" + name);
+            go.layer = parent.gameObject.layer;
+            var rect = go.AddComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            return rect;
+        }
+
+        // 所有内容统一采用左上角坐标，尺寸与安全区同源；越界直接触发原生回退。
+        private RectTransform Box(string name, RectTransform parent, float left, float top, float width, float height)
+        {
+            var size = parent.sizeDelta;
+            if (left < 0 || top < 0 || width <= 0 || height <= 0 || left + width > size.x + .1f || top + height > size.y + .1f)
+                throw new InvalidOperationException("布局越界：" + name);
+            var rect = NewRect(name, parent);
+            rect.anchorMin = rect.anchorMax = new Vector2(0, 1);
+            rect.pivot = new Vector2(0, 1);
+            rect.anchoredPosition = new Vector2(left, -top);
+            rect.sizeDelta = new Vector2(width, height);
+            return rect;
+        }
+
+        private Image Fill(RectTransform parent, string name, float left, float top, float width, float height, Color color, bool raycast = false)
+        {
+            var image = Box(name, parent, left, top, width, height).gameObject.AddComponent<Image>();
+            image.color = color;
+            image.raycastTarget = raycast;
+            return image;
+        }
+
+        private RectTransform Card(RectTransform parent, string name, float left, float top, float width, float height)
+        {
+            var border = Fill(parent, name, left, top, width, height, new Color(.36f, .36f, .31f, .18f)).rectTransform;
+            Fill(border, "内页", 1, 1, width - 2, height - 2, new Color(.92f, .91f, .88f, .48f));
+            return border;
+        }
+
+        private Text Label(RectTransform parent, string value, float left, float top, float width, float height, int size, Color color, TextAnchor align = TextAnchor.MiddleLeft)
+        {
+            var text = Box("文字", parent, left, top, width, height).gameObject.AddComponent<Text>();
+            text.font = calligraphyFont != null ? calligraphyFont : font;
+            text.fontSize = size;
+            text.color = color;
+            text.text = value;
+            text.alignment = align;
+            text.raycastTarget = false;
+            text.supportRichText = false;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            return text;
+        }
+
+        private RawImage Texture(RectTransform parent, string name, float left, float top, float width, float height, Texture2D texture, Rect uv)
+        {
+            var image = Box(name, parent, left, top, width, height).gameObject.AddComponent<RawImage>();
+            image.texture = texture;
+            image.uvRect = uv;
+            image.raycastTarget = false;
+            return image;
+        }
+
+        private Button MakeButton(RectTransform parent, string name, float left, float top, float width, float height, string text, Action action)
+        {
+            var image = Fill(parent, name, left, top, width, height, new Color(.84f, .82f, .74f, 1f), true);
+            var button = image.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            var colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(.93f, .92f, .84f, 1f);
+            colors.pressedColor = new Color(.77f, .78f, .69f, 1f);
+            colors.selectedColor = Color.white;
+            button.colors = colors;
+            button.onClick.AddListener((UnityAction)action);
+            Border(image.rectTransform, width, height);
+            Label(image.rectTransform, text, 0, 0, width, height, 18, Ink, TextAnchor.MiddleCenter);
+            return button;
+        }
+
+        private void Border(RectTransform parent, float width, float height)
+        {
+            var edge = new Color(.43f, .39f, .28f, .62f);
+            Fill(parent, "上边", 0, 0, width, 1, edge);
+            Fill(parent, "下边", 0, height - 1, width, 1, edge);
+            Fill(parent, "左边", 0, 0, 1, height, edge);
+            Fill(parent, "右边", width - 1, 0, 1, height, edge);
+            var trim = new Color(.55f, .48f, .32f, .30f);
+            Fill(parent, "上内线", 3, 3, width - 6, 1, trim);
+            Fill(parent, "下内线", 3, height - 4, width - 6, 1, trim);
+        }
+
+        public void Dispose()
+        {
+            ReleasePortrait();
+            var previousRoot = root; root = null;
+            if (previousRoot != null)
+            {
+                Cleanup(() => previousRoot.SetActive(false), "隐藏视图");
+                Cleanup(() => UnityEngine.Object.Destroy(previousRoot), "视图对象");
+            }
+            var previousSkin = skin; skin = null;
+            if (previousSkin != null) Cleanup(previousSkin.Dispose, "纸墨纹理");
+            var previousFont = calligraphyFont; calligraphyFont = null;
+            if (previousFont != null) Cleanup(() => UnityEngine.Object.Destroy(previousFont), "自建字体");
+            foreach (var graphic in hiddenGraphics)
+                if (graphic != null) Cleanup(() => graphic.enabled = true, "恢复原生图形");
+            for (int i = 0; i < nativeButtons.Count; i++)
+            {
+                var button = nativeButtons[i];
+                var interactable = nativeButtonStates[i];
+                var active = nativeButtonActiveStates[i];
+                if (button != null)
+                {
+                    Cleanup(() => button.interactable = interactable, "恢复原生按钮");
+                    Cleanup(() => button.gameObject.SetActive(active), "恢复原生按钮活动状态");
+                }
+            }
+            hiddenGraphics.Clear(); nativeButtons.Clear(); nativeButtonStates.Clear(); nativeButtonActiveStates.Clear();
+            tabImages.Clear(); tabLabels.Clear(); tabMarks.Clear(); tabBrushes.Clear();
+            content = null; font = null;
+            characterName = null; characterRealm = null; attributeTexts.Clear();
+            roster.Clear(); filteredRoster.Clear(); rosterRows.Clear(); rowIds.Clear();
+            targetPanel = null; rosterContent = null; rosterScroll = null; targetSearch = null; searchQuery = "";
+            portraitImage = null; portraitStatus = null; rosterCount = null;
+            selectedUnitId = null; contextKey = null;
+            lastReadFailure = null; nextCharacterRefresh = 0;
+            selectedIndex = -1;
+        }
+
+        private static void Cleanup(Action action, string part)
+        {
+            try { action(); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 清理" + part + "失败：" + ex); }
+        }
+    }
+}
+
+
+
+
+
+
