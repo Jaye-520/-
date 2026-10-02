@@ -166,9 +166,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.17 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.18 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.17：参考字段与操作入口；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.18：正文底边对齐；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -492,8 +492,8 @@ namespace MOD_YtxSQ1.UI
             var flowWidth = contentWidth - 20;
             var wide = flowWidth >= 1180;
             var firstHeight = wide ? 342f : 506f;
-            // 宽版卡片向视口底部对齐，保持紧凑行距；上方空间留给气运内容。
-            var groupTop = wide ? Mathf.Max(154, viewportHeight - firstHeight - 96) : 154;
+            // 补充区之后不再额外留12单位，使正文底边与左侧对象栏一致。
+            var groupTop = wide ? Mathf.Max(154, viewportHeight - firstHeight - 84) : 154;
             var fateHeight = groupTop - 18;
             var extraTop = wide ? groupTop + firstHeight + 12 : groupTop + firstHeight + 18 + 332 + 12;
             var extraHeight = wide ? 72f : 126f;

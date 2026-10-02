@@ -452,6 +452,9 @@ internal static class BookLayoutHarness
             }
             var scroll=Walk(book).First(t=>t.gameObject.name=="BHML_属性视口").GetComponent<UnityEngine.UI.ScrollRect>();
             Check(scroll!=null && scroll.viewport.GetComponent<UnityEngine.UI.RectMask2D>()!=null && (!scroll.vertical || scroll.verticalScrollbar!=null),"long page has clipping and scrollbar at "+sizes[s][0]);
+            var targetPanel=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_对象栏");
+            Check(Math.Abs(targetPanel.sizeDelta.y-(-scroll.viewport.anchoredPosition.y+scroll.viewport.sizeDelta.y))<.1f,"left panel and right viewport share bottom boundary at "+sizes[s][0]);
+            if(!scroll.vertical) Check(Math.Abs(scroll.content.sizeDelta.y-scroll.viewport.sizeDelta.y)<.1f,"supplemental panel reaches shared bottom without extra blank strip");
             if(scroll.content.sizeDelta.x>=1180)
             {
                 var frame=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_属性总框");
@@ -465,7 +468,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-17-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-18-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
