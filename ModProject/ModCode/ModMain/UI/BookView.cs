@@ -166,9 +166,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.16 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.17 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.16：五栏属性格；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.17：参考字段与操作入口；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -194,7 +194,7 @@ namespace MOD_YtxSQ1.UI
                 if (i < tabBrushes.Count) tabBrushes[i].gameObject.SetActive(i == index);
             }
             Label(content, index == 0 ? "属性总览" : Modules[index], 0, 0, contentWidth - 120, 34, 25, Ink);
-            Label(content, index == 0 ? "五类属性 · 41项 · 只读" : "功能尚未开放", 0, 34, contentWidth - 120, 24, 16, Muted);
+            Label(content, index == 0 ? "角色信息 · 只读；灰色操作尚未开放" : "功能尚未开放", 0, 34, contentWidth - 120, 24, 16, Muted);
             if (index == 0) MakeButton(content, "刷新角色", contentWidth - 96, 5, 96, 34, "刷新", () => { ReloadRoster(); RefreshCharacter(true); });
             selectedIndex = index;
             if (index != 0)
@@ -493,9 +493,11 @@ namespace MOD_YtxSQ1.UI
             var wide = flowWidth >= 1180;
             var firstHeight = wide ? 342f : 506f;
             // 宽版卡片向视口底部对齐，保持紧凑行距；上方空间留给气运内容。
-            var groupTop = wide ? Mathf.Max(136, viewportHeight - firstHeight - 12) : 136;
+            var groupTop = wide ? Mathf.Max(154, viewportHeight - firstHeight - 96) : 154;
             var fateHeight = groupTop - 18;
-            var flowHeight = wide ? groupTop + firstHeight : groupTop + firstHeight + 18 + 332;
+            var extraTop = wide ? groupTop + firstHeight + 12 : groupTop + firstHeight + 18 + 332 + 12;
+            var extraHeight = wide ? 72f : 126f;
+            var flowHeight = extraTop + extraHeight;
             var viewport = Box("属性视口", content, 0, 64, flowWidth, viewportHeight);
             // 透明接收层使滚轮命中内容区；RectMask2D限制长页绘制。
             Fill(viewport, "滚动命中区", 0, 0, flowWidth, viewportHeight, new Color(1, 1, 1, .001f), true);
@@ -525,13 +527,16 @@ namespace MOD_YtxSQ1.UI
                 scroll.verticalScrollbar = scrollbar;
             }
 
-            string[] fates = { "先天气运", "后天气运", "逆天改命" };
-            var fateWidth = (flowWidth - 24) / 3;
+            string[] fates = { "先天气运", "后天气运", "逆天改命", "所有气运" };
+            var fateWidth = (flowWidth - 36) / 5;
             for (int i = 0; i < fates.Length; i++)
             {
-                var panel = Card(flow, fates[i], i * (fateWidth + 12), 0, fateWidth, fateHeight);
-                GroupHeading(panel, fates[i], fateWidth);
-                Label(panel, "气运信息尚未接入", 16, 64, fateWidth - 32, 26, 16, Muted, TextAnchor.MiddleCenter);
+                var panelWidth = i == 3 ? fateWidth * 2 : fateWidth;
+                var panel = Card(flow, fates[i], i * (fateWidth + 12), 0, panelWidth, fateHeight);
+                Border(panel, panelWidth, fateHeight);
+                Label(panel, fates[i], 8, 8, panelWidth - (i == 3 ? 116 : 16), 30, 17, Ink, TextAnchor.MiddleCenter);
+                Label(panel, "气运信息尚未接入", 8, 48, panelWidth - 16, 38, 14, Muted, TextAnchor.MiddleCenter);
+                if (i == 3) UnavailableButton(panel, "气运列表", panelWidth - 100, 8, 92, 32);
             }
 
             if (wide)
@@ -557,6 +562,7 @@ namespace MOD_YtxSQ1.UI
                 for (int group = 2; group < 5; group++)
                     BuildAttributeGroup(flow, group, (group - 2) * (thirdWidth + 12), groupTop + firstHeight + 18, thirdWidth, 332, 1);
             }
+            BuildAttributeGroup(flow, 5, 0, extraTop, flowWidth, extraHeight, wide ? 4 : 2);
         }
 
         private void GroupHeading(RectTransform panel, string title, float width)
@@ -572,23 +578,27 @@ namespace MOD_YtxSQ1.UI
         {
             var panel = Fill(parent, CharacterSnapshot.GroupNames[group], x, y, width, height, new Color(.91f, .90f, .86f, .52f)).rectTransform;
             Border(panel, width, height);
-            GroupHeading(panel, CharacterSnapshot.GroupNames[group], width);
+            if (group != 5) GroupHeading(panel, CharacterSnapshot.GroupNames[group], width);
             var labels = CharacterSnapshot.Labels[group];
             var fields = new Text[labels.Length];
             attributeTexts.Add(fields);
             var cellWidth = (width - 20 - (columns - 1) * 10) / columns;
-            var rows = (labels.Length + columns - 1) / columns;
-            var rowHeight = Mathf.Min(38, (height - 64) / rows);
+            var rows = group < 2 && columns == 2 ? 7 : (labels.Length + columns - 1) / columns;
+            var startTop = group == 5 ? 30f : 54f;
+            var rowHeight = group == 5 ? 34f : Mathf.Min(38, (height - 64) / rows);
+            if (group == 5) Label(panel, "补充属性", 10, 2, width - 20, 24, 15, Muted);
             int[] order = null;
-            if (columns == 2 && group == 0) order = new[] { 0, 4, 1, 5, 2, 6, 3, 7, 9, 8, 10, 11, 12 };
-            if (columns == 2 && group == 1) order = new[] { 0, 5, 1, 6, 2, 7, 3, 8, 4, 9 };
+            if (columns == 2 && group == 0) order = new[] { 0, 4, 1, 5, 2, 6, 3, 7, 9, 8, 10, 11 };
+            if (columns == 2 && group == 1) order = new[] { 0, 5, 1, 6, 2, 7, 3, 8, 4, 9, 10, 11 };
             for (int i = 0; i < labels.Length; i++)
             {
                 var index = order == null ? i : order[i];
                 var left = 10 + (i % columns) * (cellWidth + 10);
-                var top = 54 + (i / columns) * rowHeight;
+                var top = startTop + (i / columns) * rowHeight;
+                var fullRow = group < 2 && i >= 10;
+                if (fullRow) { left = 10; top = startTop + (columns == 2 ? 5 + i - 10 : i) * rowHeight; }
                 // 最后一个单项铺满整行，避免留下半个空格；数据索引保持不变。
-                var fieldWidth = columns == 2 && i == labels.Length - 1 && labels.Length % 2 != 0 ? width - 20 : cellWidth;
+                var fieldWidth = fullRow ? width - 20 : cellWidth;
                 var fieldHeight = rowHeight - 6;
                 var cell = Fill(panel, "属性格_" + labels[index], left, top, fieldWidth, fieldHeight, new Color(.40f, .41f, .37f, .48f)).rectTransform;
                 Fill(cell, "格内页", 1, 1, fieldWidth - 2, fieldHeight - 2, new Color(.90f, .90f, .87f, .96f));
@@ -604,6 +614,40 @@ namespace MOD_YtxSQ1.UI
                 fields[index].resizeTextMinSize = 12;
                 fields[index].resizeTextMaxSize = 17;
             }
+            if (group >= 2 && group <= 4)
+            {
+                var buttonTop = 54 + 6 * rowHeight;
+                if (group == 2)
+                {
+                    var w = (width - 26) / 2;
+                    UnavailableButton(panel, "满修为", 10, buttonTop, w, 32);
+                    UnavailableButton(panel, "满材料", 16 + w, buttonTop, w, 32);
+                }
+                else if (group == 3)
+                {
+                    var w = (width - 32) / 3;
+                    string[] actions = { "去", "来", "返" };
+                    for (int a = 0; a < actions.Length; a++) UnavailableButton(panel, actions[a], 10 + a * (w + 6), buttonTop, w, 32);
+                }
+                else
+                {
+                    var w = width - 82;
+                    UnavailableButton(panel, "双向好感度", 10, buttonTop, w, 32);
+                    UnavailableButton(panel, "执行", 16 + w, buttonTop, 56, 32);
+                }
+            }
+        }
+
+        private void UnavailableButton(RectTransform parent, string title, float x, float y, float width, float height)
+        {
+            var button = MakeButton(parent, "待接入_" + title, x, y, width, height, title, () => { });
+            button.interactable = false;
+            var caption = button.GetComponentInChildren<Text>();
+            caption.color = new Color(.43f, .43f, .39f, .7f);
+            caption.resizeTextForBestFit = true;
+            caption.resizeTextMinSize = 12;
+            caption.resizeTextMaxSize = 16;
+            caption.horizontalOverflow = HorizontalWrapMode.Overflow;
         }
 
         public void RefreshCharacter(bool force = false)

@@ -432,9 +432,11 @@ internal static class BookLayoutHarness
             bool allLabels=true;
             foreach(var group in MOD_YtxSQ1.Services.CharacterSnapshot.Labels) foreach(var label in group)
                 allLabels &= texts.Count(t=>t.text==label)==1;
-            Check(allLabels,"all 41 labels exist exactly once at "+sizes[s][0]);
+            Check(allLabels,"all 46 labels exist exactly once at "+sizes[s][0]);
             var cells=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_属性格_")).Cast<UnityEngine.RectTransform>().ToArray();
-            Check(cells.Length==41 && cells.All(c=>c.sizeDelta.y>=26 && c.GetComponentsInChildren<UnityEngine.UI.Text>(true).Length==2),"41 framed read-only fields have room for label and value at "+sizes[s][0]);
+            Check(cells.Length==46 && cells.All(c=>c.sizeDelta.y>=26 && c.GetComponentsInChildren<UnityEngine.UI.Text>(true).Length==2),"46 framed read-only fields have room for label and value at "+sizes[s][0]);
+            Check(texts.Any(t=>t.text=="玉器 · 书籍") && texts.Any(t=>t.text=="无私 · 义气 · 忠贞"),"reference hobby and personality values bind to view");
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_所有气运") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待接入_") && !t.GetComponent<UnityEngine.UI.Button>().interactable)==8,"four fate regions and eight deferred operation entries exist and cannot write");
             foreach(var panelName in MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames)
             {
                 var panel=Walk(book).First(t=>t.gameObject.name=="BHML_"+panelName);
@@ -453,8 +455,9 @@ internal static class BookLayoutHarness
             if(scroll.content.sizeDelta.x>=1180)
             {
                 var frame=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_属性总框");
-                Check(Math.Abs(-frame.anchoredPosition.y+frame.sizeDelta.y-(scroll.viewport.sizeDelta.y-12))<1,"wide attribute frame aligns near viewport bottom");
-                var panels=MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames.Select(n=>(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_"+n)).ToArray();
+                var supplement=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_补充属性");
+                Check(-frame.anchoredPosition.y+frame.sizeDelta.y<=-supplement.anchoredPosition.y,"supplemental attributes follow reference frame");
+                var panels=MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames.Take(5).Select(n=>(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_"+n)).ToArray();
                 Check(panels.All(p=>p.parent==frame && p.anchoredPosition.y==panels[0].anchoredPosition.y && p.sizeDelta.y==panels[0].sizeDelta.y),"five panels share top and bottom boundaries");
             }
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
@@ -462,7 +465,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-16-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-17-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();

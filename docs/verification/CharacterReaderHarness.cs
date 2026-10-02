@@ -10,7 +10,8 @@ public sealed class DynInt
     public int value { get { if (Throw) throw new InvalidOperationException("injected failure"); return Stored; } }
     public float valueFloat { get { return value * Scale; } }
 }
-public sealed class PropertyData { public string Name; public string GetName() { return Name; } }
+public enum UnitSexType { None, Man, Woman }
+public sealed class PropertyData { public string Name; public UnitSexType sex = UnitSexType.Woman; public int inTrait=1,outTrait1=2,outTrait2=3; public string GetName() { return Name; } }
 public sealed class UnitData { public string unitID = "player"; public PropertyData propertyData = new PropertyData(); }
 public sealed class DynamicData
 {
@@ -33,7 +34,16 @@ public sealed class DynamicData
     public DynInt refineElixir = new DynInt(), refineWeapon = new DynInt(), geomancy = new DynInt();
     public DynInt symbol = new DynInt(), herbal = new DynInt(), mine = new DynInt { Stored = 18 };
 }
-public sealed class PlayerData { public UnitData unitData = new UnitData(); public DynamicData dynUnitData = new DynamicData(); }
+public sealed class ConfRoleCreateHobbyItem { public string name; }
+public sealed class ConfRoleCreateCharacterItem { public string sc5asd_sd34; }
+public sealed class TraitConfig { public ConfRoleCreateCharacterItem GetItem(int id) { return new ConfRoleCreateCharacterItem { sc5asd_sd34="trait"+id }; } }
+public sealed class ConfLocalText { public static string GetText(string key) { return key=="hobby1"?"玉器":key=="hobby2"?"书籍":key=="trait1"?"无私":key=="trait2"?"义气":key=="trait3"?"忠贞":key; } }
+public sealed class PlayerData
+{
+    public UnitData unitData = new UnitData(); public DynamicData dynUnitData = new DynamicData();
+    public bool ThrowHobbies;
+    public ConfRoleCreateHobbyItem[] GetHobbyItems() { if(ThrowHobbies)throw new Exception("hobby read failed"); return new[]{new ConfRoleCreateHobbyItem {name="hobby1"},new ConfRoleCreateHobbyItem {name="hobby2"}}; }
+}
 public sealed class WorldUnitBase
 {
     public PlayerData data = new PlayerData(); public bool isDie, isHidden;
@@ -69,7 +79,7 @@ public sealed partial class ConfDramaNpc
     public int GetFiveFlowerDramaNpcID(WorldUnitBase unit) { int id; return Ids.TryGetValue(unit.data.unitData.unitID,out id) ? id : 0; }
     public PortraitModelData GetPortraitModelData(int id) { throw new NullReferenceException("independent avatar has no assembled model data"); }
 }
-public sealed class Config { public GradeConfig roleGrade = new GradeConfig(); public ConfDramaNpc dramaNpc = new ConfDramaNpc(); }
+public sealed class Config { public GradeConfig roleGrade = new GradeConfig(); public ConfDramaNpc dramaNpc = new ConfDramaNpc(); public TraitConfig roleCreateCharacter = new TraitConfig(); public ConfLocalText localText = new ConfLocalText(); }
 public static partial class g { public static bool isDestroy; public static World world = new World(); public static Config conf = new Config(); }
 
 internal static class CharacterReaderHarness
@@ -94,10 +104,14 @@ internal static class CharacterReaderHarness
             if (snapshot.Groups[i].Length != CharacterSnapshot.Labels[i].Length) throw new Exception("group label mismatch");
             count += snapshot.Groups[i].Length;
         }
-        Check(count == 41 && snapshot.Groups[0][0] == "16 / 60" && snapshot.Groups[1][7] == "370" &&
+        Check(count == 46 && snapshot.Groups[0][0] == "16 / 60" && snapshot.Groups[1][7] == "370" &&
             snapshot.Groups[1][8] == "200%" && snapshot.Groups[2][2] == "46" &&
             snapshot.Groups[3][1] == "2" && snapshot.Groups[4][5] == "18",
-            "41 attributes grouped; months converted to years; scaled values formatted; aptitude categories mapped");
+            "46 reference and supplemental fields grouped; months converted to years; aptitude categories mapped");
+        Check(snapshot.Groups[0][9]=="女" && snapshot.Groups[0][10]=="玉器 · 书籍" && snapshot.Groups[0][11]=="甲" && snapshot.Groups[1][10]=="无私 · 义气 · 忠贞" && snapshot.Groups[1][11]==snapshot.Realm,"reference identity fields read actual unit and localized configuration");
+        g.world.playerUnit.data.ThrowHobbies=true;
+        Check(CharacterReader.TryRead(out snapshot,out reason) && snapshot.Groups[0][10]=="暂不可读取" && snapshot.Values[3]=="77","optional hobby failure preserves numeric stats");
+        g.world.playerUnit.data.ThrowHobbies=false;
         var previous = snapshot;
         g.world = new World(); g.world.playerUnit.data.unitData.propertyData.Name = "乙";
         g.world.playerUnit.data.dynUnitData.attack.Stored = 222;
