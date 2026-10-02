@@ -37,6 +37,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Core\WorkshopController.cs" />
     <Compile Include="Services\CharacterReader.cs" />
+    <Compile Include="Services\CharacterFates.cs" />
     <Compile Include="Services\CharacterRoster.cs" />
     <Compile Include="Services\CharacterPortrait.cs" />
     <Compile Include="UI\WorkshopWindow.cs" />

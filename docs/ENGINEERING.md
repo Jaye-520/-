@@ -16,6 +16,7 @@
 | UI/PaperSkin.cs | 宣纸、墨刷和山水纹理加载与释放 |
 | Services/CharacterRoster.cs | 名单查询、存活有效过滤、ID去重 |
 | Services/CharacterReader.cs | 对象解析、存档上下文、只读快照及数值格式 |
+| Services/CharacterFates.cs | 拥有气运只读快照、逆天分类与配置本地化 |
 | Services/CharacterPortrait.cs | 原生身份解析与ConfDramaNpc.CreateTexture分流，普通修士保持原路径 |
 | Example/Example.cs | 参与编译的官方示例；不是产品功能清单 |
 | Properties/AssemblyInfo.cs | 程序集元数据；与界面版本分别核对 |
@@ -67,6 +68,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 | 立绘 | 五朵金花用GetFiveFlowerDramaNpcID→ConfDramaNpc.CreateTexture，由原生按avatar/modelID分流；07.14强取拼装数据实测失败，不再使用。专属RawImage销毁触发原生autoDestroy检查、RenderTexture释放及计时器停止；不额外创建第二个渲染器，不强制启用原生已关闭的RawImage。普通修士保持原路径/取景；无纹理时隐藏RawImage，异常日志标注调用阶段 |
 | 页脚 | 全窗口居中固定“Jaye@2026-爱你一生一世”，动态反馈放相关正文区域，不再占用署名 |
 | 身份字段 | 性别按UnitSexType；兴趣用WorldUnitData.GetHobbyItems；性格按inTrait/outTrait1/outTrait2查roleCreateCharacter，sc5asd_sd34为名称，用静态ConfLocalText.GetText本地化。可选字段失败不清空独立数值 |
+| 气运 | propertyData.bornLuck/addLuck记录拥有条目；roleCreateFeature.GetItem读取name/tips，ConfLocalText.GetText本地化。官方RoleCreateFeature.xlsx表头定义type=3为逆天改命、type=5战前气运算后天，其余按条目来源归类；未知ID保留，读取失败不显示部分列表。动态说明占位符保留，不猜数值。查看页按快照变化重建，读取与视图均不写入游戏对象 |
 | 界面资源 | 圆形×的64×64自绘纹理归BookView所有，随视图释放；不得借用未知Sprite或漏掉失败清理。正文统一BodyTop，左右共底边须随适配改动检查 |
 | 重开读取 | WorkshopWindow每次打开新建BookView，Build→Select(0)重读名单并强制读取当前人物；打开期间属性每秒更新，名单不逐帧扫描，无独立刷新按钮 |
 
@@ -79,7 +81,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 | 仅文档 | 本地链接、事实、版本与路径 | 无需编译或重测游戏 |
 | 布局/资源 | 编译、布局脚本适配时运行 | 当前分辨率、裁切、长文字、切模块；改适配时补1920×1080/1366×768 |
 | 输入 | 编译、run-input-scope.ps1 | IME、粘贴/清空、正常失焦、F8、关闭卸载、其他输入框 |
-| 读取/名单 | 编译、run-character-reader.ps1 | 原UI同角色对照、隐藏/死亡、目标失效、切存档 |
+| 读取/名单/气运 | 编译、run-character-reader.ps1、气运改动运行run-character-fates.ps1及run-book-layout.ps1 | 原UI同角色对照、隐藏/死亡、目标失效、切存档；气运长列表/说明及分类 |
 | 窗口生命周期 | 编译、run-lifecycle.ps1 | 连续开关、离开地图、共享窗口、失败回退 |
 | 新写入 | 字段依赖研究及针对性检查 | 仅测试存档、原UI变化、保存重载、对象失效；临时补丁验证关闭及离场释放 |
 

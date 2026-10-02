@@ -11,7 +11,15 @@ public sealed class DynInt
     public float valueFloat { get { return value * Scale; } }
 }
 public enum UnitSexType { None, Man, Woman }
-public sealed class PropertyData { public string Name; public UnitSexType sex = UnitSexType.Woman; public int inTrait=1,outTrait1=2,outTrait2=3; public string GetName() { return Name; } }
+public sealed class PropertyData { public DataUnit.LuckData[] bornLuck; public System.Collections.Generic.List<DataUnit.LuckData> addLuck; public string Name; public UnitSexType sex = UnitSexType.Woman; public int inTrait=1,outTrait1=2,outTrait2=3; public string GetName() { return Name; } }
+public sealed class DataUnit { public sealed class LuckData { public int id; } }
+public sealed class FateItem { public int type; public string name,tips; }
+public sealed class FateConfig
+{
+    public readonly System.Collections.Generic.Dictionary<int,FateItem> Items = new System.Collections.Generic.Dictionary<int,FateItem>();
+    public bool Throw;
+    public FateItem GetItem(int id) { if(Throw)throw new Exception("fate config failed"); FateItem item; return Items.TryGetValue(id,out item)?item:null; }
+}
 public sealed class UnitData { public string unitID = "player"; public PropertyData propertyData = new PropertyData(); }
 public sealed class DynamicData
 {
@@ -37,7 +45,7 @@ public sealed class DynamicData
 public sealed class ConfRoleCreateHobbyItem { public string name; }
 public sealed class ConfRoleCreateCharacterItem { public string sc5asd_sd34; }
 public sealed class TraitConfig { public ConfRoleCreateCharacterItem GetItem(int id) { return new ConfRoleCreateCharacterItem { sc5asd_sd34="trait"+id }; } }
-public sealed class ConfLocalText { public static string GetText(string key) { return key=="hobby1"?"玉器":key=="hobby2"?"书籍":key=="trait1"?"无私":key=="trait2"?"义气":key=="trait3"?"忠贞":key; } }
+public sealed class ConfLocalText { public static readonly System.Collections.Generic.Dictionary<string,string> Texts=new System.Collections.Generic.Dictionary<string,string>(); public static string GetText(string key) { string text; if(Texts.TryGetValue(key,out text))return text; return key=="hobby1"?"玉器":key=="hobby2"?"书籍":key=="trait1"?"无私":key=="trait2"?"义气":key=="trait3"?"忠贞":key; } }
 public sealed class PlayerData
 {
     public UnitData unitData = new UnitData(); public DynamicData dynUnitData = new DynamicData();
@@ -79,7 +87,7 @@ public sealed partial class ConfDramaNpc
     public int GetFiveFlowerDramaNpcID(WorldUnitBase unit) { int id; return Ids.TryGetValue(unit.data.unitData.unitID,out id) ? id : 0; }
     public PortraitModelData GetPortraitModelData(int id) { throw new NullReferenceException("independent avatar has no assembled model data"); }
 }
-public sealed class Config { public GradeConfig roleGrade = new GradeConfig(); public ConfDramaNpc dramaNpc = new ConfDramaNpc(); public TraitConfig roleCreateCharacter = new TraitConfig(); public ConfLocalText localText = new ConfLocalText(); }
+public sealed class Config { public FateConfig roleCreateFeature = new FateConfig(); public GradeConfig roleGrade = new GradeConfig(); public ConfDramaNpc dramaNpc = new ConfDramaNpc(); public TraitConfig roleCreateCharacter = new TraitConfig(); public ConfLocalText localText = new ConfLocalText(); }
 public static partial class g { public static bool isDestroy; public static World world = new World(); public static Config conf = new Config(); }
 
 internal static class CharacterReaderHarness

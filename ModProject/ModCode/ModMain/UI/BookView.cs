@@ -38,6 +38,11 @@ namespace MOD_YtxSQ1.UI
         private Text characterName;
         private Text characterRealm;
         private readonly List<Text[]> attributeTexts = new List<Text[]>();
+        private readonly List<Text> fateTexts = new List<Text>();
+        private CharacterFate[] fates = new CharacterFate[0];
+        private string fateReason, fateUnitId;
+        private RectTransform fateOverlay;
+        private int fateFilter = 3, fatePage, fateSelection;
         private float nextCharacterRefresh;
         private string lastReadFailure;
         private float contentWidth;
@@ -166,9 +171,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.22 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.23 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.22：总览与气运统一底框；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.23：角色气运读取与分类查看；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -176,6 +181,11 @@ namespace MOD_YtxSQ1.UI
             if (index == selectedIndex) return;
             ReleasePortrait();
             attributeTexts.Clear();
+            fateTexts.Clear();
+            fateOverlay = null;
+            fates = new CharacterFate[0];
+            fateReason = null;
+            fatePage = fateSelection = 0;
             targetPanel.gameObject.SetActive(index == 0);
             contentWidth = index == 0 ? bookWidth - targetWidth - 76 : bookWidth - 48;
             content.anchoredPosition = new Vector2(index == 0 ? targetWidth + 52 : 24, -BodyTop);
@@ -546,8 +556,13 @@ namespace MOD_YtxSQ1.UI
                 var panel = Card(flow, fates[i], 8 + i * (fateWidth + 12), 0, panelWidth, fateHeight);
                 Border(panel, panelWidth, fateHeight);
                 Label(panel, fates[i], 8, 8, panelWidth - (i == 3 ? 116 : 16), 30, 17, Ink, TextAnchor.MiddleCenter);
-                Label(panel, "气运信息尚未接入", 8, 48, panelWidth - 16, 38, 14, Muted, TextAnchor.MiddleCenter);
-                if (i == 3) UnavailableButton(panel, "气运列表", panelWidth - 100, 8, 92, 32);
+                var filter = i;
+                var summary = MakeButton(panel, "查看气运_" + i, 8, 44, panelWidth - 16, fateHeight - 52, "—", () => OpenFates(filter));
+                var summaryText = summary.GetComponentInChildren<Text>();
+                summaryText.fontSize = 15;
+                summaryText.alignment = TextAnchor.MiddleCenter;
+                fateTexts.Add(summaryText);
+                if (i == 3) MakeButton(panel, "气运列表", panelWidth - 100, 8, 92, 32, "气运列表", () => OpenFates(3));
             }
 
             if (wide)
@@ -684,6 +699,7 @@ namespace MOD_YtxSQ1.UI
                 characterRealm.text = "—";
                 ReleasePortrait();
                 foreach (var group in attributeTexts) foreach (var value in group) value.text = "—";
+                UpdateFates(new CharacterFate[0], reason);
                 var failure = CharacterReader.LastFailure;
                 if (failure != null && failure != lastReadFailure)
                     Debug.LogWarning("[八荒秘录] 角色读取失败：" + failure);
@@ -696,6 +712,123 @@ namespace MOD_YtxSQ1.UI
             UpdatePortrait();
             for (int group = 0; group < attributeTexts.Count; group++)
                 for (int i = 0; i < attributeTexts[group].Length; i++) attributeTexts[group][i].text = snapshot.Groups[group][i];
+            CharacterFate[] entries;
+            string fateError;
+            CharacterFates.TryRead(selectedUnitId, out entries, out fateError);
+            UpdateFates(entries, fateError);
+        }
+
+        private List<CharacterFate> FilterFates(int filter)
+        {
+            var result = new List<CharacterFate>();
+            foreach (var entry in fates) if (filter == 3 || entry.Category == filter) result.Add(entry);
+            return result;
+        }
+
+        private void UpdateFates(CharacterFate[] entries, string reason)
+        {
+            var owner = contextKey + ":" + selectedUnitId + ":" + (characterName == null ? "" : characterName.text);
+            var changed = fateUnitId != owner || fateReason != reason || fates.Length != entries.Length;
+            if (!changed)
+                for (int i = 0; i < entries.Length; i++)
+                    if (fates[i].Id != entries[i].Id || fates[i].Category != entries[i].Category ||
+                        fates[i].Name != entries[i].Name || fates[i].Description != entries[i].Description) { changed = true; break; }
+            if (fateUnitId != owner) fatePage = fateSelection = 0;
+            fateUnitId = owner;
+            fates = entries;
+            fateReason = reason;
+            for (int i = 0; i < fateTexts.Count; i++)
+            {
+                var items = FilterFates(i);
+                var names = new List<string>();
+                for (int n = 0; n < Math.Min(2, items.Count); n++) names.Add(items[n].Name);
+                fateTexts[i].text = reason ?? (items.Count == 0 ? "无" : string.Join("\n", names.ToArray()) + "\n共 " + items.Count + " 项 · 点击查看");
+            }
+            if (changed && fateOverlay != null) BuildFateList();
+        }
+
+        private void OpenFates(int filter)
+        {
+            fateFilter = filter;
+            fatePage = fateSelection = 0;
+            BuildFateList();
+        }
+
+        private void CloseFates()
+        {
+            if (fateOverlay == null) return;
+            fateOverlay.gameObject.SetActive(false);
+            UnityEngine.Object.Destroy(fateOverlay.gameObject);
+            fateOverlay = null;
+        }
+
+        private void BuildFateList()
+        {
+            CloseFates();
+            fateOverlay = Fill(content, "气运查看页", 0, 0, contentWidth, contentHeight, new Color(.92f, .91f, .87f, 1), true).rectTransform;
+            Border(fateOverlay, contentWidth, contentHeight);
+            Label(fateOverlay, "气运 · " + (characterName == null ? "" : characterName.text), 16, 8, contentWidth - 132, 34, 22, Ink);
+            MakeButton(fateOverlay, "返回属性", contentWidth - 108, 10, 92, 32, "返回属性", CloseFates);
+            var filterWidth = (contentWidth - 50) / 4;
+            for (int i = 0; i < 4; i++)
+            {
+                var filter = i;
+                var button = MakeButton(fateOverlay, "气运分类_" + i, 16 + i * (filterWidth + 6), 52, filterWidth, 32,
+                    CharacterFates.Categories[i] + " " + FilterFates(i).Count, () => OpenFates(filter));
+                button.GetComponentInChildren<Text>().fontSize = 16;
+                button.interactable = i != fateFilter;
+            }
+            var items = FilterFates(fateFilter);
+            var rows = Math.Max(1, (int)((contentHeight - 152) / 42));
+            var pages = Math.Max(1, (items.Count + rows - 1) / rows);
+            fatePage = Math.Min(fatePage, pages - 1);
+            fateSelection = Math.Min(fateSelection, Math.Max(0, items.Count - 1));
+            var listWidth = Mathf.Max(168, contentWidth * .38f);
+            if (items.Count == 0)
+                Label(fateOverlay, fateReason ?? "暂无此类气运", 16, 100, contentWidth - 32, 42, 18, Muted);
+            for (int row = 0; row < rows && fatePage * rows + row < items.Count; row++)
+            {
+                var index = fatePage * rows + row;
+                var entry = items[index];
+                var button = MakeButton(fateOverlay, "气运条目_" + index, 16, 100 + row * 42, listWidth, 36,
+                    entry.Name, () => { fateSelection = index; BuildFateList(); });
+                var caption = button.GetComponentInChildren<Text>();
+                caption.resizeTextForBestFit = true; caption.resizeTextMinSize = 12; caption.resizeTextMaxSize = 17;
+                caption.color = index == fateSelection ? Cinnabar : Ink;
+            }
+            var bottom = contentHeight - 42;
+            var previous = MakeButton(fateOverlay, "气运上一页", 16, bottom, 66, 30, "上一页", () => { fatePage--; fateSelection = fatePage * rows; BuildFateList(); });
+            previous.interactable = fatePage > 0;
+            var pageNumber = Label(fateOverlay, (fatePage + 1) + "/" + pages, 88, bottom, listWidth - 144, 30, 14, Muted, TextAnchor.MiddleCenter);
+            pageNumber.resizeTextForBestFit = true; pageNumber.resizeTextMinSize = 10; pageNumber.resizeTextMaxSize = 14;
+            var next = MakeButton(fateOverlay, "气运下一页", listWidth - 50, bottom, 66, 30, "下一页", () => { fatePage++; fateSelection = fatePage * rows; BuildFateList(); });
+            next.interactable = fatePage + 1 < pages;
+            if (items.Count == 0) return;
+            var selected = items[fateSelection];
+            var detailLeft = listWidth + 32;
+            var detailWidth = contentWidth - detailLeft - 16;
+            var detailTitle = Label(fateOverlay, selected.Name, detailLeft, 100, detailWidth, 34, 22, Ink);
+            detailTitle.resizeTextForBestFit = true; detailTitle.resizeTextMinSize = 12; detailTitle.resizeTextMaxSize = 22;
+            Label(fateOverlay, CharacterFates.Categories[selected.Category] + " · #" + selected.Id, detailLeft, 138, detailWidth, 26, 15, Muted);
+            var detailHeight = contentHeight - 220;
+            var viewport = Box("气运说明视口", fateOverlay, detailLeft, 178, detailWidth, detailHeight);
+            Fill(viewport, "说明滚动命中区", 0, 0, detailWidth, detailHeight, new Color(1, 1, 1, .01f), true);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            var page = NewRect("气运说明长页", viewport);
+            page.anchorMin = page.anchorMax = new Vector2(0, 1); page.pivot = new Vector2(0, 1);
+            page.sizeDelta = new Vector2(detailWidth - 12, detailHeight);
+            var text = Label(page, selected.Description, 0, 0, detailWidth - 12, detailHeight, 18, Ink, TextAnchor.UpperLeft);
+            var textHeight = Mathf.Max(detailHeight, text.preferredHeight + 12);
+            page.sizeDelta = new Vector2(detailWidth - 12, textHeight);
+            text.rectTransform.sizeDelta = page.sizeDelta;
+            var scroll = viewport.gameObject.AddComponent<ScrollRect>();
+            scroll.viewport = viewport; scroll.content = page; scroll.horizontal = false; scroll.vertical = true;
+            scroll.inertia = false; scroll.movementType = ScrollRect.MovementType.Clamped; scroll.scrollSensitivity = 32;
+            var track = Fill(viewport, "说明滚动轨", detailWidth - 7, 0, 7, detailHeight, new Color(.35f, .34f, .27f, .12f), true);
+            var handle = Fill(track.rectTransform, "说明滚动柄", 0, 0, 7, 36, Muted);
+            var scrollbar = track.gameObject.AddComponent<Scrollbar>();
+            scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle; scrollbar.direction = Scrollbar.Direction.BottomToTop;
+            scroll.verticalScrollbar = scrollbar;
         }
 
         private RectTransform NewRect(string name, Transform parent)
@@ -851,6 +984,7 @@ namespace MOD_YtxSQ1.UI
             tabImages.Clear(); tabLabels.Clear(); tabMarks.Clear(); tabBrushes.Clear();
             content = null; font = null;
             characterName = null; characterRealm = null; attributeTexts.Clear();
+            fateTexts.Clear(); fateOverlay = null; fates = new CharacterFate[0];
             roster.Clear(); filteredRoster.Clear(); rosterRows.Clear(); rowIds.Clear();
             targetPanel = null; rosterContent = null; rosterScroll = null; targetSearch = null; searchQuery = "";
             portraitImage = null; portraitStatus = null; rosterCount = null;
