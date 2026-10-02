@@ -32,10 +32,10 @@ namespace MOD_YtxSQ1.Services
                 var seen = new HashSet<string>();
                 if (property.bornLuck != null)
                     foreach (var luck in property.bornLuck)
-                        if (luck != null) Add(result, seen, luck.id, 0);
+                        if (luck != null) Add(result, seen, unit, luck, 0);
                 if (property.addLuck != null)
                     foreach (var luck in property.addLuck)
-                        if (luck != null) Add(result, seen, luck.id, 1);
+                        if (luck != null) Add(result, seen, unit, luck, 1);
                 entries = result.ToArray();
                 reason = null;
                 return true;
@@ -43,16 +43,27 @@ namespace MOD_YtxSQ1.Services
             catch { return false; } // 不用部分列表冒充完整读取，也不影响独立的数值属性。
         }
 
-        private static void Add(List<CharacterFate> result, HashSet<string> seen, int id, int source)
+        private static void Add(List<CharacterFate> result, HashSet<string> seen, WorldUnitBase unit, DataUnit.LuckData luck, int source)
         {
+            var id = luck.id;
             if (id <= 0 || !seen.Add(source + ":" + id)) return;
             var item = g.conf.roleCreateFeature.GetItem(id);
             var category = item != null && item.type == 3 ? 2 : source;
             var fallback = "未知气运 #" + id.ToString(CultureInfo.InvariantCulture);
             var name = item == null ? fallback : LocalText(item.name, fallback);
-            // tips为配置说明，特殊效果的动态占位符不伪造运行数值。
             var description = item == null ? "当前配置中未找到此气运。" : LocalText(item.tips, "暂无说明");
-            result.Add(new CharacterFate(id, category, name, description));
+            var tooltip = name + "\n" + description;
+            if (item != null)
+            {
+                try
+                {
+                    // 与原生UIAddLuckItem一致的bgType=2；使用选中人物及真实拥有记录。
+                    var native = ConfRoleCreateFeatureEx.tips(item, unit, luck, 2);
+                    if (!string.IsNullOrEmpty(native)) tooltip = native;
+                }
+                catch { } // 特殊/缺失效果配置失败仍保留条目与基础说明。
+            }
+            result.Add(new CharacterFate(id, category, name, tooltip));
         }
 
         private static string LocalText(string key, string fallback)

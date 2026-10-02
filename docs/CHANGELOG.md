@@ -2,7 +2,15 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
-## 07.24：气运改为参考式逐项列表（待游戏验证）
+## 07.25：气运悬停介绍、移除点击跳转（待游戏验证）
+
+2026-10-02。用户明确气运只展示拥有条目，鼠标悬停显示介绍。删除行Button/点击反馈以及分类翻页详情覆盖页，保留逐项外观和灰色×；“气运列表”恢复灰色占位，配置库未接入。行使用游戏UISkyTipEffect.InitData(text,零偏移)及其原生UIEventListener，原生负责悬停开/关提示，不自制EventTrigger或注册自定义MonoBehaviour。
+
+核对官方CHM的UISkyTipEffect.InitData与ConfRoleCreateFeatureEx.tips、本机程序集及原生UIAddLuckItem.UpdateUI：介绍使用tips(item,选中人物,真实拥有LuckData,bgType=2)，保留原生格式；失败回退名称+配置说明，不因此丢掉条目。核对UIEventListener.OnDisable转PointerExit、UISkyTipEffect.OnDestroy解绑。视图在滚动/快照变化/切对象或模块/失效/关闭显式隐藏本视图仍悬停的提示，无变化刷新保持行和悬停。
+
+编译零警告零错误；气运13项、属性11项托管读取检查通过；四种画布既有布局/输入/立绘回归及行无Button/不跳转、1600字介绍绑定、刷新保持悬停、移开/滚动/切对象/模块/失效/关闭清理通过。替身只证明API绑定控制流，不证明原生提示窗的位置、富文本及长说明渲染。Release/debug DLL一致，SHA256：13DD106C4DDFA66ED37AEF6AFF96A105D519B50551A98F0C56F5D3BCAA35BD05；旧debug备份.tools/backups/before-07.25，PDB未手动同步。保留已有ModProject.cache修改；未写存档或终止游戏。待实际加载检查悬停显示、退出清理及同人物原UI说明。
+
+## 07.24：气运改为参考式逐项列表（待游戏验证；点击交互已替换）
 
 2026-10-02。用户提供[07.23实际截图](screenshots/role-07-23-fates-in-game.png)，确认版本加载及3项先天/4项后天读取呈现，但明确否定大摘要效果，要求对齐[新参考](screenshots/fates-reference-07-24.png)。保留其余认可界面，气运区改为紧凑边框题栏、列表底框、逐项32高横条（窄画布行距自适应），前三栏每项右侧灰色×不可交互。全部拥有条目直接排列，超过栏高时独立滚动；移除摘要按钮及计数提示。单项点击打开对应分类/条目的说明页，气运列表保留；所有气运含义仍为已拥有条目，未开发配置库/移除写入。
 

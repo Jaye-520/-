@@ -217,6 +217,24 @@ namespace UnityEngine.EventSystems
     public class EventSystem { public static EventSystem current;public static string Pending="";public UnityEngine.GameObject currentSelectedGameObject; }
     public class BaseEventData { public BaseEventData(EventSystem events) { } }
 }
+// 仅验证视图与原生悬停API的绑定/释放控制流，不模拟真实游戏提示窗渲染。
+public sealed class UIEventListener : UnityEngine.Component
+{
+    public bool isMouseEnter;
+    public Action Enter,Exit;
+    public void OnPointerEnter(object data) { isMouseEnter=true; Enter(); }
+    public void OnPointerExit(object data) { isMouseEnter=false; Exit(); }
+}
+public sealed class UISkyTipEffect : UnityEngine.Component
+{
+    public UIEventListener e;
+    public string tips;
+    public static UISkyTipEffect Active;
+    public void InitData(string text,UnityEngine.Vector3 offset)
+    { tips=text;e=gameObject.AddComponent<UIEventListener>();e.Enter=OnPointerEnter;e.Exit=OnPointerExit; }
+    public void OnPointerEnter() { Active=this; }
+    public void OnPointerExit() { if(Active==this)Active=null; }
+}
 public sealed class UITextInfoLong : UnityEngine.Component
 {
     public UITextInfoLong()
@@ -480,7 +498,7 @@ internal static class BookLayoutHarness
             var cells=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_属性格_")).Cast<UnityEngine.RectTransform>().ToArray();
             Check(cells.Length==46 && cells.All(c=>c.sizeDelta.y>=26 && c.GetComponentsInChildren<UnityEngine.UI.Text>(true).Length==2),"46 framed read-only fields have room for label and value at "+sizes[s][0]);
             Check(texts.Any(t=>t.text=="玉器 · 书籍") && texts.Any(t=>t.text=="无私 · 义气 · 忠贞"),"reference hobby and personality values bind to view");
-            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_所有气运") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待接入_") && !t.GetComponent<UnityEngine.UI.Button>().interactable)==7,"four fate regions and seven deferred write entries exist and cannot write");
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_所有气运") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待接入_") && !t.GetComponent<UnityEngine.UI.Button>().interactable)==8,"four fate regions and eight deferred entries exist and cannot write or navigate");
             Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_气运行_0_"))==3 && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2").GetComponentInChildren<UnityEngine.UI.Text>().text=="天三才","all three born entries render as individual rows");
             var bornColumn=Walk(book).First(t=>t.gameObject.name=="BHML_气运条目视口_0").GetComponent<UnityEngine.UI.ScrollRect>();
             var thirdBorn=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2");
@@ -518,7 +536,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-24-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-25-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -583,37 +601,34 @@ internal static class BookLayoutHarness
             bookView.RefreshCharacter(true);
             Check(columnScroll.content.childCount==34 && columnScroll.content.sizeDelta.y>columnScroll.viewport.sizeDelta.y && columnScroll.verticalScrollbar.gameObject.activeSelf,"all acquired entries live in clipped scrollable column");
             Check(columnScroll.verticalNormalizedPosition==.4f && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0")==stableRow,"unchanged refresh preserves inline rows and scroll position");
-            Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_20").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Check(Walk(book).First(t=>t.gameObject.name=="BHML_气运查看页").GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="后天气运 · #1021"),"clicking inline entry opens corresponding description and page");
-            Walk(book).First(t=>t.gameObject.name=="BHML_返回属性").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Walk(book).First(t=>t.gameObject.name=="BHML_气运列表").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            var fatePageRoot=Walk(book).First(t=>t.gameObject.name=="BHML_气运查看页");
-            Check(fatePageRoot.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="逆天改命 · #1000"),"owned list opens with selected entry metadata");
-            using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
-            using(var graphics=Graphics.FromImage(bitmap))
-            {
-                graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-                Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"fates-07-24-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
-            }
-            var detailScroll=Walk(fatePageRoot).First(t=>t.gameObject.name=="BHML_气运说明视口").GetComponent<UnityEngine.UI.ScrollRect>();
-            Check(detailScroll.content.sizeDelta.y>detailScroll.viewport.sizeDelta.y && detailScroll.verticalScrollbar!=null,"long fate description scrolls inside clipped viewport");
+            var hovered=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_20");
+            var tip=hovered.GetComponent<UISkyTipEffect>();
+            Check(hovered.GetComponent<UnityEngine.UI.Button>()==null && tip!=null && !Walk(book).Any(t=>t.gameObject.name=="BHML_气运查看页"),"owned entries use native hover without buttons or navigation page");
+            tip.e.OnPointerEnter(null);
+            Check(UISkyTipEffect.Active==tip && tip.tips=="气运测试21\n"+new string('长',1600),"hover binds corresponding complete long introduction");
             bookView.RefreshCharacter(true);
-            Check(Walk(book).First(t=>t.gameObject.name=="BHML_气运查看页")==fatePageRoot,"unchanged auto-refresh preserves fate page and scrolling");
-            Walk(fatePageRoot).First(t=>t.gameObject.name=="BHML_气运下一页").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运条目_0") && Walk(book).First(t=>t.gameObject.name=="BHML_气运上一页").GetComponent<UnityEngine.UI.Button>().interactable,"fate pagination replaces rows and enables return page");
-            Walk(book).First(t=>t.gameObject.name=="BHML_气运分类_2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_气运条目_"))==1,"fate filter resets pagination to matching owned entry");
+            Check(UISkyTipEffect.Active==tip && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_20")==hovered,"unchanged refresh preserves hovered native tip");
+            tip.e.OnPointerExit(null);
+            Check(UISkyTipEffect.Active==null,"pointer exit hides native introduction");
+            tip.e.OnPointerEnter(null);columnScroll.onValueChanged.Invoke(new UnityEngine.Vector2(0,0));
+            Check(UISkyTipEffect.Active==null,"scroll hides tooltip anchored to old row position");
+            tip.e.OnPointerEnter(null);
             search.text="修士299"; rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Check(Walk(book).First(t=>t.gameObject.name=="BHML_气运查看页").GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="暂无此类气运"),"target switch clears previous owned fates in open list");
+            Check(UISkyTipEffect.Active==null && !Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_气运行_")),"target switch clears hover and previous owned rows");
             search.text="示例修士"; rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            tip=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UISkyTipEffect>();tip.e.OnPointerEnter(null);
+            var otherModule=Walk(book).First(t=>t.gameObject.name=="BHML_卷目1").GetComponent<UnityEngine.UI.Button>();otherModule.onClick.Invoke();
+            Check(UISkyTipEffect.Active==null,"module switch releases active fate tip");
+            Walk(book).First(t=>t.gameObject.name=="BHML_卷目0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            search.text="示例修士";rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            tip=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UISkyTipEffect>();tip.e.OnPointerEnter(null);
             g.world.isIntoWorld=false;bookView.RefreshCharacter(true);
-            Check(!Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_气运条目_")),"unavailable world clears open fate rows");
+            Check(UISkyTipEffect.Active==null && !Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_气运行_")),"unavailable world clears native tip and owned rows");
             Check(!book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="222"),"unavailable world clears old values");g.world.isIntoWorld=true;
-            Walk(book).First(t=>t.gameObject.name=="BHML_返回属性").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运查看页"),"return button releases fate overlay");
+            bookView.RefreshCharacter(true);
+            tip=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UISkyTipEffect>();tip.e.OnPointerEnter(null);
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");
-            bookView.Dispose();bookView.Dispose();Check(original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
+            bookView.Dispose();bookView.Dispose();Check(UISkyTipEffect.Active==null && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
         }
         Console.WriteLine("BookView geometry, page binding and GDI previews complete. Not a game screenshot.");
     }

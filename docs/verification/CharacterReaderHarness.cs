@@ -14,6 +14,16 @@ public enum UnitSexType { None, Man, Woman }
 public sealed class PropertyData { public DataUnit.LuckData[] bornLuck; public System.Collections.Generic.List<DataUnit.LuckData> addLuck; public string Name; public UnitSexType sex = UnitSexType.Woman; public int inTrait=1,outTrait1=2,outTrait2=3; public string GetName() { return Name; } }
 public sealed class DataUnit { public sealed class LuckData { public int id; } }
 public sealed class FateItem { public int type; public string name,tips; }
+public static class ConfRoleCreateFeatureEx
+{
+    public static bool Throw;
+    public static string NativeText;
+    public static WorldUnitBase LastUnit;
+    public static DataUnit.LuckData LastLuck;
+    public static int BgType;
+    public static string tips(FateItem item, WorldUnitBase unit, DataUnit.LuckData luck, int bgType)
+    { LastUnit=unit;LastLuck=luck;BgType=bgType;if(Throw)throw new Exception("native tips failed");return NativeText; }
+}
 public sealed class FateConfig
 {
     public readonly System.Collections.Generic.Dictionary<int,FateItem> Items = new System.Collections.Generic.Dictionary<int,FateItem>();

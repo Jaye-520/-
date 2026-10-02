@@ -24,9 +24,15 @@ internal static class CharacterFatesHarness
         CharacterFate[] entries; string reason;
         Check(CharacterFates.TryRead(null,out entries,out reason) && reason==null && entries.Length==5,"null/invalid records skipped and duplicate source IDs deduplicated");
         Check(entries[0].Category==0 && entries[1].Category==1 && entries[2].Category==2 && entries[3].Category==1,"born, acquired, fate and pre-battle classification");
-        Check(entries[0].Name=="天赋" && entries[0].Description=="效果\n第二行","localized names and plain description formatting");
-        Check(entries[1].Description=="暂无说明" && entries[3].Name=="未知气运 #4" && entries[4].Name=="未知气运 #999","missing localization and config remain visible by ID");
-        Check(entries[2].Description=="效果{0}","dynamic placeholders preserved without invented values");
+        Check(entries[0].Name=="天赋" && entries[0].Description=="天赋\n效果\n第二行","fallback tooltip includes name and plain description");
+        Check(entries[1].Description=="恩赐\n暂无说明" && entries[3].Name=="未知气运 #4" && entries[4].Name=="未知气运 #999","missing localization and config remain visible by ID");
+        Check(entries[2].Description=="妖术入门\n效果{0}","fallback preserves placeholders without invented values");
+        ConfRoleCreateFeatureEx.NativeText="<color=#ffaa00>原生说明</color>";
+        Check(CharacterFates.TryRead(null,out entries,out reason) && entries[0].Description==ConfRoleCreateFeatureEx.NativeText,"native formatted rich tooltip preserved");
+        Check(ConfRoleCreateFeatureEx.LastUnit==g.world.playerUnit && property.addLuck.Contains(ConfRoleCreateFeatureEx.LastLuck) && ConfRoleCreateFeatureEx.BgType==2,"native formatter receives selected target, owned record and native bgType");
+        ConfRoleCreateFeatureEx.NativeText=null;ConfRoleCreateFeatureEx.Throw=true;
+        Check(CharacterFates.TryRead(null,out entries,out reason) && entries[0].Description=="天赋\n效果\n第二行","native formatting failure falls back without dropping owned rows");
+        ConfRoleCreateFeatureEx.Throw=false;
         var prior = entries;
         var npc = new WorldUnitBase(); npc.data.unitData.unitID="npc"; g.world.unit.Npcs.Add(npc);
         Check(CharacterFates.TryRead("npc",out entries,out reason) && entries.Length==0 && prior.Length==5,"NPC selection reads independent empty snapshot");
