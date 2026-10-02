@@ -76,6 +76,17 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 ## 按变更验证
 
+### 属性编辑研究依据（2026-10-02，未启用写入）
+
+- 本机Assembly-CSharp.dll：DynInt.value只读，baseValue有setter，含onBaseValueSetCall、onBaseValueChangeCall及钳制/加成相关成员；因此不能把显示value当成可直接赋值的基础属性。原生set_baseValue路径可见钳制、setter回调和变化回调，尚未证明各人物/字段的持久写入结果。诊断反汇编缓存在忽略的.tools/attribute-disassembly.txt，可由.tools/inspect_attribute_native.py重建；自动符号注释存在共享地址误标，不据此认定具体委托函数身份。
+- PropertyData.SetGradeID(int)为官方“设置境界”入口（CHM html/584766fa-3002-6749-56d6-5e8b0fe1d879.htm）。本机原生实现写gradeID、查询roleGrade、写exp并调用EventsMgr.Emit；事件名与完整外部订阅依赖未核实，不能当成仅改显示标签，也不能据此声称已处理所有成长依赖。
+- DataMgr.SaveData(Il2CppSystem.Action<bool>)存在，官方注明“保存存档数据”（CHM html/bd748597-bf4e-e5d1-0350-c2d04167c49e.htm）；回调成功/失败契约、并发保存限制和当前世界存档路径须测试验证。不自行序列化或修改实际存档文件。
+- 兴趣是PropertyData.hobby数组，WorldUnitData另有cacheHobbyItems和allHobby运行对象；性格是inTrait/outTrait1/outTrait2，另有lastUpdateTrait/cacheCharacterWeight缓存。修改不能只更新字符串，缓存/运行对象重建路径仍待核实。候选来自roleCreateHobby/roleCreateCharacter/roleGrade配置，过滤条件须参照官方表头及原UI。
+- 当前CharacterFates仅读取普通人物bornLuck/addLuck，顶层catch不记录异常。五朵金花有GetFiveFlowerDramaNpcID身份识别；另存在DLCMgr.dlcUnitData.luckData、DLCLuckData、UIDLCLuckItem和ConfDLCUnitFateFeature，但不能仅因名字含DLC就认定属于金花世界人物。根因需要只读阶段日志和原游戏气运对照，不将其他玩法的DLC角色数据填进敖瑶栏。
+- 当前WindowInputScope只登记一个搜索输入框；新增内联编辑必须扩展输入登记生命周期。WorkshopController已保护选中InputField/TMP_InputField时F8不切窗口，仍须验证新控件焦点/IME。
+
+以上为接口/源码依据，不是写入或修复的游戏内验收。产品交互与执行顺序仅在长期计划维护。
+
 | 改动 | 相关检查 | 游戏重点 |
 | --- | --- | --- |
 | 仅文档 | 本地链接、事实、版本与路径 | 无需编译或重测游戏 |
