@@ -354,9 +354,18 @@ internal static class BookLayoutHarness
             var texture=graphic as UnityEngine.UI.RawImage;
             if (text!=null)
             {
-                using(var font=new System.Drawing.Font("楷体",text.fontSize,FontStyle.Regular,GraphicsUnit.Pixel))
+                // 近似Unity的单行BestFit，仅用于模拟预览，不宣称与游戏字形度量一致。
+                var fontSize=text.fontSize;
+                if(text.resizeTextForBestFit && text.horizontalOverflow==UnityEngine.HorizontalWrapMode.Overflow)
+                    while(fontSize>text.resizeTextMinSize)
+                    {
+                        using(var candidate=new System.Drawing.Font("楷体",fontSize,FontStyle.Regular,GraphicsUnit.Pixel))
+                            if(graphics.MeasureString(text.text,candidate).Width<=rect.Width) break;
+                        fontSize--;
+                    }
+                using(var font=new System.Drawing.Font("楷体",fontSize,FontStyle.Regular,GraphicsUnit.Pixel))
                 using(var brush=new SolidBrush(Color(text.color)))
-                using(var format=new StringFormat { LineAlignment=StringAlignment.Center, Alignment=text.alignment==UnityEngine.TextAnchor.MiddleCenter?StringAlignment.Center:text.alignment==UnityEngine.TextAnchor.MiddleRight?StringAlignment.Far:StringAlignment.Near })
+                using(var format=new StringFormat { FormatFlags=text.horizontalOverflow==UnityEngine.HorizontalWrapMode.Overflow?StringFormatFlags.NoWrap:0, LineAlignment=StringAlignment.Center, Alignment=text.alignment==UnityEngine.TextAnchor.MiddleCenter?StringAlignment.Center:text.alignment==UnityEngine.TextAnchor.MiddleRight?StringAlignment.Far:StringAlignment.Near })
                     graphics.DrawString(text.text,font,brush,rect,format);
             }
             else if(texture!=null)
@@ -424,19 +433,36 @@ internal static class BookLayoutHarness
             foreach(var group in MOD_YtxSQ1.Services.CharacterSnapshot.Labels) foreach(var label in group)
                 allLabels &= texts.Count(t=>t.text==label)==1;
             Check(allLabels,"all 41 labels exist exactly once at "+sizes[s][0]);
+            var cells=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_属性格_")).Cast<UnityEngine.RectTransform>().ToArray();
+            Check(cells.Length==41 && cells.All(c=>c.sizeDelta.y>=26 && c.GetComponentsInChildren<UnityEngine.UI.Text>(true).Length==2),"41 framed read-only fields have room for label and value at "+sizes[s][0]);
+            foreach(var panelName in MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames)
+            {
+                var panel=Walk(book).First(t=>t.gameObject.name=="BHML_"+panelName);
+                var panelCells=cells.Where(c=>c.parent==panel).ToArray();
+                bool noOverlap=true;
+                for(int a=0;a<panelCells.Length;a++) for(int b=a+1;b<panelCells.Length;b++)
+                {
+                    var ca=panelCells[a];var cb=panelCells[b];
+                    noOverlap &= ca.anchoredPosition.x+ca.sizeDelta.x<=cb.anchoredPosition.x+.1f || cb.anchoredPosition.x+cb.sizeDelta.x<=ca.anchoredPosition.x+.1f ||
+                        -ca.anchoredPosition.y+ca.sizeDelta.y<=-cb.anchoredPosition.y+.1f || -cb.anchoredPosition.y+cb.sizeDelta.y<=-ca.anchoredPosition.y+.1f;
+                }
+                Check(noOverlap,"attribute cells do not overlap in "+panelName+" at "+sizes[s][0]);
+            }
             var scroll=Walk(book).First(t=>t.gameObject.name=="BHML_属性视口").GetComponent<UnityEngine.UI.ScrollRect>();
             Check(scroll!=null && scroll.viewport.GetComponent<UnityEngine.UI.RectMask2D>()!=null && (!scroll.vertical || scroll.verticalScrollbar!=null),"long page has clipping and scrollbar at "+sizes[s][0]);
             if(scroll.content.sizeDelta.x>=1180)
             {
-                var personal=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_个人属性");
-                Check(Math.Abs(-personal.anchoredPosition.y+personal.sizeDelta.y-(scroll.viewport.sizeDelta.y-12))<1,"wide attribute cards align near viewport bottom");
+                var frame=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_属性总框");
+                Check(Math.Abs(-frame.anchoredPosition.y+frame.sizeDelta.y-(scroll.viewport.sizeDelta.y-12))<1,"wide attribute frame aligns near viewport bottom");
+                var panels=MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames.Select(n=>(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_"+n)).ToArray();
+                Check(panels.All(p=>p.parent==frame && p.anchoredPosition.y==panels[0].anchoredPosition.y && p.sizeDelta.y==panels[0].sizeDelta.y),"five panels share top and bottom boundaries");
             }
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-6-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-16-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();

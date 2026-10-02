@@ -166,9 +166,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.15 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.16 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.15：原生特殊立绘入口；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.16：五栏属性格；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -536,14 +536,16 @@ namespace MOD_YtxSQ1.UI
 
             if (wide)
             {
-                var usable = flowWidth - 48;
-                float[] weights = { .28f, .25f, .15666667f, .15666667f, .15666666f };
-                var x = 0f;
+                var frame = Fill(flow, "属性总框", 0, groupTop, flowWidth, firstHeight, new Color(.92f, .91f, .87f, .35f)).rectTransform;
+                Border(frame, flowWidth, firstHeight);
+                var usable = flowWidth - 56;
+                float[] weights = { .26f, .26f, .16f, .16f, .16f };
+                var x = 8f;
                 for (int group = 0; group < 5; group++)
                 {
                     var panelWidth = usable * weights[group];
-                    BuildAttributeGroup(flow, group, x, groupTop, panelWidth, firstHeight, group < 2 ? 2 : 1);
-                    x += panelWidth + 12;
+                    BuildAttributeGroup(frame, group, x, 8, panelWidth, firstHeight - 16, group < 2 ? 2 : 1);
+                    x += panelWidth + 10;
                 }
             }
             else
@@ -568,29 +570,39 @@ namespace MOD_YtxSQ1.UI
 
         private void BuildAttributeGroup(RectTransform parent, int group, float x, float y, float width, float height, int columns)
         {
-            var panel = Card(parent, CharacterSnapshot.GroupNames[group], x, y, width, height);
+            var panel = Fill(parent, CharacterSnapshot.GroupNames[group], x, y, width, height, new Color(.91f, .90f, .86f, .52f)).rectTransform;
+            Border(panel, width, height);
             GroupHeading(panel, CharacterSnapshot.GroupNames[group], width);
             var labels = CharacterSnapshot.Labels[group];
             var fields = new Text[labels.Length];
             attributeTexts.Add(fields);
-            var cellWidth = (width - 24 - (columns - 1) * 12) / columns;
+            var cellWidth = (width - 20 - (columns - 1) * 10) / columns;
             var rows = (labels.Length + columns - 1) / columns;
-            var rowHeight = Mathf.Min(38, (height - 66) / rows);
+            var rowHeight = Mathf.Min(38, (height - 64) / rows);
             int[] order = null;
             if (columns == 2 && group == 0) order = new[] { 0, 4, 1, 5, 2, 6, 3, 7, 9, 8, 10, 11, 12 };
             if (columns == 2 && group == 1) order = new[] { 0, 5, 1, 6, 2, 7, 3, 8, 4, 9 };
             for (int i = 0; i < labels.Length; i++)
             {
                 var index = order == null ? i : order[i];
-                var left = 12 + (i % columns) * (cellWidth + 12);
-                var top = 58 + (i / columns) * rowHeight;
-                var labelWidth = group == 1 ? 76f : 62f;
-                Label(panel, labels[index], left, top, labelWidth, 28, 17, Muted);
-                fields[index] = Label(panel, "—", left + labelWidth + 4, top, cellWidth - labelWidth - 4, 28, 19, Ink, TextAnchor.MiddleRight);
+                var left = 10 + (i % columns) * (cellWidth + 10);
+                var top = 54 + (i / columns) * rowHeight;
+                // 最后一个单项铺满整行，避免留下半个空格；数据索引保持不变。
+                var fieldWidth = columns == 2 && i == labels.Length - 1 && labels.Length % 2 != 0 ? width - 20 : cellWidth;
+                var fieldHeight = rowHeight - 6;
+                var cell = Fill(panel, "属性格_" + labels[index], left, top, fieldWidth, fieldHeight, new Color(.40f, .41f, .37f, .48f)).rectTransform;
+                Fill(cell, "格内页", 1, 1, fieldWidth - 2, fieldHeight - 2, new Color(.90f, .90f, .87f, .96f));
+                var labelWidth = group == 1 ? 78f : group == 0 ? 54f : 66f;
+                var caption = Label(cell, labels[index], 8, 0, labelWidth, fieldHeight, 16, Ink);
+                caption.horizontalOverflow = HorizontalWrapMode.Overflow;
+                caption.resizeTextForBestFit = true;
+                caption.resizeTextMinSize = 12;
+                caption.resizeTextMaxSize = 16;
+                fields[index] = Label(cell, "—", labelWidth + 10, 0, fieldWidth - labelWidth - 18, fieldHeight, 17, Ink, TextAnchor.MiddleRight);
+                fields[index].horizontalOverflow = HorizontalWrapMode.Overflow;
                 fields[index].resizeTextForBestFit = true;
-                fields[index].resizeTextMinSize = 14;
-                fields[index].resizeTextMaxSize = 19;
-                Fill(panel, "属性细线", left, top + 31, cellWidth, 1, new Color(.36f, .36f, .29f, .13f));
+                fields[index].resizeTextMinSize = 12;
+                fields[index].resizeTextMaxSize = 17;
             }
         }
 
