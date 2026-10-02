@@ -53,7 +53,8 @@ public class UIBase
     public bool isActiveOperation=true;
     public List<UIOperationGroup> operationGroups=new List<UIOperationGroup>();
     public UIOperationGroup[] Children=new UIOperationGroup[0];
-    public T[] GetComponentsInChildren<T>(bool includeInactive) where T:class { return Children as T[]; }
+    public UnityEngine.UI.InputField[] InputChildren=new UnityEngine.UI.InputField[0];
+    public T[] GetComponentsInChildren<T>(bool includeInactive) where T:class { return typeof(T)==typeof(UnityEngine.UI.InputField)?InputChildren as T[]:Children as T[]; }
     public virtual void UpdateHandleInput() { }
 }
 public class UIOperationGroup
@@ -92,6 +93,8 @@ internal static class WindowInputScopeHarness
     public static void Main()
     {
         var owner=new UITextInfoLong();var other=new UITextInfoLong();var field=new UnityEngine.UI.InputField();
+        var catalog=new UnityEngine.UI.InputField();catalog.gameObject.name="BHML_气运检索";
+        owner.InputChildren=new[]{catalog};WindowInputScope.Register(catalog);
         var child=new UIOperationGroup();var cached=new UIOperationGroup { enabled=false,isAutoSelect=false };
         owner.Children=new[] { child };owner.operationGroups.Add(child);owner.operationGroups.Add(cached);
         field.isFocused=true;UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject=field.gameObject;
@@ -143,6 +146,9 @@ internal static class WindowInputScopeHarness
         Check(!Allows(hidden) && Allows(field.gameObject),"registered property input gets invalid-focus protection while legitimate search focus is allowed");
         WindowInputScope.Unregister(editor);
         Check(Allows(hidden),"unregistered property input no longer affects focus handling");
+        catalog.isFocused=true;UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject=catalog.gameObject;
+        Check(!Allows(hidden),"Attach rediscovers owned catalog search after clearing pre-build registrations");
+        catalog.isFocused=false;UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject=null;
         WindowInputScope.Detach();WindowInputScope.Detach();
         Check(HarmonyLib.Harmony.Count==0 && owner.isActiveOperation && child.enabled && child.isAutoSelect && child.m_isActiveOperation,"closing restores original navigation and removes patches");
         Check(!cached.enabled && !cached.isAutoSelect && cached.m_isActiveOperation,"restores originally disabled group flags exactly");

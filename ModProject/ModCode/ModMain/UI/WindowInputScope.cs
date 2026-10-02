@@ -37,6 +37,9 @@ namespace MOD_YtxSQ1.UI
             try
             {
                 window.isActiveOperation = false;
+                // Build先创建搜索框，Attach的Detach会清空早期登记；仅重新登记本视图的输入。
+                foreach (var ownedInput in window.GetComponentsInChildren<InputField>(true))
+                    if (ownedInput.gameObject.name.StartsWith("BHML_", StringComparison.Ordinal)) Register(ownedInput);
                 foreach (var group in window.GetComponentsInChildren<UIOperationGroup>(true)) DisableGroup(group);
                 // 原窗口缓存也可能持有不在当前子树中的组。
                 if (window.operationGroups != null)
