@@ -25,6 +25,7 @@ namespace MOD_YtxSQ1.UI
         private GameObject dropdownLayer;
         private Text editStatus;
         private bool endingEditor;
+        private int escapeHandledFrame = -1;
 
         private void BuildFieldEditors(int group, int index, Text placeholder)
         {
@@ -79,7 +80,9 @@ namespace MOD_YtxSQ1.UI
                     binding.Original = null; binding.Label.text = "暂不可读"; binding.Button.interactable = false;
                 }
             }
-            if (tabLabels.Count > 6) tabLabels[6].text = edits.Count == 0 ? "保存" : "保存（" + edits.Count + "）";
+            CharacterSave.Sync(CharacterReader.ContextKey());
+            var pending = edits.Count + CharacterSave.Pending;
+            if (tabLabels.Count > 6) tabLabels[6].text = CharacterSave.Busy ? "保存中…" : pending == 0 ? "保存" : "保存（" + pending + "）";
         }
 
         private void SetEditStatus(string message, bool error = false)
@@ -89,16 +92,18 @@ namespace MOD_YtxSQ1.UI
 
         private void StartFieldEdit(EditBinding binding)
         {
+            if (CharacterSave.Busy) return;
             if (binding.Original == null || !FinishInlineEdit(false)) return;
             CloseDropdown(); HideFateTips();
             if (binding.Field.Choice) { OpenChoices(binding); return; }
             activeBinding = binding;
             activeOriginal = binding.Original;
+            binding.Label.enabled = false;
             var clone = UnityEngine.Object.Instantiate(targetSearch.gameObject, binding.Rect, false);
             clone.SetActive(false); clone.name = "BHML_属性输入_" + binding.Field.Key;
             var rect = clone.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
-            rect.offsetMin = rect.offsetMax = Vector2.zero; rect.localScale = Vector3.one;
+            rect.anchorMin = rect.anchorMax = new Vector2(0, 1);
+            rect.pivot = new Vector2(0, 1); rect.localScale = Vector3.one;
             inlineInput = clone.GetComponent<InputField>();
             foreach (var trigger in clone.GetComponentsInChildren<UnityEngine.EventSystems.EventTrigger>(true))
             { trigger.enabled = false; UnityEngine.Object.Destroy(trigger); }
@@ -107,7 +112,7 @@ namespace MOD_YtxSQ1.UI
             inlineInput.onValidateInput = null;
             inlineInput.characterLimit = binding.Field.Name ? 24 : 10;
             inlineInput.textComponent.fontSize = 16;
-            inlineInput.textComponent.alignment = TextAnchor.MiddleRight;
+            inlineInput.textComponent.alignment = binding.Label.alignment;
             inlineInput.textComponent.rectTransform.offsetMin = new Vector2(2, 2);
             inlineInput.textComponent.rectTransform.offsetMax = new Vector2(-2, -2);
             var placeholder = inlineInput.placeholder == null ? null : inlineInput.placeholder.TryCast<Text>();
@@ -115,6 +120,8 @@ namespace MOD_YtxSQ1.UI
             if (inlineInput.placeholder != null) inlineInput.placeholder.gameObject.SetActive(false);
             var value = edits.Value(selectedUnitId, binding.Field, binding.Original);
             inlineInput.SetTextWithoutNotify(value);
+            ResizeInlineInput();
+            inlineInput.onValueChanged.AddListener((UnityAction<string>)(new Action<string>(_ => ResizeInlineInput())));
             inlineInput.onEndEdit.AddListener((UnityAction<string>)(new Action<string>(_ =>
             {
                 if (!endingEditor && string.IsNullOrEmpty(Input.compositionString))
@@ -131,6 +138,7 @@ namespace MOD_YtxSQ1.UI
         private bool FinishInlineEdit(bool cancel)
         {
             if (inlineInput == null || endingEditor) return true;
+            if (cancel && Input.GetKeyDown(KeyCode.Escape)) escapeHandledFrame = Time.frameCount;
             if (!cancel && !string.IsNullOrEmpty(Input.compositionString)) return false;
             if (!cancel)
             {
@@ -143,6 +151,7 @@ namespace MOD_YtxSQ1.UI
             }
             endingEditor = true;
             var previous = inlineInput;
+            if (activeBinding != null) activeBinding.Label.enabled = true;
             inlineInput = null; activeBinding = null; activeOriginal = null;
             WindowInputScope.Unregister(previous);
             previous.gameObject.SetActive(false); UnityEngine.Object.Destroy(previous.gameObject);
@@ -150,6 +159,18 @@ namespace MOD_YtxSQ1.UI
             RefreshEditors();
             SetEditStatus(edits.Count == 0 ? "点击数值修改；兴趣、性格与境界可下拉选择" : "有 " + edits.Count + " 项待保存修改");
             return true;
+        }
+
+        private void ResizeInlineInput()
+        {
+            if (inlineInput == null || activeBinding == null) return;
+            var area = activeBinding.Rect.sizeDelta;
+            var width = activeBinding.Field.Name ? area.x : Mathf.Min(area.x, Mathf.Max(28, inlineInput.textComponent.preferredWidth + 10));
+            var height = Mathf.Min(area.y, 24);
+            var left = activeBinding.Label.alignment == TextAnchor.MiddleCenter ? (area.x - width) / 2 : area.x - width;
+            var rect = inlineInput.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(width, height);
+            rect.anchoredPosition = new Vector2(left, -(area.y - height) / 2);
         }
 
         private bool StageField(EditBinding binding, string value, out string error, string original = null)
@@ -166,7 +187,7 @@ namespace MOD_YtxSQ1.UI
                         { error = "当前值不能超过上限 " + maximum + "，可先修改上限"; return false; }
                     }
             }
-            if (!edits.Stage(selectedUnitId, binding.Field, original ?? binding.Original, value, out error)) return false;
+            if (!edits.Stage(selectedUnitId, binding.Field, original ?? binding.Original, value, out error, true)) return false;
             // 降低资源上限时将受影响的当前值显式列为另一项草稿；年龄/寿命不执行资源钳制。
             if (binding.Field.Group == 0 && binding.Field.Index >= 1 && binding.Field.Index <= 6)
             {
@@ -179,7 +200,7 @@ namespace MOD_YtxSQ1.UI
                     int.TryParse(edits.Value(selectedUnitId, current.Field, current.Original), out cur) &&
                     int.TryParse(edits.Value(selectedUnitId, maximum.Field, maximum.Original), out max) && cur > max)
                 {
-                    edits.Stage(selectedUnitId, current.Field, current.Original, max.ToString(), out error);
+                    edits.Stage(selectedUnitId, current.Field, current.Original, max.ToString(), out error, true);
                 }
             }
             return true;
@@ -237,18 +258,25 @@ namespace MOD_YtxSQ1.UI
         }
         private void TickEditing()
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
-            { if (inlineInput != null) FinishInlineEdit(true); else CloseDropdown(); }
+            if (Input.GetKeyDown(KeyCode.Escape) && escapeHandledFrame != Time.frameCount)
+            {
+                escapeHandledFrame = Time.frameCount;
+                if (inlineInput != null) FinishInlineEdit(true);
+                else if (dropdownLayer != null) CloseDropdown();
+                else if (fateLibrary != null) CloseFateLibrary();
+                else if (requestClose != null) requestClose();
+            }
         }
         private void ClearEditingView()
         {
-            FinishInlineEdit(true); CloseDropdown(); editBindings.Clear();
+            FinishInlineEdit(true); CloseDropdown(); ClearFateLibraryView(); editBindings.Clear();
         }
         private void SaveEdits()
         {
             if (!FinishInlineEdit(false)) return;
             CloseDropdown();
-            if (edits.Count == 0) { SetEditStatus("没有待保存修改"); return; }
+            if (CharacterSave.Busy) { SetEditStatus("正在保存，请稍候"); return; }
+            if (edits.Count == 0 && CharacterSave.Pending == 0) { SetEditStatus("没有待保存修改"); return; }
             if (CharacterReader.ContextKey() != edits.Context)
             { edits.Sync(CharacterReader.ContextKey()); RefreshEditors(); SetEditStatus("存档上下文已变化，旧草稿已清理", true); return; }
             string validation;
@@ -257,8 +285,11 @@ namespace MOD_YtxSQ1.UI
                 var unit = CharacterReader.Resolve(change.UnitId);
                 return unit == null ? null : CharacterEditData.Read(unit, change.Field);
             }, out validation)) { SetEditStatus(validation, true); return; }
-            // 用户将切至测试存档并告知后再开启真实提交；此处绝不把草稿冒充已保存。
-            SetEditStatus("已暂存 " + edits.Count + " 项；测试存档确认后开放写入，当前未保存到游戏", true);
+            CharacterSave.Commit(edits, (success, message) =>
+            {
+                if (root == null) return;
+                RefreshCharacter(true); RefreshEditors(); SetEditStatus(message, !success);
+            });
         }
     }
 }

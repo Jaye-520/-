@@ -7,13 +7,19 @@ public sealed class DynInt
     public int Stored;
     public bool Throw;
     public float Scale = 1f;
-    public int value { get { if (Throw) throw new InvalidOperationException("injected failure"); return Stored; } }
+    public int Bonus, minValue=0,maxValue=int.MaxValue;
+    public bool lockValue,RejectWrite;
+    public object onBaseValueSetCall=new object();
+    public System.Collections.Generic.List<object> allMulCall=new System.Collections.Generic.List<object>(),allMulAddCall=new System.Collections.Generic.List<object>(),allEqualCall=new System.Collections.Generic.List<object>();
+    public int baseValue { get { return Stored; } set { Stored=value; if(RejectWrite){RejectWrite=false;throw new Exception("injected setter failure");} } }
+    public int value { get { if (Throw) throw new InvalidOperationException("injected failure"); return Stored+Bonus; } }
     public float valueFloat { get { return value * Scale; } }
 }
 public enum UnitSexType { None, Man, Woman }
-public sealed class PropertyData { public DataUnit.LuckData[] bornLuck; public System.Collections.Generic.List<DataUnit.LuckData> addLuck; public int[] hobby = new[]{201,202,203}; public string Name; public UnitSexType sex = UnitSexType.Woman; public int inTrait=1,outTrait1=2,outTrait2=3; public string GetName() { return Name; } }
-public sealed class DataUnit { public sealed class LuckData { public int id; } }
-public sealed class FateItem { public int type; public string name,tips; }
+public sealed class PropertyData { public UnhollowerBaseLib.Il2CppReferenceArray<DataUnit.LuckData> bornLuck; public System.Collections.Generic.List<DataUnit.LuckData> addLuck=new System.Collections.Generic.List<DataUnit.LuckData>(); public UnhollowerBaseLib.Il2CppStructArray<int> hobby = new[]{201,202,203}; public UnhollowerBaseLib.Il2CppStringArray name=new[]{"",""}; public string Name { get { return GetName(); } set { name=new[]{"",value}; } } public UnitSexType sex = UnitSexType.Woman; public int inTrait=1,outTrait1=2,outTrait2=3; public string GetName() { return name[0]+name[1]; } }
+public sealed class DataUnit { public sealed class LuckData { public int id,duration; } }
+public class ConfRoleCreateFeatureItem { public int id,type,conceal,group,lockLuck,globalMax; public string name,tips; }
+public sealed class FateItem : ConfRoleCreateFeatureItem { }
 public static class ConfRoleCreateFeatureEx
 {
     public static bool Throw;
@@ -21,13 +27,15 @@ public static class ConfRoleCreateFeatureEx
     public static WorldUnitBase LastUnit;
     public static DataUnit.LuckData LastLuck;
     public static int BgType;
-    public static string tips(FateItem item, WorldUnitBase unit, DataUnit.LuckData luck, int bgType)
+    public static int duration(ConfRoleCreateFeatureItem item) { return -1; }
+    public static string tips(ConfRoleCreateFeatureItem item, WorldUnitBase unit, DataUnit.LuckData luck, int bgType)
     { LastUnit=unit;LastLuck=luck;BgType=bgType;if(Throw)throw new Exception("native tips failed");return NativeText; }
 }
 public sealed class FateConfig
 {
     public readonly System.Collections.Generic.Dictionary<int,FateItem> Items = new System.Collections.Generic.Dictionary<int,FateItem>();
     public bool Throw; public int ThrowId;
+    public System.Collections.Generic.List<ConfRoleCreateFeatureItem> _allConfList { get { var list=new System.Collections.Generic.List<ConfRoleCreateFeatureItem>();foreach(var pair in Items){pair.Value.id=pair.Key;list.Add(pair.Value);}return list; } }
     public FateItem GetItem(int id) { if(Throw || ThrowId==id)throw new Exception("fate config failed"); FateItem item; return Items.TryGetValue(id,out item)?item:null; }
 }
 public sealed class UnitData { public string unitID = "player"; public PropertyData propertyData = new PropertyData(); }
@@ -52,7 +60,7 @@ public sealed class DynamicData
     public DynInt refineElixir = new DynInt(), refineWeapon = new DynInt(), geomancy = new DynInt();
     public DynInt symbol = new DynInt(), herbal = new DynInt(), mine = new DynInt { Stored = 18 };
 }
-public sealed class ConfRoleCreateHobbyItem { public int id; public string name; }
+public sealed class ConfRoleCreateHobbyItem { public int id; public string name,item="0"; }
 public sealed class HobbyConfig { public readonly System.Collections.Generic.List<ConfRoleCreateHobbyItem> _allConfList = new System.Collections.Generic.List<ConfRoleCreateHobbyItem> { new ConfRoleCreateHobbyItem { id=201,name="hobby1" },new ConfRoleCreateHobbyItem { id=202,name="hobby2" },new ConfRoleCreateHobbyItem { id=203,name="陶器" },new ConfRoleCreateHobbyItem { id=204,name="图册" } }; public ConfRoleCreateHobbyItem GetItem(int id) { return _allConfList.Find(i=>i.id==id); } }
 public sealed class ConfRoleCreateCharacterItem { public int id,type; public string sc5asd_sd34; }
 public sealed class TraitConfig { public readonly System.Collections.Generic.List<ConfRoleCreateCharacterItem> _allConfList = new System.Collections.Generic.List<ConfRoleCreateCharacterItem> { new ConfRoleCreateCharacterItem {id=1,type=8,sc5asd_sd34="trait1"},new ConfRoleCreateCharacterItem {id=2,type=9,sc5asd_sd34="trait2"},new ConfRoleCreateCharacterItem {id=3,type=9,sc5asd_sd34="trait3"},new ConfRoleCreateCharacterItem {id=4,type=8,sc5asd_sd34="内在四"} }; public ConfRoleCreateCharacterItem GetItem(int id) { return _allConfList.Find(i=>i.id==id); } }
@@ -61,10 +69,18 @@ public sealed class PlayerData
 {
     public UnitData unitData = new UnitData(); public DynamicData dynUnitData = new DynamicData();
     public bool ThrowHobbies;
+    public void GetCharacterWeight() { }
     public ConfRoleCreateHobbyItem[] GetHobbyItems() { if(ThrowHobbies)throw new Exception("hobby read failed"); return new[]{new ConfRoleCreateHobbyItem {name="hobby1"},new ConfRoleCreateHobbyItem {name="hobby2"}}; }
 }
 public sealed class WorldUnitBase
 {
+    public bool RejectAction;
+    public int ActionCalls;
+    public System.Collections.Generic.List<WorldUnitLuckBase> allLuck=new System.Collections.Generic.List<WorldUnitLuckBase>();
+    public System.Collections.Generic.List<WorldUnitHobbyBase> allHobby=new System.Collections.Generic.List<WorldUnitHobbyBase>();
+    public WorldUnitLuckBase GetLuck(int id) { return allLuck.Find(l=>l.luckData.id==id); }
+    public WorldUnitLuckBase CreateLuck(DataUnit.LuckData record) { var l=new WorldUnitLuckBase{luckData=record};allLuck.Add(l);return l; }
+    public int CreateAction(object action,bool tip) { ActionCalls++;if(RejectAction)return 3;var add=action as UnitActionLuckAdd;var del=action as UnitActionLuckDel;var grade=action as UnitActionRoleUpGrade;if(add!=null){var r=new DataUnit.LuckData{id=add.Id};data.unitData.propertyData.addLuck.Add(r);CreateLuck(r);}if(del!=null){allLuck.RemoveAll(l=>l.luckData.id==del.Id);data.unitData.propertyData.addLuck.RemoveAll(l=>l.id==del.Id);}if(grade!=null){data.dynUnitData.gradeID.Stored=grade.Id;data.dynUnitData.hpMax.Stored+=100;data.dynUnitData.attack.Stored+=10;}return 0; }
     public PlayerData data = new PlayerData(); public bool isDie, isHidden;
     public IntPtr Pointer { get { return new IntPtr(GetHashCode()); } }
 }
@@ -79,16 +95,18 @@ public sealed class WorldUnitMgr
     }
 }
 public sealed class World { public bool isDestroy; public bool isIntoWorld = true; public WorldUnitBase playerUnit = new WorldUnitBase(); public WorldUnitMgr unit = new WorldUnitMgr(); }
-public sealed class GradeItem { public int id=103, grade = 2, phase = 3; }
+public class ConfRoleGradeItem { public int id=103, grade = 2, phase = 3,quality,growItemNum,materialsNum;public string qualityName; }
+public sealed class GradeItem : ConfRoleGradeItem { }
 public sealed class GradeConfig
 {
     public readonly System.Collections.Generic.List<GradeItem> _allConfList = new System.Collections.Generic.List<GradeItem> { new GradeItem(), new GradeItem { id=104 } };
     public int RequestedId;
-    public GradeItem GetItem(int id) { RequestedId = id; return new GradeItem(); }
+    public readonly System.Collections.Generic.Dictionary<int,GradeItem> Overrides=new System.Collections.Generic.Dictionary<int,GradeItem>();
+    public GradeItem GetItem(int id) { RequestedId = id;GradeItem result; return Overrides.TryGetValue(id,out result)?result:new GradeItem(); }
     public string GetGradeName(int grade, int phase)
     {
-        if (grade != 2 || phase != 3) throw new Exception("grade ID passed as realm");
-        return "筑基后期";
+        if (grade>10 || phase>3) throw new Exception("grade ID passed as realm");
+        return grade==2&&phase==3?"筑基后期":"境界"+grade+"阶段"+phase;
     }
 }
 public sealed class PortraitModelData { public int body; }
@@ -100,7 +118,22 @@ public sealed partial class ConfDramaNpc
     public PortraitModelData GetPortraitModelData(int id) { throw new NullReferenceException("independent avatar has no assembled model data"); }
 }
 public sealed class Config { public HobbyConfig roleCreateHobby = new HobbyConfig(); public FateConfig roleCreateFeature = new FateConfig(); public GradeConfig roleGrade = new GradeConfig(); public ConfDramaNpc dramaNpc = new ConfDramaNpc(); public TraitConfig roleCreateCharacter = new TraitConfig(); public ConfLocalText localText = new ConfLocalText(); }
-public static partial class g { public static bool isDestroy; public static World world = new World(); public static Config conf = new Config(); }
+public static partial class g { public static bool isDestroy; public static World world = new World(); public static Config conf = new Config(); public static DataMgr data=new DataMgr(); }
+
+public sealed class DataMgr { public static bool isSaveData;public int Calls;public Il2CppSystem.Action<bool> Callback;public void SaveData(Il2CppSystem.Action<bool> callback){Calls++;Callback=callback;}public void Complete(bool success){var c=Callback;Callback=null;c.Invoke(success);} }
+public sealed class WorldUnitLuckBase { public DataUnit.LuckData luckData;public void NewCreateLuck(){} }
+public sealed class WorldUnitHobbyBase { public void Init(WorldUnitBase u,ConfRoleCreateHobbyItem c,string a){} public void Destroy(){} }
+public static class WorldFactory { public static WorldUnitLuckBase CreateLuckInID(int id){return new WorldUnitLuckBase();}public static WorldUnitHobbyBase CreateUnitHobby(string type){return new WorldUnitHobbyBase();} }
+public sealed class UnitActionLuckAdd { public int Id;public UnitActionLuckAdd(int id){Id=id;} }
+public sealed class UnitActionLuckDel { public int Id;public UnitActionLuckDel(int id){Id=id;} }
+public sealed class UnitActionRoleUpGrade { public int Id;public bool upgradePhaseForceSuccess;public UnitActionRoleUpGrade(int id,UnhollowerBaseLib.Il2CppStringArray a,UnhollowerBaseLib.Il2CppStringArray b){Id=id;} }
+namespace UnhollowerBaseLib
+{
+    public class Il2CppReferenceArray<T> : System.Collections.Generic.IEnumerable<T> { private readonly T[] a;public Il2CppReferenceArray(T[] values){a=values;}public int Length{get{return a.Length;}}public T this[int i]{get{return a[i];}set{a[i]=value;}}public static implicit operator Il2CppReferenceArray<T>(T[] values){return new Il2CppReferenceArray<T>(values);}public System.Collections.Generic.IEnumerator<T> GetEnumerator(){return ((System.Collections.Generic.IEnumerable<T>)a).GetEnumerator();}System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator(){return a.GetEnumerator();} }
+    public class Il2CppStructArray<T> { private readonly T[] a;public Il2CppStructArray(int length){a=new T[length];}public int Length{get{return a.Length;}}public T this[int i]{get{return a[i];}set{a[i]=value;}}public static implicit operator Il2CppStructArray<T>(T[] values){var r=new Il2CppStructArray<T>(values.Length);for(int i=0;i<values.Length;i++)r[i]=values[i];return r;} }
+    public class Il2CppStringArray { private readonly string[] a;public Il2CppStringArray(int length){a=new string[length];}public Il2CppStringArray(string[] values){a=values;}public int Length{get{return a.Length;}}public string this[int i]{get{return a[i];}set{a[i]=value;}}public static implicit operator Il2CppStringArray(string[] values){return new Il2CppStringArray(values);} }
+}
+namespace Il2CppSystem { public class Action<T> { public System.Action<T> Callback;public Action(System.Action<T> value){Callback=value;}public void Invoke(T value){Callback(value);}public static implicit operator Action<T>(System.Action<T> value){return new Action<T>(value);} } }
 
 internal static class CharacterReaderHarness
 {

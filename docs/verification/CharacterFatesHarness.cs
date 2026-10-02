@@ -39,12 +39,17 @@ internal static class CharacterFatesHarness
         npc.isDie=true;
         Check(!CharacterFates.TryRead("npc",out entries,out reason) && entries.Length==0 && reason!=null,"dead target rejects stale values");
         g.conf.roleCreateFeature.Throw=true;
-        Check(CharacterFates.TryRead(null,out entries,out reason) && entries.Length==5 && reason!=null && CharacterFates.LastFailure.Contains("配置#1"),"config errors preserve all owned IDs and expose partial status");
+        Check(CharacterFates.TryRead(null,out entries,out reason) && entries.Length==5 && reason==null && CharacterFates.LastFailure.Contains("配置#1"),"description/config failure retains IDs without claiming missing owned records");
         g.conf.roleCreateFeature.Throw=false; g.conf.roleCreateFeature.ThrowId=3;
         Check(CharacterFates.TryRead(null,out entries,out reason) && entries[0].Name=="天赋" && entries[2].Name=="未知气运 #3" && entries[3].Category==1,"one bad config cannot erase independent rows");
         g.conf.roleCreateFeature.ThrowId=0;
         g.conf.roleCreateFeature.Throw=false;
         Check(property.bornLuck.Length==3 && property.addLuck.Count==5,"reads do not mutate owned records");
+        property.bornLuck=new[]{new DataUnit.LuckData{id=1},new DataUnit.LuckData{id=1},new DataUnit.LuckData{id=1}};
+        property.addLuck.Add(new DataUnit.LuckData{id=8012523});property.addLuck.Add(new DataUnit.LuckData{id=231125});
+        g.conf.roleCreateFeature.Items[8012523]=new FateItem{type=2,conceal=1,name="invalid",tips="invalid"};
+        g.conf.roleCreateFeature.Items[231125]=new FateItem{type=2,conceal=1,name="0",tips="0"};
+        Check(CharacterFates.TryRead(null,out entries,out reason)&&reason==null&&entries.Length==5&&!entries.Any(e=>e.Id==8012523||e.Id==231125),"DLC hidden runtime effects do not create visible rows or partial warnings");
         g.world.isIntoWorld=false;
         Check(!CharacterFates.TryRead(null,out entries,out reason) && entries.Length==0,"world loading clears snapshot");
         Console.WriteLine(passed+" fate checks passed");

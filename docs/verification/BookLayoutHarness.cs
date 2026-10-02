@@ -67,7 +67,7 @@ namespace UnityEngine
         public static Color white { get { return new Color(1,1,1,1); } }
     }
     public static class Mathf { public static float Min(float a,float b) { return Math.Min(a,b); } public static float Max(float a,float b) { return Math.Max(a,b); } }
-    public static class Time { public static float unscaledTime; }
+    public static class Time { public static float unscaledTime; public static int frameCount; }
     public static class Debug
     {
         public static void Log(string value) { }
@@ -166,6 +166,7 @@ namespace UnityEngine.UI
         public bool resizeTextForBestFit; public int resizeTextMinSize,resizeTextMaxSize;
         public bool alignByGeometry;public float lineSpacing=1f;
         public float preferredHeight { get { return Math.Max(24, (text.Length / Math.Max(1,(int)(rectTransform.sizeDelta.x / Math.Max(1,fontSize))) + text.Split('\n').Length) * fontSize * 1.2f); } }
+        public float preferredWidth { get { return (text??"").Length*fontSize*.55f; } }
     }
     public struct ColorBlock { public Color normalColor,highlightedColor,pressedColor,selectedColor; }
     public class ClickEvent
@@ -195,7 +196,7 @@ namespace UnityEngine.UI
         public OnChangeEvent onValueChanged=new OnChangeEvent();
         private string input="";
         public string text { get { return input; } set { input=value; textComponent.text=value; placeholder.enabled=value.Length==0; onValueChanged.Invoke(value); } }
-        public void SetTextWithoutNotify(string query) { input=query;textComponent.text=query; }
+        public void SetTextWithoutNotify(string query) { input=query;textComponent.text=query;if(placeholder!=null)placeholder.enabled=query.Length==0; }
         public int selectionAnchorPosition,selectionFocusPosition;
         public void ActivateInputField() { isFocused=true; }
         public void AssignPositioningIfNeeded() { }
@@ -248,10 +249,7 @@ public sealed class LayoutUI
     public object GetUI(UIType type) { return Editor; }
     public T OpenUI<T>(UIType type) where T:class { Editor=new UIModTableInputStringLong();return Editor as T; }
 }
-namespace Il2CppSystem
-{
-    public class Action<T> { public System.Action<T> Callback;public static explicit operator Action<T>(System.Action<T> callback) { return new Action<T> { Callback=callback }; } }
-}
+public static class SpriteTool { public static UnityEngine.Object GetLuckBG(ConfRoleCreateFeatureItem item) { return new UnityEngine.Object(); } }
 public sealed class UIModTableInputStringLong
 {
     public string Value;public int Limit;private Il2CppSystem.Action<string> callback;
@@ -477,8 +475,11 @@ internal static class BookLayoutHarness
         Check(CharacterRoster.TryRead(out roster,out rosterReason) && roster.Count==307 && roster.Any(e=>e.Id=="hidden") && !roster.Any(e=>e.Id=="dead"),"roster includes hidden living units, filters dead and deduplicates IDs");
         Check(CharacterReader.Resolve("hidden")==hiddenNpc,"listed hidden target resolves for attribute and portrait reads");
         float[][] sizes={new[]{1920f,1200f},new[]{1600f,900f},new[]{1366f,768f},new[]{960f,720f}};
+        for(int f=0;f<2000;f++)g.conf.roleCreateFeature.Items[20000+f]=new FateItem{type=2,name="bulk"+f,tips="0"};
         for(int s=0;s<sizes.Length;s++)
         {
+            g.world.playerUnit.data.dynUnitData.hp.Stored=123;g.world.playerUnit.data.dynUnitData.hpMax.Stored=456;
+            g.world.playerUnit.data.unitData.propertyData.hobby=new[]{201,202,203};g.world.playerUnit.data.unitData.propertyData.inTrait=1;
             g.world.playerUnit.data.dynUnitData.attack.Stored=77;
             g.world.playerUnit.data.unitData.propertyData.bornLuck=new[]{new DataUnit.LuckData{id=1},new DataUnit.LuckData{id=2},new DataUnit.LuckData{id=3}};
             g.world.playerUnit.data.unitData.propertyData.addLuck=new List<DataUnit.LuckData>{new DataUnit.LuckData{id=4}};
@@ -488,6 +489,7 @@ internal static class BookLayoutHarness
                 g.conf.roleCreateFeature.Items[f+1]=new FateItem{type=f==3?2:1,name="preview"+f,tips="0"};
                 ConfLocalText.Texts["preview"+f]=previewNames[f];
             }
+            g.conf.roleCreateFeature.Items[9001]=new FateItem{type=3,name="catalog9001",tips="0"};ConfLocalText.Texts["catalog9001"]="未拥有气运";
             var canvas=new UnityEngine.GameObject("canvas");canvas.transform.sizeDelta=new UnityEngine.Vector2(sizes[s][0],sizes[s][1]);g.ui=new LayoutUI { canvas=canvas.transform };
             bool closeRequested=false;
             var window=new UITextInfoLong();var bookView=new BookView();bookView.Build(window,()=>{closeRequested=true;});
@@ -509,13 +511,23 @@ internal static class BookLayoutHarness
             var cells=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_属性格_")).Cast<UnityEngine.RectTransform>().ToArray();
             Check(cells.Length==46 && cells.All(c=>c.sizeDelta.y>=26 && c.GetComponentsInChildren<UnityEngine.UI.Text>(true).Length>=3),"46 framed editable fields have room for label and value at "+sizes[s][0]);
             Check(texts.Any(t=>t.text=="玉器 · 书籍") && texts.Any(t=>t.text=="无私 · 义气 · 忠贞"),"reference hobby and personality values bind to view");
-            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_所有气运") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待接入_") && !t.GetComponent<UnityEngine.UI.Button>().interactable)==8,"four fate regions and eight deferred entries exist and cannot write or navigate");
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运检索") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待接入_") && !t.GetComponent<UnityEngine.UI.Button>().interactable)==7,"fourth fate heading is a registered global search and library action is enabled");
             Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_气运行_0_"))==3 && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2").GetComponentInChildren<UnityEngine.UI.Text>().text=="天三才","all three born entries render as individual rows");
             var bornColumn=Walk(book).First(t=>t.gameObject.name=="BHML_气运条目视口_0").GetComponent<UnityEngine.UI.ScrollRect>();
             var thirdBorn=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2");
             Check(-thirdBorn.anchoredPosition.y+thirdBorn.sizeDelta.y<=bornColumn.viewport.sizeDelta.y+.1f,"three ordinary born rows fit without scrolling at "+sizes[s][0]);
-            Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_待验证移除_"))==4 && Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_待验证移除_")).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"owned row x entries are visibly disabled and cannot write");
+            Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_移除气运_"))==4 && Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_移除气运_")).All(t=>t.GetComponent<UnityEngine.UI.Button>().interactable),"owned row x entries provide native removal actions");
             Check(!Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_查看气运_")) && !texts.Any(t=>t.text.Contains("点击查看")),"large summary buttons and count prompt removed");
+            var globalSearch=Walk(book).First(t=>t.gameObject.name=="BHML_气运检索").GetComponentInChildren<UnityEngine.UI.InputField>();
+            globalSearch.text="未拥有";
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运候选"&&t.GetComponentInChildren<UnityEngine.UI.Text>().text=="[逆] 未拥有气运"),"global search includes unowned configuration entries with category prefix");
+            Walk(book).First(t=>t.gameObject.name=="BHML_气运列表").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            var library=Walk(book).First(t=>t.gameObject.name=="BHML_气运图鉴");
+            Check(Walk(library).Count(t=>t.gameObject.name=="BHML_气运候选")<128&&Walk(library).First(t=>t.gameObject.name=="BHML_图鉴长页").GetComponent<UnityEngine.RectTransform>().sizeDelta.y>10000,"thousands of catalog records use a bounded visible tile pool");
+            Walk(library).First(t=>t.gameObject.name=="BHML_图鉴检索").GetComponentInChildren<UnityEngine.UI.InputField>().text="未拥有";
+            Walk(library).First(t=>t.gameObject.name=="BHML_气运候选").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Walk(library).First(t=>t.gameObject.name=="BHML_确认气运选择").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运图鉴")&&globalSearch.text==""&&Walk(book).Any(t=>t.gameObject.name=="BHML_气运候选"&&t.GetComponentInChildren<UnityEngine.UI.Text>().text=="[逆] 未拥有气运")&&g.world.playerUnit.data.unitData.propertyData.addLuck.Count==1,"library confirms selection into candidate panel without automatically adding luck");
             foreach(var panelName in MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames)
             {
                 var panel=Walk(book).First(t=>t.gameObject.name=="BHML_"+panelName);
@@ -533,11 +545,13 @@ internal static class BookLayoutHarness
             hpValue.onClick.Invoke();
             var editor=Walk(book).First(t=>t.gameObject.name=="BHML_属性输入_0:4:0").GetComponent<UnityEngine.UI.InputField>();
             Check(editor.text=="123" && editor.selectionAnchorPosition==0 && editor.selectionFocusPosition==3,"current resource opens only its own value and selects it");
+            Check(!hpValue.GetComponentInChildren<UnityEngine.UI.Text>().enabled && editor.GetComponent<UnityEngine.RectTransform>().sizeDelta.x<60,"inline edit hides old digits and fits its text width");
             editor.text="100";editor.onEndEdit.Invoke("100");
             Check(g.world.playerUnit.data.dynUnitData.hp.Stored==123 && hpValue.GetComponentInChildren<UnityEngine.UI.Text>().text=="100" && Walk(book).First(t=>t.gameObject.name=="BHML_编辑值_0:4:1").GetComponentInChildren<UnityEngine.UI.Text>().text=="456","current resource draft changes only selected component and never writes game data");
             g.world.playerUnit.data.dynUnitData.hp.Stored=99;bookView.RefreshCharacter(true);
             Check(hpValue.GetComponentInChildren<UnityEngine.UI.Text>().text=="100","automatic snapshot refresh preserves pending draft");
             g.world.playerUnit.data.dynUnitData.hp.Stored=123;
+            bookView.RefreshCharacter(true);
             var hpMax=Walk(book).First(t=>t.gameObject.name=="BHML_编辑值_0:4:1").GetComponent<UnityEngine.UI.Button>();hpMax.onClick.Invoke();
             editor=Walk(book).First(t=>t.gameObject.name=="BHML_属性输入_0:4:1").GetComponent<UnityEngine.UI.InputField>();
             Check(editor.text=="456","maximum opens its independent raw value without slash or current component");
@@ -546,8 +560,8 @@ internal static class BookLayoutHarness
             hpValue.onClick.Invoke();editor=Walk(book).First(t=>t.gameObject.name=="BHML_属性输入_0:4:0").GetComponent<UnityEngine.UI.InputField>();
             editor.text="2147483648";editor.onEndEdit.Invoke(editor.text);
             Check(editor.gameObject.activeSelf && hpValue.GetComponentInChildren<UnityEngine.UI.Text>().text=="90","overflow keeps input visible and preserves existing draft");
-            UnityEngine.Input.Escape=true;bookView.RefreshCharacter();UnityEngine.Input.Escape=false;
-            Check(!Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_属性输入_")) && MOD_YtxSQ1.UI.WindowInputScope.Registered.Count==0,"Escape cancels editor and unregisters input scope");
+            UnityEngine.Time.frameCount++;UnityEngine.Input.Escape=true;bookView.RefreshCharacter();UnityEngine.Input.Escape=false;
+            Check(!Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_属性输入_")) && MOD_YtxSQ1.UI.WindowInputScope.Registered.Count==1 && hpValue.GetComponentInChildren<UnityEngine.UI.Text>().enabled,"Escape cancels numeric input, restores digits and keeps fate search registered");
             var hobby=Walk(book).First(t=>t.gameObject.name=="BHML_编辑值_0:10:1").GetComponent<UnityEngine.UI.Button>();hobby.onClick.Invoke();
             Walk(book).First(t=>t.gameObject.name=="BHML_选项_204").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             Check(hobby.GetComponentInChildren<UnityEngine.UI.Text>().text=="图册" && Walk(book).First(t=>t.gameObject.name=="BHML_编辑值_0:10:0").GetComponentInChildren<UnityEngine.UI.Text>().text=="玉器" && g.world.playerUnit.data.unitData.propertyData.hobby[1]==202,"hobby dropdown changes only its bound slot draft");
@@ -556,7 +570,9 @@ internal static class BookLayoutHarness
             Walk(book).First(t=>t.gameObject.name=="BHML_选项_4").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             Check(inner.GetComponentInChildren<UnityEngine.UI.Text>().text=="内在四" && g.world.playerUnit.data.unitData.propertyData.inTrait==1,"trait draft remains isolated from actual personality");
             Walk(book).First(t=>t.gameObject.name=="BHML_卷目6").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_属性格_体力") && book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text.Contains("当前未保存到游戏")),"save is an action on current page and reports test-save gate without pretending persistence");
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_属性格_体力") && MOD_YtxSQ1.Services.CharacterSave.Busy && g.world.playerUnit.data.dynUnitData.hp.Stored==90,"save applies drafts on current page and waits for real save callback");
+            g.data.Complete(true);MOD_YtxSQ1.Services.CharacterSave.Poll();
+            Check(!MOD_YtxSQ1.Services.CharacterSave.Busy && book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="修改已保存"),"save success is displayed only after callback");
             MOD_YtxSQ1.Services.CharacterEditSession.Shared.Clear();bookView.RefreshCharacter(true);
             var scroll=Walk(book).First(t=>t.gameObject.name=="BHML_属性视口").GetComponent<UnityEngine.UI.ScrollRect>();
             Check(scroll!=null && scroll.viewport.GetComponent<UnityEngine.UI.RectMask2D>()!=null && (!scroll.vertical || scroll.verticalScrollbar!=null),"long page has clipping and scrollbar at "+sizes[s][0]);
@@ -576,7 +592,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-28-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-29-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -686,7 +702,9 @@ internal static class BookLayoutHarness
             Check(tip.sizeDelta.y<150,"short introduction has compact content-driven height");
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
-            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-28-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-29-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            UnityEngine.Time.frameCount++;UnityEngine.Input.Escape=true;bookView.RefreshCharacter();UnityEngine.Input.Escape=false;
+            Check(closeRequested,"Escape forwards window close callback when no editor or child view is open");
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");
             bookView.Dispose();bookView.Dispose();Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍") && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
         }

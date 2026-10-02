@@ -36,6 +36,7 @@ namespace MOD_YtxSQ1.UI
         private Font calligraphyFont;
         private PaperSkin skin;
         private int selectedIndex = -1;
+        private Action requestClose;
         private Text characterName;
         private Text characterRealm;
         private readonly List<Text[]> attributeTexts = new List<Text[]>();
@@ -70,6 +71,7 @@ namespace MOD_YtxSQ1.UI
 
         public void Build(UITextInfoLong window, Action close)
         {
+            requestClose = close;
             foreach (var text in window.GetComponentsInChildren<Text>(true))
             {
                 if (text.font != null && (font == null || text.text.Length > 20)) font = text.font;
@@ -172,9 +174,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.28 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.29 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.28：原位编辑草稿/逐槽下拉；气运逐项回退；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.29：全量气运检索/图鉴/增删，内联编辑与原生保存；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -562,10 +564,11 @@ namespace MOD_YtxSQ1.UI
                 Border(panel, panelWidth, fateHeight);
                 var heading = Fill(panel, "气运题栏_" + i, 8, 8, panelWidth - 16, 28, new Color(.91f, .90f, .85f, .88f)).rectTransform;
                 Border(heading, panelWidth - 16, 28);
-                Label(heading, fates[i], 4, 0, panelWidth - (i == 3 ? 114 : 24), 28, 17, Ink, TextAnchor.MiddleCenter);
+                if (i < 3) Label(heading, fates[i], 4, 0, panelWidth - 24, 28, 17, Ink, TextAnchor.MiddleCenter);
                 if (i == 3)
                 {
-                    UnavailableButton(heading, "气运列表", panelWidth - 108, 2, 88, 24);
+                    BuildFateSearch(heading, panelWidth - 120);
+                    MakeButton(heading, "气运列表", panelWidth - 108, 2, 88, 24, "气运列表", OpenFateLibrary);
                 }
                 var bodyWidth = panelWidth - 16;
                 var bodyHeight = fateHeight - 48;
@@ -705,6 +708,7 @@ namespace MOD_YtxSQ1.UI
 
         public void RefreshCharacter(bool force = false)
         {
+            if (root == null) return;
             TickEditing();
             if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
             if (root == null || selectedIndex != 0 || characterName == null) return;
@@ -715,6 +719,8 @@ namespace MOD_YtxSQ1.UI
             if (currentContext != contextKey)
             {
                 FinishInlineEdit(true); CloseDropdown(); edits.Sync(currentContext);
+                CloseFateLibrary(); pickedFates.Clear(); fateCatalog.Clear(); catalogContext = null;
+                if (fateSearch != null) fateSearch.SetTextWithoutNotify("");
                 selectedUnitId = null;
                 contextKey = currentContext;
                 ReleasePortrait();
@@ -781,6 +787,7 @@ namespace MOD_YtxSQ1.UI
             HideFateTips();
             for (int i = 0; i < fateColumns.Count; i++)
             {
+                if (i == 3) { FilterCandidates(); continue; }
                 var column = fateColumns[i];
                 var page = column.content;
                 var position = resetScroll ? 1f : column.verticalNormalizedPosition;
@@ -814,10 +821,10 @@ namespace MOD_YtxSQ1.UI
                     name.resizeTextForBestFit = true; name.resizeTextMinSize = 12; name.resizeTextMaxSize = 16;
                     if (i < 3)
                     {
-                        // 对齐参考的移除入口，但写入尚未经过测试存档验证。
-                        var removeImage = Fill(row, "待验证移除_" + i + "_" + n, rowWidth - 28, 2, 26, rowHeight - 4, new Color(1, 1, 1, .001f), true);
+                        var removeImage = Fill(row, "移除气运_" + i + "_" + n, rowWidth - 28, 2, 26, rowHeight - 4, new Color(1, 1, 1, .001f), true);
                         var remove = removeImage.gameObject.AddComponent<Button>();
-                        remove.targetGraphic = removeImage; remove.interactable = false;
+                        remove.targetGraphic = removeImage;
+                        remove.onClick.AddListener((UnityAction)(new Action(() => DeleteOwnedFate(entry))));
                         Label(removeImage.rectTransform, "×", 0, 0, 26, rowHeight - 4, (int)Mathf.Min(23, rowHeight - 5), new Color(.43f, .43f, .39f, .60f), TextAnchor.MiddleCenter);
                     }
                 }
@@ -915,7 +922,7 @@ namespace MOD_YtxSQ1.UI
             var rowBounds = FateRowBounds(row, content);
             var position = FateTipBounds(rowBounds, width, height, content.sizeDelta);
             fateTip.anchoredPosition = new Vector2(position.x, -position.y);
-            Debug.Log("[八荒秘录] 07.28气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
+            Debug.Log("[八荒秘录] 07.29气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
                 "；介绍=" + position.x + "," + position.y);
             if (textHeight > height - 52)
             {

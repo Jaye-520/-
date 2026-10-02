@@ -1,0 +1,214 @@
+using System;
+using System.Collections.Generic;
+using MOD_YtxSQ1.Services;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.UI;
+
+namespace MOD_YtxSQ1.UI
+{
+    internal sealed partial class BookView
+    {
+        private sealed class FateTile
+        {
+            internal Button Button;
+            internal Text Label;
+            internal Image Image;
+            internal CharacterFate Entry;
+        }
+        private GameObject fateLibrary;
+        private InputField fateSearch, librarySearch;
+        private List<CharacterFate> fateCatalog = new List<CharacterFate>();
+        private readonly List<CharacterFate> candidates = new List<CharacterFate>();
+        private readonly List<CharacterFate> libraryEntries = new List<CharacterFate>();
+        private readonly List<FateTile> candidateTiles = new List<FateTile>();
+        private readonly List<FateTile> libraryTiles = new List<FateTile>();
+        private readonly HashSet<int> pickedFates = new HashSet<int>();
+        private readonly HashSet<int> libraryPicks = new HashSet<int>();
+        private ScrollRect libraryScroll;
+        private Text libraryCount;
+        private const float FateTilePitch = 38;
+        private string catalogContext;
+
+        private InputField CreateFateSearch(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed)
+        {
+            var host = Box(name, parent, x, y, width, height);
+            var clone = UnityEngine.Object.Instantiate(targetSearch.gameObject, host, false);
+            clone.SetActive(false); clone.name = "BHML_" + name;
+            var rect = clone.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
+            var field = clone.GetComponent<InputField>();
+            foreach (var trigger in clone.GetComponentsInChildren<UnityEngine.EventSystems.EventTrigger>(true))
+            { trigger.enabled = false; UnityEngine.Object.Destroy(trigger); }
+            field.onValueChanged = new InputField.OnChangeEvent(); field.onEndEdit = new InputField.SubmitEvent();
+            field.onValidateInput = null; field.characterLimit = 64;
+            field.textComponent.fontSize = 16;
+            var placeholder = field.placeholder == null ? null : field.placeholder.TryCast<Text>();
+            if (placeholder != null) { placeholder.text = hint; placeholder.fontSize = 15; }
+            if (field.placeholder != null) field.placeholder.gameObject.SetActive(true);
+            field.SetTextWithoutNotify("");
+            field.onValueChanged.AddListener((UnityAction<string>)(new Action<string>(changed)));
+            WindowInputScope.Register(field); clone.SetActive(true);
+            return field;
+        }
+        private void BuildFateSearch(RectTransform heading, float width)
+        {
+            fateSearch = CreateFateSearch(heading, "气运检索", 4, 1, width, 26, "检索气运（名称/ID）", _ => FilterCandidates());
+        }
+        private bool LoadFateCatalog()
+        {
+            var key = CharacterReader.ContextKey();
+            if (key == catalogContext && fateCatalog.Count > 0) return true;
+            try { fateCatalog = CharacterFateCatalog.Read(); catalogContext = key; return true; }
+            catch (Exception ex) { SetEditStatus("气运配置库读取失败：" + ex.GetType().Name, true); return false; }
+        }
+        private void FilterCandidates()
+        {
+            if (!LoadFateCatalog()) return;
+            candidates.Clear();
+            var query = fateSearch == null ? "" : fateSearch.text.Trim();
+            foreach (var item in fateCatalog)
+                if (query.Length > 0 ? MatchesFate(item, query) : pickedFates.Contains(item.Id)) candidates.Add(item);
+            RenderCandidates(true);
+        }
+        private static bool MatchesFate(CharacterFate entry, string query)
+        {
+            return entry.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 || entry.Id.ToString().IndexOf(query, StringComparison.Ordinal) >= 0;
+        }
+        private FateTile MakeFateTile(RectTransform parent, float width, Action<FateTile> clicked, bool library)
+        {
+            var tile = new FateTile();
+            tile.Button = MakeButton(parent, "气运候选", 0, 0, width, 32, "", () => { if (tile.Entry != null) clicked(tile); });
+            tile.Image = tile.Button.GetComponent<Image>();
+            tile.Label = tile.Button.GetComponentInChildren<Text>();
+            tile.Label.fontSize = 16; tile.Label.resizeTextForBestFit = true; tile.Label.resizeTextMinSize = 11; tile.Label.resizeTextMaxSize = 16;
+            BindFateHover(tile.Button.gameObject, () =>
+            {
+                if (tile.Entry != null) ShowFateTip(tile.Button.GetComponent<RectTransform>(), CharacterFateCatalog.Describe(selectedUnitId, tile.Entry));
+            }, () => { fateTipCloseAt = Time.unscaledTime + .12f; });
+            return tile;
+        }
+        private void BindFateTiles(List<FateTile> tiles, List<CharacterFate> entries, ScrollRect scroll, int columns, bool library)
+        {
+            var offset = Mathf.Max(0, scroll.content.anchoredPosition.y);
+            var first = (int)(offset / FateTilePitch) * columns;
+            var width = (scroll.content.sizeDelta.x - (columns - 1) * 8) / columns;
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                var tile = tiles[i]; var index = first + i;
+                tile.Entry = index < entries.Count ? entries[index] : null;
+                tile.Button.gameObject.SetActive(tile.Entry != null);
+                if (tile.Entry == null) continue;
+                var rect = tile.Button.GetComponent<RectTransform>();
+                rect.anchoredPosition = new Vector2(index % columns * (width + 8), -(index / columns) * FateTilePitch);
+                tile.Label.text = (library && libraryPicks.Contains(tile.Entry.Id) ? "✓ " : "") + CharacterFateCatalog.Prefix(tile.Entry.Category) + tile.Entry.Name;
+                tile.Image.color = Color.white;
+                try { tile.Image.sprite = SpriteTool.GetLuckBG(g.conf.roleCreateFeature.GetItem(tile.Entry.Id)); }
+                catch { tile.Image.sprite = null; }
+                tile.Label.color = tile.Image.sprite == null ? Ink : new Color(.98f, .95f, .86f, 1);
+            }
+        }
+        private void RenderCandidates(bool reset = false)
+        {
+            if (fateColumns.Count < 4) return;
+            var scroll = fateColumns[3]; var page = scroll.content;
+            if (candidateTiles.Count == 0)
+            {
+                for (int i = page.childCount - 1; i >= 0; i--) { var child = page.GetChild(i).gameObject; child.SetActive(false); UnityEngine.Object.Destroy(child); }
+                var count = (int)Math.Ceiling(scroll.viewport.sizeDelta.y / FateTilePitch) + 1;
+                for (int i = 0; i < count; i++) candidateTiles.Add(MakeFateTile(page, page.sizeDelta.x, AddCandidateFate, false));
+                scroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { HideFateTips(); BindFateTiles(candidateTiles, candidates, scroll, 1, false); })));
+            }
+            page.sizeDelta = new Vector2(page.sizeDelta.x, Mathf.Max(scroll.viewport.sizeDelta.y, candidates.Count * FateTilePitch));
+            scroll.verticalScrollbar.gameObject.SetActive(page.sizeDelta.y > scroll.viewport.sizeDelta.y + .1f);
+            if (reset) { page.anchoredPosition = Vector2.zero; scroll.verticalNormalizedPosition = 1; }
+            BindFateTiles(candidateTiles, candidates, scroll, 1, false);
+        }
+        private void AddCandidateFate(FateTile tile)
+        {
+            if (tile.Entry == null) return;
+            if (!FinishInlineEdit(false)) return;
+            string message;
+            if (CharacterFateOperations.Add(selectedUnitId, tile.Entry.Id, out message))
+            { RefreshCharacter(true); SetEditStatus(message + "；请点击保存"); }
+            else { RefreshCharacter(true); SetEditStatus(message, true); }
+        }
+        private void DeleteOwnedFate(CharacterFate entry)
+        {
+            if (!FinishInlineEdit(false)) return;
+            string message;
+            if (CharacterFateOperations.Remove(selectedUnitId, entry.Id, out message))
+            { RefreshCharacter(true); SetEditStatus(message + "；请点击保存"); }
+            else { RefreshCharacter(true); SetEditStatus(message, true); }
+        }
+        private void OpenFateLibrary()
+        {
+            if (!FinishInlineEdit(false) || !LoadFateCatalog()) return;
+            CloseDropdown(); CloseFateLibrary(); HideFateTips();
+            libraryPicks.Clear(); foreach (var id in pickedFates) libraryPicks.Add(id);
+            var overlay = Fill(content, "气运图鉴遮罩", 0, 0, contentWidth, contentHeight, new Color(.10f, .11f, .09f, .65f), true);
+            fateLibrary = overlay.gameObject;
+            var width = contentWidth - 24; var height = contentHeight - 24;
+            var panel = Card(overlay.rectTransform, "气运图鉴", 12, 12, width, height);
+            Fill(panel, "图鉴纸底", 1, 1, width - 2, height - 2, new Color(.90f, .89f, .85f, 1), true);
+            Label(panel, "气运列表", 12, 8, width - 100, 30, 24, Ink);
+            MakeButton(panel, "关闭图鉴", width - 48, 8, 36, 28, "×", CloseFateLibrary);
+            librarySearch = CreateFateSearch(panel, "图鉴检索", 12, 44, width - 24, 32, "检索全部可见气运（名称/ID）", _ => FilterLibrary());
+            libraryCount = Label(panel, "", 12, height - 46, width - 150, 30, 15, Muted);
+            MakeButton(panel, "确认气运选择", width - 132, height - 46, 120, 32, "确定", () =>
+            {
+                pickedFates.Clear(); foreach (var id in libraryPicks) pickedFates.Add(id);
+                if (fateSearch != null) fateSearch.SetTextWithoutNotify("");
+                CloseFateLibrary(); FilterCandidates(); SetEditStatus("已选气运列在检索区，点击条目才会添加给当前人物");
+            });
+            var viewport = Box("图鉴视口", panel, 12, 86, width - 24, height - 142);
+            Fill(viewport, "图鉴命中", 0, 0, width - 24, height - 142, new Color(1, 1, 1, .001f), true);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            var page = NewRect("图鉴长页", viewport); page.anchorMin = page.anchorMax = new Vector2(0, 1); page.pivot = new Vector2(0, 1);
+            page.sizeDelta = new Vector2(width - 24, viewport.sizeDelta.y);
+            libraryScroll = viewport.gameObject.AddComponent<ScrollRect>(); libraryScroll.viewport = viewport; libraryScroll.content = page;
+            libraryScroll.horizontal = false; libraryScroll.vertical = true; libraryScroll.inertia = false;
+            libraryScroll.movementType = ScrollRect.MovementType.Clamped; libraryScroll.scrollSensitivity = 38;
+            var columns = page.sizeDelta.x >= 780 ? 4 : 3;
+            var tileWidth = (page.sizeDelta.x - (columns - 1) * 8) / columns;
+            var pool = ((int)Math.Ceiling(viewport.sizeDelta.y / FateTilePitch) + 1) * columns;
+            for (int i = 0; i < pool; i++) libraryTiles.Add(MakeFateTile(page, tileWidth, tile =>
+            {
+                if (!libraryPicks.Add(tile.Entry.Id)) libraryPicks.Remove(tile.Entry.Id);
+                RenderLibrary();
+            }, true));
+            libraryScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { HideFateTips(); RenderLibrary(); })));
+            FilterLibrary();
+        }
+        private void FilterLibrary()
+        {
+            libraryEntries.Clear(); var query = librarySearch == null ? "" : librarySearch.text.Trim();
+            foreach (var item in fateCatalog) if (query.Length == 0 || MatchesFate(item, query)) libraryEntries.Add(item);
+            var columns = libraryScroll.content.sizeDelta.x >= 780 ? 4 : 3;
+            libraryScroll.content.sizeDelta = new Vector2(libraryScroll.content.sizeDelta.x, Mathf.Max(libraryScroll.viewport.sizeDelta.y, (float)Math.Ceiling((double)libraryEntries.Count / columns) * FateTilePitch));
+            libraryScroll.content.anchoredPosition = Vector2.zero; libraryScroll.verticalNormalizedPosition = 1;
+            RenderLibrary();
+        }
+        private void RenderLibrary()
+        {
+            if (libraryScroll == null) return;
+            var columns = libraryScroll.content.sizeDelta.x >= 780 ? 4 : 3;
+            BindFateTiles(libraryTiles, libraryEntries, libraryScroll, columns, true);
+            libraryCount.text = "匹配 " + libraryEntries.Count + " 项 · 已选 " + libraryPicks.Count + " 项";
+        }
+        private void CloseFateLibrary()
+        {
+            HideFateTips();
+            if (librarySearch != null) WindowInputScope.Unregister(librarySearch);
+            librarySearch = null; libraryScroll = null; libraryCount = null; libraryTiles.Clear(); libraryEntries.Clear();
+            var old = fateLibrary; fateLibrary = null;
+            if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
+        }
+        private void ClearFateLibraryView()
+        {
+            CloseFateLibrary();
+            if (fateSearch != null) WindowInputScope.Unregister(fateSearch);
+            fateSearch = null; candidateTiles.Clear();
+        }
+    }
+}

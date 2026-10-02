@@ -56,7 +56,7 @@ namespace MOD_YtxSQ1.Services
                 catch (Exception ex) { failures.Add("后天来源:" + ex.GetType().Name); }
                 entries = result.ToArray();
                 LastFailure = failures.Count == 0 ? null : string.Join("；", failures.ToArray());
-                reason = failures.Count == 0 ? null : "部分气运信息未读取";
+                reason = failures.Exists(f => f.StartsWith("先天来源") || f.StartsWith("后天来源") || f.StartsWith("先天条目") || f.StartsWith("后天条目")) ? "部分拥有记录未读取" : null;
                 return failures.Count == 0 || entries.Length > 0;
             }
             catch (Exception ex)
@@ -82,6 +82,8 @@ namespace MOD_YtxSQ1.Services
                 var item = g.conf.roleCreateFeature.GetItem(id);
                 if (item != null)
                 {
+                    // 原NPC界面也会过滤conceal=1；隐藏运行效果不能充当可见气运。
+                    if (item.conceal == 1) return;
                     category = item.type == 3 ? 2 : source;
                     try { name = LocalText(item.name, fallback); }
                     catch (Exception ex) { failures.Add("名称#" + id + ":" + ex.GetType().Name); }

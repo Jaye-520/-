@@ -27,6 +27,9 @@ internal static class CharacterEditingHarness
         Check(session.Stage("player", current, "99", "123", out error) && !session.IsChanged("player", current), "restoring original value removes pending change");
         session.Sync("test-world"); Check(session.Count > 0, "same context retains drafts across window recreation");
         session.Sync("other-world"); Check(session.Count == 0, "new world clears all old drafts");
+        session.Stage("player",current,"123","100",out error);
+        session.Stage("player",current,"99","110",out error,true);
+        Check(session.Changes.First().Original=="99"&&session.Validate(c=>"99",out error),"explicit re-edit can resolve conflict using newly captured live baseline");
         g.world = new World(); g.conf = new Config(); g.isDestroy = false;
         var unit = g.world.playerUnit;
         Check(CharacterEditData.Read(unit, current) == "123" && CharacterEditData.Read(unit, maximum) == "456", "resource components come from independent native field bindings");

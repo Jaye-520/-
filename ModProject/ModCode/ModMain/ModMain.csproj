@@ -38,6 +38,9 @@
     <Compile Include="Core\WorkshopController.cs" />
     <Compile Include="Services\CharacterReader.cs" />
     <Compile Include="Services\CharacterFates.cs" />
+    <Compile Include="Services\CharacterFateCatalog.cs" />
+    <Compile Include="Services\CharacterFateOperations.cs" />
+    <Compile Include="Services\CharacterSave.cs" />
     <Compile Include="Services\CharacterEditSession.cs" />
     <Compile Include="Services\CharacterEditData.cs" />
     <Compile Include="Services\CharacterRoster.cs" />
@@ -46,6 +49,7 @@
     <Compile Include="UI\WindowInputScope.cs" />
     <Compile Include="UI\BookView.cs" />
     <Compile Include="UI\BookView.Editing.cs" />
+    <Compile Include="UI\BookView.FateLibrary.cs" />
     <Compile Include="UI\PaperSkin.cs" />
     <EmbeddedResource Include="Art\InkLandscape-v1.png">
       <LogicalName>MOD_YtxSQ1.Art.InkLandscape.png</LogicalName>

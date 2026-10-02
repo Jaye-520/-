@@ -48,7 +48,7 @@ namespace MOD_YtxSQ1.Services
             return changes.TryGetValue(Key(unit, field), out change) ? change.Value : current;
         }
         internal bool IsChanged(string unit, CharacterField field) { return changes.ContainsKey(Key(unit, field)); }
-        internal bool Stage(string unit, CharacterField field, string original, string input, out string error)
+        internal bool Stage(string unit, CharacterField field, string original, string input, out string error, bool explicitReedit = false)
         {
             error = null;
             if (string.IsNullOrEmpty(Context) || string.IsNullOrEmpty(unit) || original == null)
@@ -70,7 +70,7 @@ namespace MOD_YtxSQ1.Services
             }
             var key = Key(unit, field);
             Change existing;
-            if (changes.TryGetValue(key, out existing)) original = existing.Original;
+            if (changes.TryGetValue(key, out existing) && !explicitReedit) original = existing.Original;
             if (input == original) changes.Remove(key);
             else changes[key] = new Change { UnitId = unit, Field = field, Original = original, Value = input };
             return true;

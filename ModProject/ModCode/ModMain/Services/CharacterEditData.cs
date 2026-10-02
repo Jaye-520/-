@@ -70,7 +70,7 @@ namespace MOD_YtxSQ1.Services
                 if (id == 0) return "无";
                 if (field.Group == 0) { var item = g.conf.roleCreateHobby.GetItem(id); if (item != null) return Local(item.name); }
                 else if (field.Index == 10) { var item = g.conf.roleCreateCharacter.GetItem(id); if (item != null) return Local(item.sc5asd_sd34); }
-                else { var item = g.conf.roleGrade.GetItem(id); if (item != null) return g.conf.roleGrade.GetGradeName(item.grade, item.phase); }
+                else { var item = g.conf.roleGrade.GetItem(id); if (item != null) return GradeLabel(item); }
             }
             catch { }
             return "未知 #" + id;
@@ -79,6 +79,11 @@ namespace MOD_YtxSQ1.Services
         {
             var label = ConfLocalText.GetText(key);
             return string.IsNullOrEmpty(label) ? key : label;
+        }
+        private static string GradeLabel(ConfRoleGradeItem item)
+        {
+            var label = g.conf.roleGrade.GetGradeName(item.grade, item.phase);
+            return item.quality > 0 && !string.IsNullOrEmpty(item.qualityName) && item.qualityName != "0" ? label + " · " + Local(item.qualityName) : label;
         }
         internal static List<CharacterChoice> Choices(CharacterField field, string original)
         {
@@ -106,7 +111,7 @@ namespace MOD_YtxSQ1.Services
             {
                 var items = g.conf.roleGrade._allConfList;
                 for (int i = 0; i < items.Count; i++) if (items[i] != null)
-                    result.Add(new CharacterChoice(items[i].id, g.conf.roleGrade.GetGradeName(items[i].grade, items[i].phase)));
+                    result.Add(new CharacterChoice(items[i].id, GradeLabel(items[i])));
             }
             return result;
         }
