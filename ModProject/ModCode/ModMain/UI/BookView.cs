@@ -135,8 +135,7 @@ namespace MOD_YtxSQ1.UI
             else if (skin != null) Texture(title, "墨迹", 0, 0, 380, 54, skin.Brush, new Rect(0, 0, 1, 1));
             else Fill(title, "墨底", 12, 6, 356, 42, Ink);
             Label(title, "八荒秘录", 0, 0, 380, 54, 34, new Color(.95f, .94f, .90f, 1f), TextAnchor.MiddleCenter);
-            var closeButton = MakeButton(header, "关闭", width - 138, 18, 90, 36, "关闭", close);
-            closeButton.GetComponent<Image>().color = new Color(.46f, .45f, .39f, .13f);
+            MakeQuietButton(header, "关闭", width - 138, 18, 90, 36, "关闭 ×", close);
             Fill(book, "标题分界", 20, 85, width - 40, 1, Gold);
 
             var navigation = Box("卷目区", book, 24, 98, width - 48, 44);
@@ -166,9 +165,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.18 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.19 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.18：正文底边对齐；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.19：轻量关闭与标题旁刷新；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -193,9 +192,13 @@ namespace MOD_YtxSQ1.UI
                 tabMarks[i].gameObject.SetActive(i == index);
                 if (i < tabBrushes.Count) tabBrushes[i].gameObject.SetActive(i == index);
             }
-            Label(content, index == 0 ? "属性总览" : Modules[index], 0, 0, contentWidth - 120, 34, 25, Ink);
+            Label(content, index == 0 ? "属性总览" : Modules[index], 0, 0, index == 0 ? 142 : contentWidth - 120, 34, 25, Ink);
             Label(content, index == 0 ? "角色信息 · 只读；灰色操作尚未开放" : "功能尚未开放", 0, 34, contentWidth - 120, 24, 16, Muted);
-            if (index == 0) MakeButton(content, "刷新角色", contentWidth - 96, 5, 96, 34, "刷新", () => { ReloadRoster(); RefreshCharacter(true); });
+            if (index == 0)
+            {
+                Fill(content, "标题操作分隔", 148, 9, 1, 18, new Color(.37f, .38f, .33f, .28f));
+                MakeQuietButton(content, "刷新角色", 160, 0, 64, 34, "刷新", () => { ReloadRoster(); RefreshCharacter(true); });
+            }
             selectedIndex = index;
             if (index != 0)
             {
@@ -747,6 +750,22 @@ namespace MOD_YtxSQ1.UI
             image.uvRect = uv;
             image.raycastTarget = false;
             return image;
+        }
+
+        private Button MakeQuietButton(RectTransform parent, string name, float left, float top, float width, float height, string text, Action action)
+        {
+            var image = Fill(parent, name, left, top, width, height, Color.white, true);
+            var button = image.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            var colors = button.colors;
+            colors.normalColor = new Color(.46f, .45f, .39f, .001f);
+            colors.highlightedColor = new Color(.46f, .45f, .39f, .12f);
+            colors.pressedColor = new Color(.46f, .45f, .39f, .22f);
+            colors.selectedColor = colors.normalColor;
+            button.colors = colors;
+            button.onClick.AddListener((UnityAction)action);
+            Label(image.rectTransform, text, 0, 0, width, height, 16, Muted, TextAnchor.MiddleCenter);
+            return button;
         }
 
         private Button MakeButton(RectTransform parent, string name, float left, float top, float width, float height, string text, Action action)

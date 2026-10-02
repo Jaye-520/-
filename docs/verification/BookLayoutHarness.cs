@@ -383,7 +383,17 @@ internal static class BookLayoutHarness
                 else using(var brush=new SolidBrush(System.Drawing.Color.FromArgb(242,29,32,29)))
                     graphics.FillPolygon(brush,new[] {new PointF(x+5,y+5),new PointF(x+rect.Width-12,y+2),new PointF(x+rect.Width,y+rect.Height/2),new PointF(x+rect.Width-7,y+rect.Height-4),new PointF(x+3,y+rect.Height-2),new PointF(x,y+rect.Height/2)});
             }
-            else using(var brush=new SolidBrush(Color(graphic.color))) graphics.FillRectangle(brush,rect);
+            else
+            {
+                var paintColor=graphic.color;
+                var button=node.GetComponent<UnityEngine.UI.Button>();
+                if(button!=null && button.targetGraphic==graphic)
+                {
+                    var tint=button.colors.normalColor;
+                    paintColor=new UnityEngine.Color(paintColor.r*tint.r,paintColor.g*tint.g,paintColor.b*tint.b,paintColor.a*tint.a);
+                }
+                using(var brush=new SolidBrush(Color(paintColor))) graphics.FillRectangle(brush,rect);
+            }
         }
         var previous=graphics.Save();
         if(node.GetComponent<UnityEngine.UI.RectMask2D>()!=null) graphics.SetClip(rect);
@@ -468,7 +478,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-18-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-19-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
