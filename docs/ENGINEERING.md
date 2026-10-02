@@ -68,7 +68,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 | 立绘 | 五朵金花用GetFiveFlowerDramaNpcID→ConfDramaNpc.CreateTexture，由原生按avatar/modelID分流；07.14强取拼装数据实测失败，不再使用。专属RawImage销毁触发原生autoDestroy检查、RenderTexture释放及计时器停止；不额外创建第二个渲染器，不强制启用原生已关闭的RawImage。普通修士保持原路径/取景；无纹理时隐藏RawImage，异常日志标注调用阶段 |
 | 页脚 | 全窗口居中固定“Jaye@2026-爱你一生一世”，动态反馈放相关正文区域，不再占用署名 |
 | 身份字段 | 性别按UnitSexType；兴趣用WorldUnitData.GetHobbyItems；性格按inTrait/outTrait1/outTrait2查roleCreateCharacter，sc5asd_sd34为名称，用静态ConfLocalText.GetText本地化。可选字段失败不清空独立数值 |
-| 气运 | propertyData.bornLuck/addLuck记录拥有条目；roleCreateFeature.GetItem及ConfLocalText.GetText读名称，官方表头type=3为逆天改命、type=5战前气运算后天，其余按来源分类。介绍用ConfRoleCreateFeatureEx.tips(item,选中unit,真实LuckData,2)，与原生UIAddLuckItem的bgType一致；失败回退基础介绍。行挂UISkyTipEffect.InitData(text,Vector3零偏移)，由原生UIEventListener处理进入/离开，行无Button；滚动/重建/切页/释放仅显式隐藏本视图仍处于悬停的提示。原生OnDisable触发PointerExit，OnDestroy解绑；托管替身不证明实际提示布局。未知ID保留，读失败不展示部分列表，不写游戏对象 |
+| 气运 | bornLuck/addLuck拥有记录，type=3逆天改命，其他按来源归类；介绍用ConfRoleCreateFeatureEx.tips(item,选中unit,真实LuckData,2)，失败回退。07.26行使用UIEventListener的UnityEvent悬停回调，本视图面板控制尺寸/位置，不使用UISkyTipEffect默认窗。CalculateRelativeRectTransformBounds(content,row)定位，FateTipBounds处理换侧/边界；长文ScrollRect，0.12秒退出过渡允许移入提示滚动。原列表滚动/重建/切换/失效/关闭清理。提示行无Button，不写游戏对象；托管替身不证明原生缩放/指针事件顺序 |
 | 界面资源 | 圆形×的64×64自绘纹理归BookView所有，随视图释放；不得借用未知Sprite或漏掉失败清理。正文统一BodyTop，左右共底边须随适配改动检查 |
 | 重开读取 | WorkshopWindow每次打开新建BookView，Build→Select(0)重读名单并强制读取当前人物；打开期间属性每秒更新，名单不逐帧扫描，无独立刷新按钮 |
 

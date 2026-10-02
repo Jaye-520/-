@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using MOD_YtxSQ1.Services;
 using UnityEngine;
 using UnityEngine.Events;
@@ -39,7 +40,8 @@ namespace MOD_YtxSQ1.UI
         private Text characterRealm;
         private readonly List<Text[]> attributeTexts = new List<Text[]>();
         private readonly List<ScrollRect> fateColumns = new List<ScrollRect>();
-        private readonly List<UISkyTipEffect> fateTips = new List<UISkyTipEffect>();
+        private RectTransform fateTip, fateTipOwner;
+        private float fateTipCloseAt;
         private CharacterFate[] fates = new CharacterFate[0];
         private string fateReason, fateUnitId;
         private float nextCharacterRefresh;
@@ -170,9 +172,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.25 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.26 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.25：气运条目悬停原生介绍；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.26：气运旁紧凑悬停介绍；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -181,7 +183,6 @@ namespace MOD_YtxSQ1.UI
             ReleasePortrait();
             attributeTexts.Clear();
             HideFateTips();
-            fateTips.Clear();
             fateColumns.Clear();
             fateUnitId = null;
             fates = new CharacterFate[0];
@@ -699,6 +700,7 @@ namespace MOD_YtxSQ1.UI
 
         public void RefreshCharacter(bool force = false)
         {
+            if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
             if (root == null || selectedIndex != 0 || characterName == null) return;
             var now = Time.unscaledTime;
             if (!force && now < nextCharacterRefresh) return;
@@ -764,7 +766,6 @@ namespace MOD_YtxSQ1.UI
         private void RenderFateColumns(bool resetScroll)
         {
             HideFateTips();
-            fateTips.Clear();
             for (int i = 0; i < fateColumns.Count; i++)
             {
                 var column = fateColumns[i];
@@ -788,10 +789,11 @@ namespace MOD_YtxSQ1.UI
                     var rowImage = Fill(page, "气运行_" + i + "_" + n, 0, n * rowPitch, rowWidth, rowHeight, new Color(.91f, .90f, .85f, .88f), true);
                     var row = rowImage.rectTransform;
                     Border(row, rowWidth, rowHeight);
-                    // 原生气运悬停组件自行注册UIEventListener，无点击回调，不拦截滚轮。
-                    var tip = row.gameObject.AddComponent<UISkyTipEffect>();
-                    fateTips.Add(tip);
-                    tip.InitData(items[n].Description, new Vector3(0, 0, 0));
+                    var entry = items[n];
+                    BindFateHover(row.gameObject, () => ShowFateTip(row, entry), () =>
+                    {
+                        if (fateTipOwner == row) fateTipCloseAt = Time.unscaledTime + .12f;
+                    });
                     var nameWidth = rowWidth - (i < 3 ? 36 : 12);
                     var name = Label(row, items[n].Name, 6, 0, nameWidth, rowHeight, 16, Ink, TextAnchor.MiddleCenter);
                     name.resizeTextForBestFit = true; name.resizeTextMinSize = 12; name.resizeTextMaxSize = 16;
@@ -811,12 +813,90 @@ namespace MOD_YtxSQ1.UI
 
         private void HideFateTips()
         {
-            foreach (var tip in fateTips)
-                if (tip != null && tip.e != null && tip.e.isMouseEnter)
-                {
-                    tip.OnPointerExit();
-                    tip.e.isMouseEnter = false;
-                }
+            var previous = fateTip;
+            fateTip = fateTipOwner = null;
+            fateTipCloseAt = 0;
+            if (previous == null) return;
+            previous.gameObject.SetActive(false);
+            UnityEngine.Object.Destroy(previous.gameObject);
+        }
+
+        private static void BindFateHover(GameObject target, Action enter, Action exit)
+        {
+            var listener = target.AddComponent<UIEventListener>();
+            listener.onMouseEnter = new UnityEvent();
+            listener.onMouseExit = new UnityEvent();
+            listener.onMouseEnter.AddListener((UnityAction)enter);
+            listener.onMouseExit.AddListener((UnityAction)exit);
+        }
+
+        internal static Rect FateTipBounds(Rect row, float width, float height, Vector2 area)
+        {
+            const float margin = 8, gap = 8;
+            var right = row.x + row.width + gap;
+            var left = row.x - gap - width;
+            var fitsRight = right + width <= area.x - margin;
+            var fitsLeft = left >= margin;
+            var x = fitsRight ? right : left;
+            var y = row.y;
+            if (!fitsRight && !fitsLeft)
+            {
+                x = row.x;
+                var below = row.y + row.height + gap;
+                y = below + height <= area.y - margin ? below : row.y - height - gap;
+            }
+            x = Mathf.Max(margin, Mathf.Min(x, area.x - width - margin));
+            y = Mathf.Max(margin, Mathf.Min(y, area.y - height - margin));
+            return new Rect(x, y, width, height);
+        }
+
+        private void ShowFateTip(RectTransform row, CharacterFate entry)
+        {
+            HideFateTips();
+            if (row == null || !row.gameObject.activeInHierarchy || selectedIndex != 0) return;
+            fateTipOwner = row;
+            var width = Mathf.Min(280, contentWidth - 20);
+            var maxHeight = Mathf.Min(300, contentHeight - 20);
+            // 原生tips可能包含字号标签；小提示统一字号，保留介绍内容与换行。
+            var description = Regex.Replace(entry.Description.Replace("<br>", "\n").Replace("\\n", "\n"), "<[^>]+>", "");
+            if (description.StartsWith(entry.Name + "\n", StringComparison.Ordinal)) description = description.Substring(entry.Name.Length + 1);
+            fateTip = Fill(content, "气运介绍", 8, 8, width, maxHeight, new Color(.96f, .95f, .90f, 1), true).rectTransform;
+            var title = Label(fateTip, entry.Name, 12, 8, width - 24, 24, 17, Cinnabar);
+            title.resizeTextForBestFit = true; title.resizeTextMinSize = 12; title.resizeTextMaxSize = 17;
+            var viewport = Box("气运介绍视口", fateTip, 12, 40, width - 24, maxHeight - 52);
+            Fill(viewport, "介绍滚动命中区", 0, 0, width - 24, maxHeight - 52, new Color(1, 1, 1, .001f), true);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            var page = NewRect("气运介绍长页", viewport);
+            page.anchorMin = page.anchorMax = new Vector2(0, 1); page.pivot = new Vector2(0, 1);
+            page.sizeDelta = new Vector2(width - 34, maxHeight - 52);
+            var text = Label(page, description, 0, 0, width - 34, maxHeight - 52, 14, Ink, TextAnchor.UpperLeft);
+            var textHeight = Mathf.Max(20, text.preferredHeight + 4);
+            var height = Mathf.Min(maxHeight, Mathf.Max(72, textHeight + 52));
+            fateTip.sizeDelta = new Vector2(width, height);
+            viewport.sizeDelta = new Vector2(width - 24, height - 52);
+            viewport.GetChild(0).GetComponent<RectTransform>().sizeDelta = viewport.sizeDelta;
+            page.sizeDelta = new Vector2(width - 34, Mathf.Max(textHeight, height - 52));
+            text.rectTransform.sizeDelta = page.sizeDelta;
+            Border(fateTip, width, height);
+            Fill(fateTip, "介绍分隔线", 12, 35, width - 24, 1, new Color(.55f, .48f, .32f, .3f));
+            var bounds = RectTransformUtility.CalculateRelativeRectTransformBounds(content, row);
+            var position = FateTipBounds(new Rect(bounds.center.x - bounds.size.x / 2, -bounds.center.y - bounds.size.y / 2,
+                bounds.size.x, bounds.size.y), width, height, content.sizeDelta);
+            fateTip.anchoredPosition = new Vector2(position.x, -position.y);
+            if (textHeight > height - 52)
+            {
+                var scroll = viewport.gameObject.AddComponent<ScrollRect>();
+                scroll.viewport = viewport; scroll.content = page; scroll.horizontal = false; scroll.vertical = true;
+                scroll.inertia = false; scroll.movementType = ScrollRect.MovementType.Clamped; scroll.scrollSensitivity = 24;
+                var track = Fill(viewport, "介绍滚动轨", width - 30, 0, 6, height - 52, new Color(.35f, .34f, .27f, .12f), true);
+                var handle = Fill(track.rectTransform, "介绍滚动柄", 0, 0, 6, 18, Muted, true);
+                var scrollbar = track.gameObject.AddComponent<Scrollbar>();
+                scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle; scrollbar.direction = Scrollbar.Direction.BottomToTop;
+                scroll.verticalScrollbar = scrollbar;
+            }
+            var tipPanel = fateTip;
+            BindFateHover(tipPanel.gameObject, () => { if (fateTip == tipPanel) fateTipCloseAt = 0; },
+                () => { if (fateTip == tipPanel) fateTipCloseAt = Time.unscaledTime + .12f; });
         }
         private RectTransform NewRect(string name, Transform parent)
         {
@@ -972,7 +1052,7 @@ namespace MOD_YtxSQ1.UI
             tabImages.Clear(); tabLabels.Clear(); tabMarks.Clear(); tabBrushes.Clear();
             content = null; font = null;
             characterName = null; characterRealm = null; attributeTexts.Clear();
-            fateColumns.Clear(); fateTips.Clear(); fates = new CharacterFate[0];
+            fateColumns.Clear(); fates = new CharacterFate[0];
             roster.Clear(); filteredRoster.Clear(); rosterRows.Clear(); rowIds.Clear();
             targetPanel = null; rosterContent = null; rosterScroll = null; targetSearch = null; searchQuery = "";
             portraitImage = null; portraitStatus = null; rosterCount = null;

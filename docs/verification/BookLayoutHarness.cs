@@ -14,7 +14,16 @@ namespace UnityEngine
     public enum KeyCode { Return,KeypadEnter,Escape,Tab }
     public static class Input { public static bool MouseDown,Submit; public static Vector2 mousePosition;public static bool GetMouseButtonDown(int button) { return MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return; } }
     public class Canvas : Component { public Camera worldCamera; }
-    public static class RectTransformUtility { public static bool Inside=true;public static bool RectangleContainsScreenPoint(RectTransform rect,Vector2 point,Camera camera) { return Inside; } }
+    public static class RectTransformUtility
+    {
+        public static bool Inside=true;public static bool RectangleContainsScreenPoint(RectTransform rect,Vector2 point,Camera camera) { return Inside; }
+        public static Bounds CalculateRelativeRectTransformBounds(Transform parent,Transform child)
+        {
+            var rect=(RectTransform)child;float x=0,y=0;
+            for(var item=child;item!=parent;item=item.parent) { var node=(RectTransform)item;x+=node.anchoredPosition.x;y+=node.anchoredPosition.y; }
+            return new Bounds(new Vector3(x+rect.sizeDelta.x/2,y-rect.sizeDelta.y/2,0),new Vector3(rect.sizeDelta.x,rect.sizeDelta.y,0));
+        }
+    }
     public class Object
     {
         public static GameObject Instantiate(GameObject source,Transform parent,bool world)
@@ -148,6 +157,7 @@ namespace UnityEngine.Events
     {
         public Action<T> Callback; public static explicit operator UnityAction<T>(Action<T> value) { return new UnityAction<T> { Callback=value }; }
     }
+    public class UnityEvent : UnityEngine.UI.ClickEvent { }
 }
 namespace UnityEngine.UI
 {
@@ -221,19 +231,9 @@ namespace UnityEngine.EventSystems
 public sealed class UIEventListener : UnityEngine.Component
 {
     public bool isMouseEnter;
-    public Action Enter,Exit;
-    public void OnPointerEnter(object data) { isMouseEnter=true; Enter(); }
-    public void OnPointerExit(object data) { isMouseEnter=false; Exit(); }
-}
-public sealed class UISkyTipEffect : UnityEngine.Component
-{
-    public UIEventListener e;
-    public string tips;
-    public static UISkyTipEffect Active;
-    public void InitData(string text,UnityEngine.Vector3 offset)
-    { tips=text;e=gameObject.AddComponent<UIEventListener>();e.Enter=OnPointerEnter;e.Exit=OnPointerExit; }
-    public void OnPointerEnter() { Active=this; }
-    public void OnPointerExit() { if(Active==this)Active=null; }
+    public UnityEngine.Events.UnityEvent onMouseEnter,onMouseExit;
+    public void OnPointerEnter(object data) { isMouseEnter=true;onMouseEnter.Invoke(); }
+    public void OnPointerExit(object data) { isMouseEnter=false;onMouseExit.Invoke(); }
 }
 public sealed class UITextInfoLong : UnityEngine.Component
 {
@@ -441,6 +441,14 @@ internal static class BookLayoutHarness
     private static void Check(bool value,string description) { if(!value) throw new Exception("FAIL: "+description); Console.WriteLine("PASS: "+description); }
     public static void Main(string[] args)
     {
+        var rightTip=BookView.FateTipBounds(new UnityEngine.Rect(10,20,200,32),280,90,new UnityEngine.Vector2(1000,500));
+        var leftTip=BookView.FateTipBounds(new UnityEngine.Rect(800,20,180,32),280,90,new UnityEngine.Vector2(1000,500));
+        var bottomTip=BookView.FateTipBounds(new UnityEngine.Rect(10,450,200,32),280,90,new UnityEngine.Vector2(1000,500));
+        var belowTip=BookView.FateTipBounds(new UnityEngine.Rect(20,20,360,32),280,90,new UnityEngine.Vector2(420,500));
+        Check(rightTip.x==218 && rightTip.y==20,"tooltip sits beside row with eight unit gap");
+        Check(leftTip.x+leftTip.width==792,"tooltip switches to left near right edge");
+        Check(bottomTip.y+bottomTip.height==492,"tooltip stays within bottom boundary");
+        Check(belowTip.y==60,"very wide row places tooltip below when neither side fits");
         PaperSkin.ArtDirectory=args[0];
         g.world.playerUnit.data.unitData.propertyData.Name="示例修士";
         for(int i=0;i<300;i++)
@@ -536,7 +544,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-25-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-26-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -602,33 +610,43 @@ internal static class BookLayoutHarness
             Check(columnScroll.content.childCount==34 && columnScroll.content.sizeDelta.y>columnScroll.viewport.sizeDelta.y && columnScroll.verticalScrollbar.gameObject.activeSelf,"all acquired entries live in clipped scrollable column");
             Check(columnScroll.verticalNormalizedPosition==.4f && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0")==stableRow,"unchanged refresh preserves inline rows and scroll position");
             var hovered=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_20");
-            var tip=hovered.GetComponent<UISkyTipEffect>();
-            Check(hovered.GetComponent<UnityEngine.UI.Button>()==null && tip!=null && !Walk(book).Any(t=>t.gameObject.name=="BHML_气运查看页"),"owned entries use native hover without buttons or navigation page");
-            tip.e.OnPointerEnter(null);
-            Check(UISkyTipEffect.Active==tip && tip.tips=="气运测试21\n"+new string('长',1600),"hover binds corresponding complete long introduction");
+            var hover=hovered.GetComponent<UIEventListener>();
+            Check(hovered.GetComponent<UnityEngine.UI.Button>()==null && hover!=null,"owned rows have hover listener without navigation button");
+            hover.OnPointerEnter(null);
+            var tip=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍");
+            Check(tip.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text==new string('长',1600)) && tip.sizeDelta.x<=300 && tip.sizeDelta.y<=300,"compact tooltip binds full long text and caps dimensions");
+            var tipScroll=Walk(tip).First(t=>t.gameObject.name=="BHML_气运介绍视口").GetComponent<UnityEngine.UI.ScrollRect>();
+            Check(tipScroll!=null && tipScroll.content.sizeDelta.y>tipScroll.viewport.sizeDelta.y,"long introduction scrolls inside compact tip");
             bookView.RefreshCharacter(true);
-            Check(UISkyTipEffect.Active==tip && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_20")==hovered,"unchanged refresh preserves hovered native tip");
-            tip.e.OnPointerExit(null);
-            Check(UISkyTipEffect.Active==null,"pointer exit hides native introduction");
-            tip.e.OnPointerEnter(null);columnScroll.onValueChanged.Invoke(new UnityEngine.Vector2(0,0));
-            Check(UISkyTipEffect.Active==null,"scroll hides tooltip anchored to old row position");
-            tip.e.OnPointerEnter(null);
-            search.text="修士299"; rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            Check(UISkyTipEffect.Active==null && !Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_气运行_")),"target switch clears hover and previous owned rows");
-            search.text="示例修士"; rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            tip=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UISkyTipEffect>();tip.e.OnPointerEnter(null);
-            var otherModule=Walk(book).First(t=>t.gameObject.name=="BHML_卷目1").GetComponent<UnityEngine.UI.Button>();otherModule.onClick.Invoke();
-            Check(UISkyTipEffect.Active==null,"module switch releases active fate tip");
+            Check(Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍")==tip,"unchanged refresh preserves hovered tip");
+            hover.OnPointerExit(null);tip.GetComponent<UIEventListener>().OnPointerEnter(null);UnityEngine.Time.unscaledTime+=.2f;bookView.RefreshCharacter();
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"moving from row into tip keeps scrollable introduction open");
+            tip.GetComponent<UIEventListener>().OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;bookView.RefreshCharacter();
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"leaving row and popup closes introduction");
+            hover.OnPointerEnter(null);columnScroll.onValueChanged.Invoke(new UnityEngine.Vector2(0,0));
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"column scroll clears tip from previous row position");
+            hover.OnPointerEnter(null);search.text="修士299";rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍" || t.gameObject.name.StartsWith("BHML_气运行_")),"target switch clears introduction and owned rows");
+            search.text="示例修士";rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            hover=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UIEventListener>();hover.OnPointerEnter(null);
+            Walk(book).First(t=>t.gameObject.name=="BHML_卷目1").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"module switch releases tip");
             Walk(book).First(t=>t.gameObject.name=="BHML_卷目0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             search.text="示例修士";rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
-            tip=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UISkyTipEffect>();tip.e.OnPointerEnter(null);
+            hover=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UIEventListener>();hover.OnPointerEnter(null);
             g.world.isIntoWorld=false;bookView.RefreshCharacter(true);
-            Check(UISkyTipEffect.Active==null && !Walk(book).Any(t=>t.gameObject.name.StartsWith("BHML_气运行_")),"unavailable world clears native tip and owned rows");
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍" || t.gameObject.name.StartsWith("BHML_气运行_")),"unavailable world clears tip and rows");
             Check(!book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="222"),"unavailable world clears old values");g.world.isIntoWorld=true;
             bookView.RefreshCharacter(true);
-            tip=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UISkyTipEffect>();tip.e.OnPointerEnter(null);
+            var shortEntry=g.conf.roleCreateFeature.Items[1000];ConfLocalText.Texts[shortEntry.tips]="移动速度+20，脚力+100，身法熟练提升速度+50%";bookView.RefreshCharacter(true);
+            hover=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UIEventListener>();hover.OnPointerEnter(null);
+            tip=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍");
+            Check(tip.sizeDelta.y<150,"short introduction has compact content-driven height");
+            using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
+            using(var graphics=Graphics.FromImage(bitmap))
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-26-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");
-            bookView.Dispose();bookView.Dispose();Check(UISkyTipEffect.Active==null && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
+            bookView.Dispose();bookView.Dispose();Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍") && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
         }
         Console.WriteLine("BookView geometry, page binding and GDI previews complete. Not a game screenshot.");
     }
