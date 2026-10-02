@@ -166,9 +166,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.21 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.22 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.21：紧凑题签、圆形关闭与七栏导航；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.22：总览与气运统一底框；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -193,8 +193,15 @@ namespace MOD_YtxSQ1.UI
                 tabMarks[i].gameObject.SetActive(i == index);
                 if (i < tabBrushes.Count) tabBrushes[i].gameObject.SetActive(i == index);
             }
-            Label(content, index == 0 ? "属性总览" : Modules[index], 0, 0, contentWidth - 120, 34, 25, Ink);
-            Label(content, index == 0 ? "角色信息 · 只读；灰色操作尚未开放" : "功能尚未开放", 0, 34, contentWidth - 120, 24, 16, Muted);
+            if (index == 0)
+            {
+                var panelWidth = contentWidth - 20;
+                var panelHeight = 64 + AttributeGroupTop(contentHeight - 64, panelWidth >= 1180) - 10;
+                var overview = Fill(content, "总览气运底框", 0, 0, panelWidth, panelHeight, new Color(.92f, .91f, .87f, .35f)).rectTransform;
+                Border(overview, panelWidth, panelHeight);
+            }
+            Label(content, index == 0 ? "属性总览" : Modules[index], index == 0 ? 12 : 0, 4, contentWidth - 132, 30, 25, Ink);
+            Label(content, index == 0 ? "角色信息 · 只读；灰色操作尚未开放" : "功能尚未开放", index == 0 ? 12 : 0, 34, contentWidth - 132, 24, 16, Muted);
             selectedIndex = index;
             if (index != 0)
             {
@@ -485,6 +492,11 @@ namespace MOD_YtxSQ1.UI
             camera.transform.position = new Vector3(bounds.center.x, bounds.center.y + bounds.size.y * .12f, position.z);
         }
 
+        private static float AttributeGroupTop(float viewportHeight, bool wide)
+        {
+            return wide ? Mathf.Max(154, viewportHeight - 342 - 84) : 154;
+        }
+
         private void BuildAttributeOverview()
         {
             var viewportHeight = contentHeight - 64;
@@ -492,7 +504,7 @@ namespace MOD_YtxSQ1.UI
             var wide = flowWidth >= 1180;
             var firstHeight = wide ? 342f : 506f;
             // 补充区之后不再额外留12单位，使正文底边与左侧对象栏一致。
-            var groupTop = wide ? Mathf.Max(154, viewportHeight - firstHeight - 84) : 154;
+            var groupTop = AttributeGroupTop(viewportHeight, wide);
             var fateHeight = groupTop - 18;
             var extraTop = wide ? groupTop + firstHeight + 12 : groupTop + firstHeight + 18 + 332 + 12;
             var extraHeight = wide ? 72f : 126f;
@@ -527,11 +539,11 @@ namespace MOD_YtxSQ1.UI
             }
 
             string[] fates = { "先天气运", "后天气运", "逆天改命", "所有气运" };
-            var fateWidth = (flowWidth - 36) / 5;
+            var fateWidth = (flowWidth - 16 - 36) / 5;
             for (int i = 0; i < fates.Length; i++)
             {
                 var panelWidth = i == 3 ? fateWidth * 2 : fateWidth;
-                var panel = Card(flow, fates[i], i * (fateWidth + 12), 0, panelWidth, fateHeight);
+                var panel = Card(flow, fates[i], 8 + i * (fateWidth + 12), 0, panelWidth, fateHeight);
                 Border(panel, panelWidth, fateHeight);
                 Label(panel, fates[i], 8, 8, panelWidth - (i == 3 ? 116 : 16), 30, 17, Ink, TextAnchor.MiddleCenter);
                 Label(panel, "气运信息尚未接入", 8, 48, panelWidth - 16, 38, 14, Muted, TextAnchor.MiddleCenter);
