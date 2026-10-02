@@ -25,6 +25,8 @@ namespace UnityEngine
         }
         public static void Destroy(Object obj)
         {
+            var texture=obj as Texture2D;
+            if(texture!=null && texture.Pixels!=null) { texture.Pixels=null;Texture2D.LiveProcedural--; }
             var go = obj as GameObject;
             if (go != null) ModelRenderTexture.ReleaseNative(go);
             if (go != null) { go.activeInHierarchy = false; if (go.transform.parent != null) go.transform.parent.Children.Remove(go.transform); }
@@ -117,7 +119,15 @@ namespace UnityEngine
         public static Font CreateDynamicFontFromOSFont(string name,int size) { return new Font(); }
         public bool HasCharacter(char value) { return true; }
     }
-    public class Texture2D : Object { public string Path; }
+    public enum TextureFormat { RGBA32 }
+    public class Texture2D : Object
+    {
+        public string Path; public Color[] Pixels; public int Width,Height;public static int LiveProcedural;
+        public Texture2D() { }
+        public Texture2D(int width,int height,TextureFormat format,bool mipmap) { Width=width;Height=height;LiveProcedural++; }
+        public void SetPixels(Color[] pixels) { Pixels=pixels; }
+        public void Apply() { }
+    }
     public enum TextAnchor { MiddleLeft,MiddleCenter,MiddleRight }
     public enum HorizontalWrapMode { Wrap,Overflow }
     public enum VerticalWrapMode { Truncate }
@@ -380,6 +390,15 @@ internal static class BookLayoutHarness
                         graphics.DrawImage(bitmap,rect,source,GraphicsUnit.Pixel);
                     }
                 }
+                else if(texture.texture.Pixels!=null)
+                {
+                    var data=texture.texture;
+                    using(var bitmap=new Bitmap(data.Width,data.Height))
+                    {
+                        for(int py=0;py<data.Height;py++) for(int px=0;px<data.Width;px++) bitmap.SetPixel(px,py,Color(data.Pixels[py*data.Width+px]));
+                        graphics.DrawImage(bitmap,rect);
+                    }
+                }
                 else using(var brush=new SolidBrush(System.Drawing.Color.FromArgb(242,29,32,29)))
                     graphics.FillPolygon(brush,new[] {new PointF(x+5,y+5),new PointF(x+rect.Width-12,y+2),new PointF(x+rect.Width,y+rect.Height/2),new PointF(x+rect.Width-7,y+rect.Height-4),new PointF(x+3,y+rect.Height-2),new PointF(x,y+rect.Height/2)});
             }
@@ -432,12 +451,18 @@ internal static class BookLayoutHarness
         {
             g.world.playerUnit.data.dynUnitData.attack.Stored=77;
             var canvas=new UnityEngine.GameObject("canvas");canvas.transform.sizeDelta=new UnityEngine.Vector2(sizes[s][0],sizes[s][1]);g.ui=new LayoutUI { canvas=canvas.transform };
-            var window=new UITextInfoLong();var bookView=new BookView();bookView.Build(window,()=>{});
+            bool closeRequested=false;
+            var window=new UITextInfoLong();var bookView=new BookView();bookView.Build(window,()=>{closeRequested=true;});
             var originalButton=window.GetComponentsInChildren<UnityEngine.UI.Button>(true).First(button=>button.gameObject.name=="G:btnOK");
             var inactiveButton=window.GetComponentsInChildren<UnityEngine.UI.Button>(true).First(button=>button.gameObject.name=="native inactive");
             Check(!originalButton.gameObject.activeSelf && !originalButton.interactable,"native confirm button is inactive rather than only invisible");
             var book=(UnityEngine.RectTransform)Walk(window.transform).First(t=>t.gameObject.name=="BHML_秘录外框");
             var texts=book.GetComponentsInChildren<UnityEngine.UI.Text>(true);
+            string[] expectedTabs={"属性","道具","功法","关系","功能","批量","保存"};
+            var tabs=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_卷目") && t.gameObject.name!="BHML_卷目区").ToArray();
+            Check(tabs.Length==7 && tabs.Select(t=>t.GetComponentInChildren<UnityEngine.UI.Text>().text).SequenceEqual(expectedTabs),"seven reference navigation entries in order without sponsor tab");
+            var closeButton=Walk(book).First(t=>t.gameObject.name=="BHML_关闭").GetComponent<UnityEngine.UI.Button>();
+            Check(closeButton.targetGraphic is UnityEngine.UI.RawImage && ((UnityEngine.UI.RawImage)closeButton.targetGraphic).texture.Pixels!=null && closeButton.GetComponentInChildren<UnityEngine.UI.Text>().text=="×","round framed x close control exists");
             Check(texts.Any(t=>t.text=="示例修士") && texts.Any(t=>t.text=="16 / 60"),"real BookView reads player and age at "+sizes[s][0]);
             bool allLabels=true;
             foreach(var group in MOD_YtxSQ1.Services.CharacterSnapshot.Labels) foreach(var label in group)
@@ -478,7 +503,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-20-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-21-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -528,7 +553,8 @@ internal static class BookLayoutHarness
             Check(book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="222"),"returning role page and refresh rebinds values");
             g.world.isIntoWorld=false;bookView.RefreshCharacter(true);
             Check(!book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="222"),"unavailable world clears old values");g.world.isIntoWorld=true;
-            bookView.Dispose();bookView.Dispose();Check(original.enabled && ModelRenderTexture.Active==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores original graphics and button active states, releases portrait and is repeatable");
+            closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");
+            bookView.Dispose();bookView.Dispose();Check(original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
         }
         Console.WriteLine("BookView geometry, page binding and GDI previews complete. Not a game screenshot.");
     }

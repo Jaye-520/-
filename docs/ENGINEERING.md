@@ -11,7 +11,7 @@
 | ModMain.cs | 初始化、帧计时器、重复释放和异常熔断 |
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
-| UI/BookView.cs | 八模块布局、普通搜索、名单、角色属性、立绘和固定署名 |
+| UI/BookView.cs | 七项导航布局、普通搜索、名单、角色属性、立绘和固定署名 |
 | UI/WindowInputScope.cs | 本搜索框无效焦点目标保护、光标整体平移与补丁释放 |
 | UI/PaperSkin.cs | 宣纸、墨刷和山水纹理加载与释放 |
 | Services/CharacterRoster.cs | 名单查询、存活有效过滤、ID去重 |

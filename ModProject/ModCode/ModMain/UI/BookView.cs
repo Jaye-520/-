@@ -18,7 +18,9 @@ namespace MOD_YtxSQ1.UI
         private static readonly Color Paper = new Color(.862f, .855f, .832f, 1f);
         private static readonly Color Gold = new Color(.48f, .49f, .41f, 1f);
         private static readonly Color Cinnabar = new Color(.56f, .25f, .19f, 1f);
-        private static readonly string[] Modules = { "角色", "物品", "修炼", "功法", "人物关系", "宗门世界", "战斗", "设置" };
+        private static readonly string[] Modules = { "属性", "道具", "功法", "关系", "功能", "批量", "保存" };
+        private Texture2D closeTexture;
+        private const float BodyTop = 124;
         private readonly List<Graphic> hiddenGraphics = new List<Graphic>();
         private readonly List<Button> nativeButtons = new List<Button>();
         private readonly List<bool> nativeButtonStates = new List<bool>();
@@ -125,21 +127,20 @@ namespace MOD_YtxSQ1.UI
                 Texture(book, "山水宣纸", 0, 0, width, height, skin.Landscape, new Rect(0, 0, 1, 1));
             else if (skin != null) Texture(book, "纸纤维", 6, 6, width - 12, height - 12, skin.Paper,
                 new Rect(0, 0, (width - 12) / 192f, (height - 12) / 192f));
-            var header = Box("题签区", book, 16, 10, width - 32, 72);
-            Label(header, "鬼谷八荒 / 修改器", 16, 19, 240, 30, 18, Ink);
-            var title = Box("墨迹题签", header, (width - 32 - 380) / 2f, 5, 380, 54);
+            var header = Box("题签区", book, 16, 10, width - 32, 50);
+            var title = Box("墨迹题签", header, (width - 32 - 330) / 2f, 0, 330, 48);
             // UV取透明素材的墨迹范围，避免图像上下留白使标题墨底过薄。
             if (skin != null && skin.TitleBrush != null)
-                Texture(title, "参考标题墨底", 0, 0, 380, 54, skin.TitleBrush,
+                Texture(title, "参考标题墨底", 0, 0, 330, 48, skin.TitleBrush,
                     new Rect(24f / 2172f, 170f / 724f, 2128f / 2172f, 376f / 724f));
-            else if (skin != null) Texture(title, "墨迹", 0, 0, 380, 54, skin.Brush, new Rect(0, 0, 1, 1));
-            else Fill(title, "墨底", 12, 6, 356, 42, Ink);
-            Label(title, "八荒秘录", 0, 0, 380, 54, 34, new Color(.95f, .94f, .90f, 1f), TextAnchor.MiddleCenter);
-            MakeButton(header, "关闭", width - 138, 18, 90, 36, "关闭", close);
-            Fill(book, "标题分界", 20, 85, width - 40, 1, Gold);
+            else if (skin != null) Texture(title, "墨迹", 0, 0, 330, 48, skin.Brush, new Rect(0, 0, 1, 1));
+            else Fill(title, "墨底", 12, 4, 306, 40, Ink);
+            Label(title, "八荒秘录", 0, 0, 330, 48, 30, new Color(.95f, .94f, .90f, 1f), TextAnchor.MiddleCenter);
+            MakeCloseButton(header, width - 82, 4, close);
+            Fill(book, "标题分界", 20, 60, width - 40, 1, Gold);
 
-            var navigation = Box("卷目区", book, 24, 98, width - 48, 44);
-            var tabWidth = (width - 48 - 7 * 12) / 8f;
+            var navigation = Box("卷目区", book, 24, 64, width - 48, 44);
+            var tabWidth = (width - 48 - (Modules.Length - 1) * 12) / Modules.Length;
             for (int i = 0; i < Modules.Length; i++)
             {
                 int index = i;
@@ -155,19 +156,19 @@ namespace MOD_YtxSQ1.UI
                 tabMarks.Add(Fill(tab.GetComponent<RectTransform>(), "选中标记", 8, 12, 3, 18, Cinnabar));
             }
             targetWidth = width < 1300 ? 190f : 224f;
-            var bodyHeight = height - 224;
+            var bodyHeight = height - BodyTop - 66;
             BuildTargetPanel(book, bodyHeight);
             contentWidth = width - targetWidth - 76;
             contentHeight = bodyHeight;
-            content = Box("卷页", book, targetWidth + 52, 158, contentWidth, contentHeight);
+            content = Box("卷页", book, targetWidth + 52, BodyTop, contentWidth, contentHeight);
 
             Fill(book, "页脚分界", 24, height - 54, width - 48, 1, Gold);
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.20 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.21 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.20：有框关闭，重开读取；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.21：紧凑题签、圆形关闭与七栏导航；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -177,7 +178,7 @@ namespace MOD_YtxSQ1.UI
             attributeTexts.Clear();
             targetPanel.gameObject.SetActive(index == 0);
             contentWidth = index == 0 ? bookWidth - targetWidth - 76 : bookWidth - 48;
-            content.anchoredPosition = new Vector2(index == 0 ? targetWidth + 52 : 24, -158);
+            content.anchoredPosition = new Vector2(index == 0 ? targetWidth + 52 : 24, -BodyTop);
             content.sizeDelta = new Vector2(contentWidth, contentHeight);
             for (int i = content.childCount - 1; i >= 0; i--)
             {
@@ -210,7 +211,7 @@ namespace MOD_YtxSQ1.UI
 
         private void BuildTargetPanel(RectTransform book, float height)
         {
-            targetPanel = Card(book, "对象栏", 24, 158, targetWidth, height);
+            targetPanel = Card(book, "对象栏", 24, BodyTop, targetWidth, height);
             Label(targetPanel, "操作对象", 14, 12, targetWidth - 28, 30, 21, Ink);
             rosterCount = Label(targetPanel, "", 14, 43, targetWidth - 28, 20, 14, Muted);
             BuildSearchInput();
@@ -747,6 +748,36 @@ namespace MOD_YtxSQ1.UI
             return image;
         }
 
+        private void MakeCloseButton(RectTransform parent, float left, float top, Action action)
+        {
+            // 自绘小圆底，不依赖游戏版本未知的Sprite；纹理由本视图释放。
+            const int size = 64;
+            closeTexture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++) for (int x = 0; x < size; x++)
+            {
+                var dx = x - 31.5; var dy = y - 31.5;
+                var radius = Math.Sqrt(dx * dx + dy * dy);
+                var alpha = (float)Math.Max(0, Math.Min(1, 31 - radius));
+                var edge = radius > 29 ? new Color(.12f, .13f, .12f, alpha) :
+                    radius > 26 ? new Color(.61f, .55f, .36f, alpha) : new Color(.18f, .20f, .18f, alpha);
+                pixels[y * size + x] = edge;
+            }
+            closeTexture.SetPixels(pixels);
+            closeTexture.Apply();
+            var image = Texture(parent, "关闭", left, top, 38, 38, closeTexture, new Rect(0, 0, 1, 1));
+            image.raycastTarget = true;
+            var button = image.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            var colors = button.colors;
+            colors.normalColor = colors.selectedColor = Color.white;
+            colors.highlightedColor = new Color(1f, .96f, .80f, 1f);
+            colors.pressedColor = new Color(.78f, .75f, .64f, 1f);
+            button.colors = colors;
+            button.onClick.AddListener((UnityAction)action);
+            Label(image.rectTransform, "×", 0, 0, 38, 38, 30, new Color(.88f, .76f, .43f, 1f), TextAnchor.MiddleCenter);
+        }
+
         private Button MakeButton(RectTransform parent, string name, float left, float top, float width, float height, string text, Action action)
         {
             var image = Fill(parent, name, left, top, width, height, new Color(.84f, .82f, .74f, 1f), true);
@@ -785,6 +816,8 @@ namespace MOD_YtxSQ1.UI
                 Cleanup(() => previousRoot.SetActive(false), "隐藏视图");
                 Cleanup(() => UnityEngine.Object.Destroy(previousRoot), "视图对象");
             }
+            var previousCloseTexture = closeTexture; closeTexture = null;
+            if (previousCloseTexture != null) Cleanup(() => UnityEngine.Object.Destroy(previousCloseTexture), "关闭按钮纹理");
             var previousSkin = skin; skin = null;
             if (previousSkin != null) Cleanup(previousSkin.Dispose, "纸墨纹理");
             var previousFont = calligraphyFont; calligraphyFont = null;
