@@ -6,9 +6,20 @@ using UnityEngine;
 namespace MOD_YtxSQ1.UI
 {
     // 代码生成的轻量 UI 材质：边界明确，不依赖原生图集裁切或新增 AB。
-    // 每个窗口两张小纹理、山水底图与独立标题墨底；只读使用、随视图释放。
+    // 固定四张只读纹理由MOD生命周期持有，不缓存人物或存档数据。
     internal sealed class PaperSkin : IDisposable
     {
+        private static PaperSkin shared;
+        internal static PaperSkin Acquire()
+        {
+            if (shared == null) shared = new PaperSkin();
+            return shared;
+        }
+        internal static void ClearCache()
+        {
+            var previous = shared; shared = null;
+            if (previous != null) previous.Dispose();
+        }
         public Texture2D Paper { get; private set; }
         public Texture2D Brush { get; private set; }
         public Texture2D Landscape { get; private set; }
@@ -25,7 +36,7 @@ namespace MOD_YtxSQ1.UI
                     for (int x = 0; x < 192; x++)
                     {
                         var noise = (float)(random.NextDouble() - .5) * .025f;
-                        var fibers = Mathf.Sin(x * (float)Math.PI / 3f) * .0035f + Mathf.Sin(y * (float)Math.PI / 4f) * .004f;
+                        var fibers = (float)Math.Sin(x * (float)Math.PI / 3f) * .0035f + (float)Math.Sin(y * (float)Math.PI / 4f) * .004f;
                         var shade = noise + fibers;
                         pixels[y * 192 + x] = new Color(.862f + shade, .855f + shade, .832f + shade, 1f);
                     }
@@ -36,13 +47,13 @@ namespace MOD_YtxSQ1.UI
                 pixels = new Color[384 * 64];
                 for (int x = 0; x < 384; x++)
                 {
-                    var edge = Mathf.Min(1f, Mathf.Min(x / 24f, (383 - x) / 30f));
-                    var half = 22f * Mathf.Sqrt(Mathf.Max(0, edge));
-                    var center = 32f + Mathf.Sin(x * .035f) * 1.5f;
+                    var edge = Math.Min(1f, Math.Min(x / 24f, (383 - x) / 30f));
+                    var half = 22f * (float)Math.Sqrt(Math.Max(0, edge));
+                    var center = 32f + (float)Math.Sin(x * .035f) * 1.5f;
                     var fray = (float)random.NextDouble() * 3f;
                     for (int y = 0; y < 64; y++)
                     {
-                        var alpha = Mathf.Clamp01((half + fray - Mathf.Abs(y - center)) / 2.5f) * .96f;
+                        var alpha = Math.Min(1f, Math.Max(0f, (half + fray - Math.Abs(y - center)) / 2.5f)) * .96f;
                         if ((y % 13 == 0 || y % 19 == 2) && random.NextDouble() < .15) alpha *= .55f;
                         pixels[y * 384 + x] = new Color(.12f, .13f, .12f, alpha);
                     }

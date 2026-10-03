@@ -10,10 +10,22 @@ namespace MOD_YtxSQ1.Core
     internal sealed class WorkshopController : IDisposable
     {
         private readonly WorkshopWindow window = new WorkshopWindow();
+        private float nextIdleCheck;
 
         public void Update()
         {
             CharacterSave.Poll();
+            var togglePressed = Input.GetKeyDown(KeyCode.F8);
+            // 关闭时只做低频世界状态检查；按键仍逐帧检测，不增加打开延迟。
+            if (!window.IsOpen && !togglePressed)
+            {
+                if (Time.unscaledTime < nextIdleCheck) return;
+                nextIdleCheck = Time.unscaledTime + .5f;
+                if (g.isDestroy || g.world == null || g.world.isDestroy || !g.world.isIntoWorld)
+                { CharacterEditSession.Shared.Sync(null); CharacterSave.Sync(null); }
+                window.RefreshOwnership();
+                return;
+            }
             if (g.isDestroy || g.world == null || g.world.isDestroy || !g.world.isIntoWorld)
             { CharacterEditSession.Shared.Sync(null); CharacterSave.Sync(null); }
             if (g.isDestroy || g.ui == null) return;
@@ -25,7 +37,7 @@ namespace MOD_YtxSQ1.Core
                 return;
             }
             window.RefreshCharacter();
-            if (!Input.GetKeyDown(KeyCode.F8) || IsEditingText()) return;
+            if (!togglePressed || IsEditingText()) return;
             // 同层还有其他界面时不抢占入口；自己的窗口可用 F8 合上。
             var top = g.ui.GetLayerTopUI(map.uiType.uiLayer);
             if (!window.IsOpen && top != map) return;

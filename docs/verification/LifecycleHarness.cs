@@ -7,6 +7,8 @@ using MOD_YtxSQ1.UI;
 
 namespace UnityEngine
 {
+    public enum KeyCode { F8 }
+    public static class Input { public static bool Pressed; public static bool GetKeyDown(KeyCode key) { return Pressed; } }
     public static class Debug
     {
         public static int Errors;
@@ -18,9 +20,10 @@ namespace UnityEngine
 public sealed class GameObject { public bool activeInHierarchy = true; }
 public sealed class UITextInfoLong
 {
+    public static int FailInitCount;
     public GameObject gameObject = new GameObject();
     public int InitCount;
-    public void InitData(string title, string info, string button) { InitCount++; }
+    public void InitData(string title, string info, string button) { InitCount++; if (FailInitCount > 0) { FailInitCount--; throw new Exception("init failure"); } }
     public void InitInputField() { }
 }
 public enum UIType { TextInfoLong }
@@ -36,10 +39,11 @@ public sealed class FakeTimer
 }
 public sealed class FakeUI
 {
+    public bool ThrowOpen, ReturnNull;
     public UITextInfoLong Current;
     public int Closes;
     public UITextInfoLong GetUI(UIType type) { return Current; }
-    public T OpenUI<T>(UIType type) where T : class { Current = new UITextInfoLong(); return Current as T; }
+    public T OpenUI<T>(UIType type) where T : class { if (ThrowOpen) throw new Exception("open failure"); if (ReturnNull) return null; Current = new UITextInfoLong(); return Current as T; }
     public void CloseUI(UITextInfoLong window, bool animated) { Closes++; Current = null; }
 }
 public static class g
@@ -49,10 +53,12 @@ public static class g
 }
 namespace MOD_YtxSQ1.UI
 {
+    internal static class PaperSkin { internal static int Clears; internal static void ClearCache() { Clears++; } }
     internal static class WindowInputScope
     {
         public static bool Active;
-        public static void Attach(UITextInfoLong window, object input) { Active=true; }
+        public static bool ThrowAttach;
+        public static void Attach(UITextInfoLong window, object input) { Active=true; if (ThrowAttach) throw new Exception("attach failure"); }
         public static void Detach() { Active=false; }
     }
     internal sealed class BookView
@@ -90,6 +96,8 @@ internal static class LifecycleHarness
     private static void Reset()
     {
         g.ui = new FakeUI(); g.timer = new FakeTimer();
+        UnityEngine.Input.Pressed = false;
+        UITextInfoLong.FailInitCount = 0; WindowInputScope.ThrowAttach = false; WindowInputScope.Active = false;
         BookView.ThrowBuild = false; BookView.ThrowDispose = false; BookView.Disposals = 0;
         MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = false;
         MOD_YtxSQ1.Core.WorkshopController.ThrowDispose = false;
@@ -97,6 +105,26 @@ internal static class LifecycleHarness
     }
     public static void Main()
     {
+        Reset(); var cycles = new WorkshopWindow();
+        for (int i = 0; i < 30; i++) { cycles.Toggle(); if (!cycles.IsOpen || !WindowInputScope.Active) throw new Exception("open cycle " + i); cycles.Close(); if (cycles.IsOpen || WindowInputScope.Active) throw new Exception("close cycle " + i); }
+        Check(g.ui.Closes == 30 && BookView.Disposals == 30, "30 open-close cycles release each view and input patch");
+
+        Reset(); g.ui.ThrowOpen = true; var failed = new WorkshopWindow(); failed.Toggle();
+        Check(!failed.IsOpen && !WindowInputScope.Active, "native open exception is contained locally");
+        g.ui.ThrowOpen = false; failed.Toggle(); Check(failed.IsOpen, "F8 can retry after native open failure"); failed.Close();
+
+        Reset(); g.ui.ReturnNull = true; failed = new WorkshopWindow(); failed.Toggle();
+        Check(!failed.IsOpen, "null native window does not escape as update failure");
+
+        Reset(); UITextInfoLong.FailInitCount = 1; failed = new WorkshopWindow(); failed.Toggle();
+        Check(failed.IsOpen && g.ui.Current.InitCount == 2 && !WindowInputScope.Active, "initialization failure restores native fallback"); failed.Close();
+
+        Reset(); UITextInfoLong.FailInitCount = 2; failed = new WorkshopWindow(); failed.Toggle();
+        Check(!failed.IsOpen && g.ui.Current == null && g.ui.Closes == 1, "failed fallback closes owned window without escaping");
+
+        Reset(); WindowInputScope.ThrowAttach = true; failed = new WorkshopWindow(); failed.Toggle();
+        Check(failed.IsOpen && BookView.Disposals == 1 && !WindowInputScope.Active, "partial input attachment is removed before fallback"); failed.Close();
+
         Reset();
         MOD_YtxSQ1.Services.CharacterEditSession.Shared.Count=5; var window = new WorkshopWindow(); window.Toggle(); Check(MOD_YtxSQ1.Services.CharacterEditSession.Shared.Count==0,"opening discards unapplied drafts before building fresh view");
         BookView.ThrowDispose = true; window.Close(); window.Close();
@@ -130,6 +158,14 @@ internal static class LifecycleHarness
 
         Reset(); mod = new ModMain(); mod.Init(); mod.Init(); mod.Destroy();
         Check(g.timer.Stops == 2 && MOD_YtxSQ1.Core.WorkshopController.Disposals == 2, "reinitialization releases each previous lifecycle");
+        Check(PaperSkin.Clears > 0, "mod destruction releases fixed art cache");
+        Reset(); mod = new ModMain(); mod.Init(); MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = true;
+        var beforeError = UnityEngine.Debug.Errors; g.timer.Callback();
+        for (int i = 0; i < 1000; i++) g.timer.Callback();
+        Check(g.timer.Stops == 0 && UnityEngine.Debug.Errors == beforeError + 1 && MOD_YtxSQ1.Core.WorkshopController.Disposals == 1, "faulted idle keeps retry entry without repeated errors or controller creation");
+        MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = false; UnityEngine.Input.Pressed = true; g.timer.Callback(); UnityEngine.Input.Pressed = false;
+        Check(!(bool)typeof(ModMain).GetField("updateFailed", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(mod), "F8 recovers after a transient update error");
+        mod.Destroy(); Check(g.timer.Stops == 1 && MOD_YtxSQ1.Core.WorkshopController.Disposals == 2, "recovered controller and retained timer release on unload");
         Console.WriteLine("TOTAL: " + passes);
     }
 }

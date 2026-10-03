@@ -108,6 +108,14 @@ internal static class CharacterSaveHarness
         Check(!CharacterActions.Execute("player","满状态",null,out result) && status.hp.value==123 && status.mp.value==12 && status.mood.value==0 && CharacterSave.Pending==0,"status setter failure restores preceding and failing resources");
         Reset();status=g.world.playerUnit.data.dynUnitData;status.hp.Bonus=10;g.conf.roleGrade.Overrides[104]=new GradeItem{id=104,grade=3,phase=1};Stage(1,11,"104");Commit();
         Check(status.hp.value==status.hpMax.value,"realm resource refill preserves additive bonus rather than assigning computed maximum as base");g.data.Complete(true);CharacterSave.Poll();
+        Reset();Stage(0,4,"100");CharacterSave.Commit(session,(ok,m)=>{throw new Exception("closed UI feedback");});
+        Check(CharacterSave.Busy && g.data.Calls==1 && CharacterSave.Pending>0,"throwing start feedback cannot reset in-flight save state");
+        g.data.Complete(true);CharacterSave.Poll();
+        Check(!CharacterSave.Busy && CharacterSave.Pending==0,"throwing completion feedback cannot discard successful save result");
+        Reset();Stage(0,4,"100");CharacterSave.Commit(session,null);g.data.Complete(false);CharacterSave.Poll();
+        Check(!CharacterSave.Busy && CharacterSave.Pending>0,"missing feedback recipient still preserves failure for retry");
+        Reset();Stage(0,4,"100");DataMgr.isSaveData=true;Commit();
+        Check(g.data.Calls==0 && g.world.playerUnit.data.dynUnitData.hp.value==123,"native save in progress blocks writes before applying drafts");DataMgr.isSaveData=false;
         Console.WriteLine(passed+" save/catalog/native-adapter checks passed; substitutes are not in-game persistence proof");
     }
 }

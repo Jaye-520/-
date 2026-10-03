@@ -31,6 +31,12 @@ namespace MOD_YtxSQ1.Services
         }
         internal static void Commit(CharacterEditSession session, Action<bool, string> report)
         {
+            var receiver = report;
+            report = (success, message) =>
+            {
+                try { if (receiver != null) receiver(success, message); }
+                catch (Exception ex) { UnityEngine.Debug.LogWarning("[八荒秘录] 保存反馈显示失败，保存状态独立保留：" + ex.GetType().Name + ": " + ex.Message); }
+            };
             if (Busy || g.data == null || DataMgr.isSaveData) { report(false, "游戏正在保存，请稍候"); return; }
             Sync(CharacterReader.ContextKey());
             if (session.Context != context || string.IsNullOrEmpty(context)) { report(false, "存档上下文已失效"); return; }

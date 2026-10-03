@@ -26,11 +26,12 @@ namespace MOD_YtxSQ1.Services
                 Add(entries, seen, player, ownId);
                 // 包含隐藏单位，避免把隐身/暂未显示的存活修士漏出总名单。
                 var units = g.world.unit.GetUnits(true);
+                var unitCount = units == null ? 0 : units.Count;
                 if (units != null)
-                    for (int i = 0; i < units.Count; i++) Add(entries, seen, units[i], ownId);
+                    for (int i = 0; i < unitCount; i++) Add(entries, seen, units[i], ownId);
                 entries.Sort((a, b) => a.IsPlayer != b.IsPlayer ? (a.IsPlayer ? -1 : 1) :
                     StringComparer.CurrentCulture.Compare(a.Name, b.Name));
-                UnityEngine.Debug.Log("[八荒秘录] 修士名单：含隐藏单位原始数=" + (units == null ? 0 : units.Count) +
+                UnityEngine.Debug.Log("[八荒秘录] 修士名单：含隐藏单位原始数=" + unitCount +
                     "；存活有效去重数（含自己）=" + entries.Count);
                 reason = null;
                 return true;
@@ -46,10 +47,16 @@ namespace MOD_YtxSQ1.Services
 
         private static void Add(List<CharacterEntry> entries, HashSet<string> seen, WorldUnitBase unit, string ownId)
         {
-            if (unit == null || unit.isDie || unit.data == null || unit.data.unitData == null || unit.data.unitData.propertyData == null) return;
-            var id = unit.data.unitData.unitID;
+            if (unit == null || unit.isDie) return;
+            var data = unit.data;
+            if (data == null) return;
+            var unitData = data.unitData;
+            if (unitData == null) return;
+            var property = unitData.propertyData;
+            if (property == null) return;
+            var id = unitData.unitID;
             if (string.IsNullOrEmpty(id) || !seen.Add(id)) return;
-            entries.Add(new CharacterEntry(id, unit.data.unitData.propertyData.GetName() ?? "无名修士", id == ownId));
+            entries.Add(new CharacterEntry(id, property.GetName() ?? "无名修士", id == ownId));
         }
     }
 }

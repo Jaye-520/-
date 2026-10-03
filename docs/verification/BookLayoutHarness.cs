@@ -14,6 +14,7 @@ namespace UnityEngine
     public enum KeyCode { Return,KeypadEnter,Escape,Tab }
     public static class Input { public static string compositionString=""; public static bool MouseDown,Submit,Escape; public static Vector2 mousePosition;public static bool GetMouseButtonDown(int button) { return MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return || Escape && key==KeyCode.Escape; } }
     public class Canvas : Component { public Camera worldCamera; }
+    public class CanvasGroup : Component { public float alpha; public bool interactable,blocksRaycasts; }
     public static class RectTransformUtility
     {
         public static bool Inside=true;public static bool RectangleContainsScreenPoint(RectTransform rect,Vector2 point,Camera camera) { return Inside; }
@@ -89,6 +90,7 @@ namespace UnityEngine
     }
     public class GameObject : Object
     {
+        public static string ThrowDeactivateName;
         public string name; public int layer; public bool activeInHierarchy=true; public RectTransform transform;
         public bool activeSelf { get { return activeInHierarchy; } }
         public readonly List<Component> Components = new List<Component>();
@@ -101,7 +103,7 @@ namespace UnityEngine
         public T GetComponent<T>() where T:class { return Components.OfType<T>().FirstOrDefault(); }
         public T[] GetComponentsInChildren<T>(bool inactive) where T:class { return transform.GetComponentsInChildren<T>(inactive); }
         public T GetComponentInChildren<T>(bool inactive) where T:class { return GetComponentsInChildren<T>(inactive).FirstOrDefault(); }
-        public void SetActive(bool active) { activeInHierarchy=active; }
+        public void SetActive(bool active) { if (!active && name == ThrowDeactivateName) throw new Exception("injected deactivate failure"); activeInHierarchy=active; }
     }
     public class Transform : Component
     {
@@ -349,6 +351,7 @@ namespace MOD_YtxSQ1.UI
 {
     internal sealed class PaperSkin : IDisposable
     {
+        internal static PaperSkin Acquire() { return new PaperSkin(); }
         public static string ArtDirectory;
         public UnityEngine.Texture2D Paper=new UnityEngine.Texture2D(), Brush=new UnityEngine.Texture2D();
         public UnityEngine.Texture2D Landscape=new UnityEngine.Texture2D { Path=Path.Combine(ArtDirectory,"InkLandscape-v1.png") };
@@ -434,6 +437,11 @@ internal static class BookLayoutHarness
     private static void Check(bool value,string description) { if(!value) throw new Exception("FAIL: "+description); Console.WriteLine("PASS: "+description); }
     public static void Main(string[] args)
     {
+        try { Run(args); }
+        catch (Exception ex) { Console.WriteLine("FAIL TYPE: " + ex.GetType().Name); Console.WriteLine("FAIL MESSAGE: " + ex.Message); Environment.ExitCode=1; }
+    }
+    private static void Run(string[] args)
+    {
         var rightTip=BookView.FateTipBounds(new UnityEngine.Rect(10,20,200,32),280,90,new UnityEngine.Vector2(1000,500));
         var leftTip=BookView.FateTipBounds(new UnityEngine.Rect(800,20,180,32),280,90,new UnityEngine.Vector2(1000,500));
         var bottomTip=BookView.FateTipBounds(new UnityEngine.Rect(10,450,200,32),280,90,new UnityEngine.Vector2(1000,500));
@@ -494,6 +502,12 @@ internal static class BookLayoutHarness
             var canvas=new UnityEngine.GameObject("canvas");canvas.transform.sizeDelta=new UnityEngine.Vector2(sizes[s][0],sizes[s][1]);g.ui=new LayoutUI { canvas=canvas.transform };
             bool closeRequested=false;
             var window=new UITextInfoLong();var bookView=new BookView();bookView.Build(window,()=>{closeRequested=true;});
+            var appearance=window.GetComponentInChildren<UnityEngine.CanvasGroup>();
+            Check(appearance!=null && appearance.alpha==0 && !appearance.interactable && appearance.blocksRaycasts,"opening starts transparent with blocked actions at "+sizes[s][0]);
+            UnityEngine.Time.unscaledTime+=.08f;bookView.RefreshCharacter();
+            Check(appearance.alpha>.4f && appearance.alpha<.6f && !appearance.interactable,"opening progresses before one-second data refresh at "+sizes[s][0]);
+            UnityEngine.Time.unscaledTime+=.09f;bookView.RefreshCharacter();
+            Check(appearance.alpha==1 && appearance.interactable,"opening completes and enables actions at "+sizes[s][0]);
             var originalButton=window.GetComponentsInChildren<UnityEngine.UI.Button>(true).First(button=>button.gameObject.name=="G:btnOK");
             var inactiveButton=window.GetComponentsInChildren<UnityEngine.UI.Button>(true).First(button=>button.gameObject.name=="native inactive");
             Check(!originalButton.gameObject.activeSelf && !originalButton.interactable,"native confirm button is inactive rather than only invisible");
@@ -741,7 +755,13 @@ internal static class BookLayoutHarness
             UnityEngine.Time.frameCount++;UnityEngine.Input.Escape=true;bookView.RefreshCharacter();UnityEngine.Input.Escape=false;
             Check(closeRequested,"Escape forwards window close callback when no editor or child view is open");
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");
-            bookView.Dispose();bookView.Dispose();Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍") && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
+            Walk(book).First(t=>t.gameObject.name=="BHML_编辑值_0:4:0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            var faultEditor=Walk(book).First(t=>t.gameObject.name=="BHML_属性输入_0:4:0").GetComponent<UnityEngine.UI.InputField>();
+            UnityEngine.GameObject.ThrowDeactivateName=faultEditor.gameObject.name;
+            bookView.Dispose();
+            UnityEngine.GameObject.ThrowDeactivateName=null;
+            Check(!faultEditor.transform.parent.Children.Contains(faultEditor.transform) && WindowInputScope.Registered.Count==0 && !(bool)typeof(BookView).GetField("endingEditor",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(bookView),"failed input deactivation still destroys editor and releases registration at "+sizes[s][0]);
+            bookView.Dispose();Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍") && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
         }
         Console.WriteLine("BookView geometry, page binding and GDI previews complete. Not a game screenshot.");
     }

@@ -25,6 +25,7 @@ namespace MOD_YtxSQ1
 
         public void Destroy()
         {
+            updateFailed = false;
             if (updateTimer != null)
             {
                 try { g.timer.Stop(updateTimer); }
@@ -38,18 +39,33 @@ namespace MOD_YtxSQ1
                 try { previous.Dispose(); }
                 catch (Exception ex) { Debug.LogWarning("[八荒秘录] 释放控制器失败：" + ex); }
             }
+            MOD_YtxSQ1.UI.PaperSkin.ClearCache();
         }
 
         private void OnUpdate()
         {
-            if (controller == null || updateFailed) return;
-            try { controller.Update(); }
+            if (updateFailed && !Input.GetKeyDown(KeyCode.F8)) return;
+            if (controller == null && !updateFailed) return;
+            try
+            {
+                if (updateFailed)
+                {
+                    controller = new WorkshopController();
+                    updateFailed = false;
+                    Debug.Log("[八荒秘录] F8重新创建控制器，重试打开；不会重放人物修改。");
+                }
+                controller.Update();
+            }
             catch (Exception ex)
             {
-                // 熔断更新，避免异常每帧刷屏；重进存档可重新初始化。
+                // 熔断后仅等待F8人工重试，保留帧入口，不每帧重建或重放写入。
                 updateFailed = true;
-                Debug.LogError("[八荒秘录] 已停止施工版更新：" + ex);
-                Destroy();
+                Debug.LogError("[八荒秘录] 已暂停本模组更新，可按F8重试：" + ex);
+                var failed = controller; controller = null;
+                if (failed != null)
+                    try { failed.Dispose(); }
+                    catch (Exception disposeError) { Debug.LogWarning("[八荒秘录] 异常控制器释放失败：" + disposeError.Message); }
+                MOD_YtxSQ1.UI.PaperSkin.ClearCache();
             }
         }
     }

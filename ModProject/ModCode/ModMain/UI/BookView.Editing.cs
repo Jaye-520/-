@@ -156,11 +156,16 @@ namespace MOD_YtxSQ1.UI
             }
             endingEditor = true;
             var previous = inlineInput;
-            if (activeBinding != null) activeBinding.Label.enabled = true;
+            var previousBinding = activeBinding;
             inlineInput = null; activeBinding = null; activeOriginal = null;
-            WindowInputScope.Unregister(previous);
-            previous.gameObject.SetActive(false); UnityEngine.Object.Destroy(previous.gameObject);
-            endingEditor = false;
+            try
+            {
+                if (previousBinding != null) Cleanup(() => previousBinding.Label.enabled = true, "恢复编辑文字");
+                WindowInputScope.Unregister(previous);
+                Cleanup(() => previous.gameObject.SetActive(false), "停用输入框");
+                Cleanup(() => UnityEngine.Object.Destroy(previous.gameObject), "释放输入框");
+            }
+            finally { endingEditor = false; }
             RefreshEditors();
             SetEditStatus(edits.Count == 0 ? "点击数值修改；兴趣、性格与境界可下拉选择" : "有 " + edits.Count + " 项待保存修改");
             return true;
@@ -291,7 +296,11 @@ namespace MOD_YtxSQ1.UI
         }
         private void ClearEditingView()
         {
-            FinishInlineEdit(true); CloseDropdown(); ClearFateLibraryView(); ClearActions(); editBindings.Clear();
+            Cleanup(() => FinishInlineEdit(true), "取消输入");
+            Cleanup(CloseDropdown, "关闭下拉");
+            Cleanup(ClearFateLibraryView, "气运图鉴");
+            Cleanup(ClearActions, "快捷说明");
+            editBindings.Clear();
         }
         private void SaveEdits()
         {

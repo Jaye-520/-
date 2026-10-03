@@ -23,28 +23,43 @@ namespace MOD_YtxSQ1.UI
             }
             ReleaseView();
             ownedWindow = null;
-            // 共享 UI 类型，不覆盖游戏或其他 MOD 已打开的说明窗口。
-            if (g.ui.GetUI(UIType.TextInfoLong) != null)
-            {
-                UITipItem.AddTip("请先关闭当前说明窗口，再打开八荒秘录。");
-                return;
-            }
-            ownedWindow = g.ui.OpenUI<UITextInfoLong>(UIType.TextInfoLong);
-            if (ownedWindow == null) throw new InvalidOperationException("游戏未返回文本窗口。");
-            MOD_YtxSQ1.Services.CharacterEditSession.Shared.Clear();
-            ownedWindow.InitData("八荒秘录", "界面正在装订，修改功能尚未接入。", "合上秘录");
-            view = new BookView();
+            var openTimer = System.Diagnostics.Stopwatch.StartNew();
             try
             {
+                // 共享 UI 类型，不覆盖游戏或其他 MOD 已打开的说明窗口。
+                if (g.ui == null) return;
+                if (g.ui.GetUI(UIType.TextInfoLong) != null)
+                {
+                    UITipItem.AddTip("请先关闭当前说明窗口，再打开八荒秘录。");
+                    return;
+                }
+                ownedWindow = g.ui.OpenUI<UITextInfoLong>(UIType.TextInfoLong);
+                if (ownedWindow == null) throw new InvalidOperationException("游戏未返回文本窗口。");
+                var nativeMs = openTimer.ElapsedMilliseconds;
+                MOD_YtxSQ1.Services.CharacterEditSession.Shared.Clear();
+                ownedWindow.InitData("八荒秘录", "正在读取人物信息…", "合上秘录");
+                view = new BookView();
                 view.Build(ownedWindow, Close);
+                var viewMs = openTimer.ElapsedMilliseconds;
                 WindowInputScope.Attach(ownedWindow, view.SearchInput);
+                Debug.Log("[八荒秘录] 07.38打开总计=" + openTimer.ElapsedMilliseconds + "ms；原生窗口=" + nativeMs + "ms；视图初始化=" + (viewMs - nativeMs) + "ms；输入补丁=" + (openTimer.ElapsedMilliseconds - viewMs) + "ms");
             }
             catch (Exception ex)
             {
                 ReleaseView();
-                ownedWindow.InitData("八荒秘录 · 布局回退",
-                    "书卷布局加载失败，已恢复原生窗口。\n请提供日志中的 [八荒秘录] 信息。\n本版本没有修改存档。", "合上秘录");
-                Debug.LogError("[八荒秘录] 书卷布局构建失败：" + ex);
+                Debug.LogError("[八荒秘录] 窗口加载失败：" + ex);
+                try
+                {
+                    if (ownedWindow != null && g.ui != null && g.ui.GetUI(UIType.TextInfoLong) == ownedWindow)
+                        ownedWindow.InitData("八荒秘录 · 加载回退",
+                            "书卷加载失败，已恢复原生窗口。\n请提供日志中的 [八荒秘录] 信息。\n本次界面加载未执行人物修改；此前已执行的修改不会因此撤销。", "合上秘录");
+                    else Close();
+                }
+                catch (Exception fallbackError)
+                {
+                    Debug.LogWarning("[八荒秘录] 原生窗口回退失败，关闭本窗口：" + fallbackError.Message);
+                    Close();
+                }
             }
         }
 

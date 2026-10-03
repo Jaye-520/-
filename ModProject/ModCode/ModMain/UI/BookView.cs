@@ -31,6 +31,18 @@ namespace MOD_YtxSQ1.UI
         private readonly List<Image> tabMarks = new List<Image>();
         private readonly List<RawImage> tabBrushes = new List<RawImage>();
         private GameObject root;
+        private CanvasGroup appearance;
+        private float appearanceStarted;
+        private bool appearing;
+        private const float AppearanceDuration = .16f;
+
+        private void TickAppearance()
+        {
+            if (!appearing || appearance == null) return;
+            var progress = Math.Min(1f, Math.Max(0f, (Time.unscaledTime - appearanceStarted) / AppearanceDuration));
+            appearance.alpha = progress * progress * (3f - 2f * progress);
+            if (progress >= 1f) { appearance.interactable = true; appearing = false; }
+        }
         private RectTransform content;
         private Font font;
         private Font calligraphyFont;
@@ -69,10 +81,24 @@ namespace MOD_YtxSQ1.UI
         private readonly List<string> rowIds = new List<string>();
         private float rosterHeight;
         private const float RosterRowHeight = 38;
+        private System.Diagnostics.Stopwatch openingTimer;
+        private long openingCheckpoint;
+        private string openingStages;
+
+        private void RecordOpeningStage(string name)
+        {
+            if (openingTimer == null) return;
+            var elapsed = openingTimer.ElapsedMilliseconds;
+            openingStages += "；" + name + "=" + (elapsed - openingCheckpoint) + "ms";
+            openingCheckpoint = elapsed;
+        }
 
         public void Build(UITextInfoLong window, Action close)
         {
             var openTimer = System.Diagnostics.Stopwatch.StartNew();
+            openingTimer = openTimer;
+            openingCheckpoint = 0;
+            openingStages = "";
             requestClose = close;
             foreach (var text in window.GetComponentsInChildren<Text>(true))
             {
@@ -96,8 +122,9 @@ namespace MOD_YtxSQ1.UI
                 if (failedFont != null) Cleanup(() => UnityEngine.Object.Destroy(failedFont), "失败字体");
                 Debug.LogWarning("[八荒秘录] 楷体回退为游戏字体：" + ex.Message);
             }
-            try { skin = new PaperSkin(); }
+            try { skin = PaperSkin.Acquire(); }
             catch (Exception ex) { Debug.LogWarning("[八荒秘录] 纸墨材质回退为纯色：" + ex.Message); }
+            RecordOpeningStage("字体/纸墨纹理");
             foreach (var graphic in window.GetComponentsInChildren<Graphic>(true))
             {
                 if (!graphic.enabled) continue;
@@ -115,6 +142,10 @@ namespace MOD_YtxSQ1.UI
 
             var overlay = NewRect("界面遮罩", window.transform);
             root = overlay.gameObject;
+            appearance = root.AddComponent<CanvasGroup>();
+            appearance.alpha = 0;
+            appearance.interactable = false;
+            appearance.blocksRaycasts = true;
             overlay.anchorMin = Vector2.zero;
             overlay.anchorMax = Vector2.one;
             overlay.offsetMin = overlay.offsetMax = Vector2.zero;
@@ -177,9 +208,15 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 36, width - 48, 28);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 1, width - 48 - 428, 24, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.33 / F8 收起", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.38 / F8 收起", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
+            RecordOpeningStage("窗口骨架/搜索模板");
             Select(0);
-            Debug.Log("[八荒秘录] 07.33界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height);
+            RecordOpeningStage("完成绑定");
+            Debug.Log("[八荒秘录] 07.38界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height + openingStages);
+            openingTimer = null;
+            openingStages = null;
+            appearanceStarted = Time.unscaledTime;
+            appearing = true;
         }
 
         private void Select(int index)
@@ -230,7 +267,9 @@ namespace MOD_YtxSQ1.UI
                 return;
             }
             ReloadRoster();
+            RecordOpeningStage("人物名单/排序/筛选");
             BuildAttributeOverview();
+            RecordOpeningStage("属性/气运控件");
             RefreshCharacter(true);
         }
 
@@ -473,18 +512,22 @@ namespace MOD_YtxSQ1.UI
         private void ReleasePortrait()
         {
             portraitKey = null;
-            if (portraitImage != null) { portraitImage.texture = null; portraitImage.enabled = false; }
             var special = specialPortraitImage; specialPortraitImage = null;
+            var renderer = portraitRenderer; portraitRenderer = null;
+            var model = ownedPortraitRoot; ownedPortraitRoot = null;
+            if (portraitImage != null)
+            {
+                Cleanup(() => portraitImage.texture = null, "清空立绘纹理");
+                Cleanup(() => portraitImage.enabled = false, "隐藏立绘");
+            }
             if (special != null)
             {
-                special.enabled = false;
-                special.gameObject.SetActive(false);
+                Cleanup(() => special.enabled = false, "隐藏特殊立绘");
+                Cleanup(() => special.gameObject.SetActive(false), "停用特殊立绘承载");
                 // 专属承载销毁后，原生autoDestroy检测释放模型/RenderTexture并停止计时器。
                 Cleanup(() => UnityEngine.Object.Destroy(special.gameObject), "特殊立绘承载控件");
             }
-            var renderer = portraitRenderer; portraitRenderer = null;
             if (renderer != null) Cleanup(renderer.Destroy, "立绘渲染资源");
-            var model = ownedPortraitRoot; ownedPortraitRoot = null;
             if (model != null) Cleanup(() => UnityEngine.Object.Destroy(model), "立绘模型");
         }
 
@@ -697,6 +740,7 @@ namespace MOD_YtxSQ1.UI
         public void RefreshCharacter(bool force = false)
         {
             if (root == null) return;
+            TickAppearance();
             TickEditing();
             if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
             if (root == null || selectedIndex != 0 || characterName == null) return;
@@ -736,7 +780,9 @@ namespace MOD_YtxSQ1.UI
             characterRealm.text = snapshot.Realm;
             if (selectedUnitId == null) selectedUnitId = CharacterReader.Resolve(null).data.unitData.unitID;
             RefreshEditors();
+            RecordOpeningStage("人物快照/编辑绑定");
             UpdatePortrait();
+            RecordOpeningStage("人物立绘");
             for (int group = 0; group < attributeTexts.Count; group++)
                 for (int i = 0; i < attributeTexts[group].Length; i++) attributeTexts[group][i].text = snapshot.Groups[group][i];
             CharacterFate[] entries;
@@ -746,6 +792,7 @@ namespace MOD_YtxSQ1.UI
             var fateFailure = CharacterFates.LastFailure;
             if (fateFailure != null && fateFailure != lastFateFailure) Debug.LogWarning("[八荒秘录] 气运读取：" + fateFailure);
             lastFateFailure = fateFailure;
+            RecordOpeningStage("气运读取/显示");
         }
 
         private List<CharacterFate> FilterFates(int filter)
@@ -1066,8 +1113,12 @@ namespace MOD_YtxSQ1.UI
 
         public void Dispose()
         {
-            ClearEditingView();
-            ReleasePortrait();
+            appearing = false;
+            appearance = null;
+            openingTimer = null;
+            openingStages = null;
+            Cleanup(ClearEditingView, "编辑视图");
+            Cleanup(ReleasePortrait, "立绘资源");
             Cleanup(HideFateTips, "关闭气运提示");
             var previousRoot = root; root = null;
             if (previousRoot != null)
@@ -1077,8 +1128,8 @@ namespace MOD_YtxSQ1.UI
             }
             var previousCloseTexture = closeTexture; closeTexture = null;
             if (previousCloseTexture != null) Cleanup(() => UnityEngine.Object.Destroy(previousCloseTexture), "关闭按钮纹理");
-            var previousSkin = skin; skin = null;
-            if (previousSkin != null) Cleanup(previousSkin.Dispose, "纸墨纹理");
+            // 只解除视图引用；固定美术纹理由ModMain.Destroy统一释放。
+            skin = null;
             var previousFont = calligraphyFont; calligraphyFont = null;
             if (previousFont != null) Cleanup(() => UnityEngine.Object.Destroy(previousFont), "自建字体");
             foreach (var graphic in hiddenGraphics)
