@@ -32,8 +32,9 @@ public class DataProps
     public PropsData GetProps(string sole){return allProps.FirstOrDefault(p=>p.soleID==sole);}
     public int GetPropsNum(int id){return allProps.Where(p=>p.propsID==id).Sum(p=>p.propsCount);}
     public void UpdateAllShowProps() { }
-    public class PropsData { public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
-    public class MartialData : PropsData { }
+    public enum PropsDataType { Props = 1, Martial = 2 }
+    public class PropsData { public PropsDataType propsType = PropsDataType.Props; public MartialData Martial; public T To<T>() where T:class { return Martial as T; } public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
+    public class MartialData { public string ExtraData; }
 }
 public class ConfItemPropsItem { public int isOverlay,id,hide,level;public string name,desc; }
 public class ItemPropsConfig { public List<ConfItemPropsItem> _allConfList=new List<ConfItemPropsItem>();public ConfItemPropsItem GetItem(int id){return _allConfList.FirstOrDefault(p=>p.id==id);} }

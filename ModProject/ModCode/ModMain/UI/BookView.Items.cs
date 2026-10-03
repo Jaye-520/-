@@ -211,7 +211,8 @@ namespace MOD_YtxSQ1.UI
                     var unit = CharacterReader.Resolve(id);
                     var props = unit?.data.unitData.propData.GetProps(item.SoleId);
                     if (props == null || props.propsID != item.Id || props.propsCount != item.Count) return;
-                    var martial = props.TryCast<DataProps.MartialData>();
+                    // 技能书是PropsData包装，通过原生To读取；MartialData并非其子类。
+                    var martial = props.propsType == DataProps.PropsDataType.Martial ? props.To<DataProps.MartialData>() : null;
                     var description = martial != null ? UIMartialInfoTool.GetDesc(martial) : UIPropInfo.GetDesc(unit, props);
                     var info = props.propsInfoBase;
                     var detail = (info?.typeSuffix ?? "") + "\n" + (string.IsNullOrEmpty(description) ? "暂无介绍" : description)

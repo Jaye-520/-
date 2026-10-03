@@ -164,7 +164,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 #### 背包介绍与滚动柄（07.52）
 
-先核查工厂：CreatePropsIcon已经分别调用CreatePropInfo/CreateMartialInfo；不能因某种物品不显示就重复绑定。UIEventListener.OnPointerEnter先调用onMouseEnterCall，再调用onMouseEnter。自建背包图标仅替换这两种悬浮路径，在本窗口提示层读取UIPropInfo.GetDesc；MartialData走UIMartialInfoTool.GetDesc，不把真实功法附加数据当普通配置描述。数量、类型、售价读取propsInfoBase；读取失败显示名称数量与日志，不能影响菜单功能或把失败变成任何写入。普通原生左键详情仍保留；不重排或修改游戏全局窗口。介绍实际呈现和完整功法内容须由游戏核对，截图不能证明具体原生层级故障。
+先核查工厂：CreatePropsIcon已经分别调用CreatePropInfo/CreateMartialInfo；不能因某种物品不显示就重复绑定。UIEventListener.OnPointerEnter先调用onMouseEnterCall，再调用onMouseEnter。自建背包图标仅替换这两种悬浮路径，在本窗口提示层读取UIPropInfo.GetDesc；技能书必须按props.propsType == PropsDataType.Martial识别，再用props.To<DataProps.MartialData>()读取，之后走UIMartialInfoTool.GetDesc，不把真实功法附加数据当普通配置描述。数量、类型、售价读取propsInfoBase；读取失败显示名称数量与日志，不能影响菜单功能或把失败变成任何写入。普通原生左键详情仍保留；不重排或修改游戏全局窗口。介绍实际呈现和完整功法内容须由游戏核对，截图不能证明具体原生层级故障。
 
 ScrollHandle共用几何：轨高H、最小柄高m，滑动容器高H−m并在两端各留m/2；柄pivot=.5、anchoredPosition=0、sizeDelta=(0,m)，宽度由Scrollbar锚点驱动。原生size=s、value=v时，柄底=(1−s)×v×(H−m)，柄顶=底+s×(H−m)+m，始终在[0,H]。不能只加固定柄高而让容器仍覆盖整个轨道，也不能直接归零柄高导致长名单滑块小到不可见。小轨道m上限为H/2。
 
@@ -338,3 +338,9 @@ WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView�
 变更记录统一写：日期/版本、目标与文件、接口或用户证据、编译/同步/游戏结果、未覆盖项及下一步。仅重大问题需要独立专项文档，普通小迭代不新建文件。状态为研究中、实现中、待游戏验证、已验收或延期；用户成功反馈只覆盖当轮需求。
 
 记忆只放当前事实、约束和下一步；代码映射不逐行复制到文档，历史不常驻会话入口。删除重复文件前保留必要证据并修正链接。归档只按需打开，不自动全文读取。
+
+### 技能书转换防错（07.53）
+
+PropsData与MartialData是包装与读取视图关系，并非继承关系；TryCast会返回空，使技能书误走普通物品描述。原生UIIconMartialBase.OpenMartialInfo通过PropsData.To<MartialData>()传入UIMartialPropInfo.InitData，官方CHM缓存493e4156-d577-4352-0552-9e6f64422251.htm也列出To<T>。本机签名、propsType枚举与原生流程复核记录在.tools/skill-book-api.txt、.tools/skill-book-native.txt。
+
+07.52替身把MartialData继承PropsData，虚构了游戏不存在的继承关系，导致检查通过而实际介绍缺失。替身现拆成两个独立类型，以PropsData.Martial及To<T>模拟包装读取；已有悬浮用例必须通过此路径才能取得真实功法内容。以后不能凭可编译的IL2CPP强转推定数据模型；先核查原生转换和类型关系，再建替身。此路径只读取，不写入功法或存档；844项检查通过不等于游戏验收。
