@@ -42,7 +42,8 @@
 ## 代码风格与结构约定
 
 - 文件与命名：一个文件一个职责；`partial`只用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）。新增源码必须登记csproj并在上文“代码导航”表登记职责——`run-all.ps1`会自检“csproj ↔ 磁盘源码 ↔ 代码导航表”三者一致，任何一处漏登记都直接门禁失败。若该文件会被某个harness编译（如`UI/BookView.cs`、`UI/WorkshopEntrances.cs`、`UI/WorkshopWindow.cs`、`ModMain.cs`），还必须在对应`run-*.ps1`的编译清单里加上它，否则该harness编译失败——2026-10-03新增`ModVersion.cs`时正是漏了这一步，被门禁当场拦下。
-- 版本号唯一来源：`ModVersion.Current`（`ModVersion.cs`）。界面页脚与全部日志都引用它，升级只改这一处；`run-all.ps1`会检查当前版本字面量只出现在该文件，防止漏改造成“页脚显示旧版、日志显示新版”。`WindowInputScope`中形如07.10/07.31的编号标记该诊断引入时的版本，属于历史事实，不随升级变动。
+- 版本号唯一来源：`ModVersion.Current`（`ModVersion.cs`）。界面页脚与全部日志都引用它，升级只改这一处；`run-all.ps1`会检查当前版本字面量只出现在该文件，防止漏改造成“页脚显示旧版、日志显示新版”。**凡部署到调试包（即交付用户验证）的构建都升版**——纯内部重构只要交付也升版，否则两个内容不同的DLL会同名，用户无法据页脚判断游戏里加载的到底是哪一版。`WindowInputScope`中形如07.10/07.31的编号标记该诊断引入时的版本，属于历史事实，不随升级变动。
+- 命名不得遮蔽：方法内局部量不得与同类的static字段同名。2026-10-03`WindowInputScope.AlignCaret`中的`var input = __instance;`遮蔽了同名static字段`input`，已改名`field`；这类遮蔽会让后续维护者在方法内误以为在用字段。同时把该方法的“取字形上下边界”抽成`TryGetTextBounds`，主方法由63行降到约45行。
 - 方法规模以≤50行为准，超长分派方法按操作拆分。2026-10-03把`CharacterActions.Execute`（133行、四层分支）拆为RestoreStatus/FillCultivation/FillMaterials/AddIntimacy/Move，最长方法降到38行，546项检查全绿。拆分必须**保持分支顺序与报错语义**：未知操作在原实现里会先校验NPC目标再报“未知快捷操作”，拆完仍要先校验。
 - 注释解释“为什么”，不复述代码：原生包装的坑（`Il2CppStructArray`不写回、`Single..ctor(IntPtr)`）、回退顺序与幂等理由必须留在代码旁；纯语言直译的注释不加。
 - 写操作失败一律`throw`，由调用处统一转成用户可见消息并记日志；日志统一`[八荒秘录]`前缀、重复失败去重，不用日志代替返回值表达状态。

@@ -123,34 +123,21 @@ namespace MOD_YtxSQ1.UI
             // 只改本搜索框的光标四边形，不改输入、闪烁、选区和焦点状态。
             if (!Owns(__instance)) return;
             if (__0.currentVertCount != 4) return;
-            var input = __instance;
-            var text = input.textComponent;
+            // 局部量命名为field：早期这里叫input，会遮蔽同名静态字段，容易误用。
+            var field = __instance;
+            var text = field.textComponent;
             if (text == null) return;
             // 克隆模板后Caret可能保留旧矩形。先同步矩形，再在同一局部坐标系对齐。
-            input.AssignPositioningIfNeeded();
-            var caretRect = input.caretRectTrans;
+            field.AssignPositioningIfNeeded();
+            var caretRect = field.caretRectTrans;
             var visual = text;
-            if (string.IsNullOrEmpty(input.text))
+            if (string.IsNullOrEmpty(field.text) && field.placeholder != null)
             {
-                var placeholder = input.placeholder == null ? null : input.placeholder.TryCast<Text>();
+                var placeholder = field.placeholder.TryCast<Text>();
                 if (placeholder != null) visual = placeholder;
             }
-            float bottom = float.MaxValue, top = float.MinValue;
-            var vertices = visual.cachedTextGenerator.verts;
-            var units = 1f / visual.pixelsPerUnit;
-            for (int i = 0; i + 3 < visual.cachedTextGenerator.vertexCount; i += 4)
-            {
-                float low = float.MaxValue, high = float.MinValue;
-                for (int j = 0; j < 4; j++)
-                {
-                    var y = vertices[i + j].position.y * units;
-                    low = Math.Min(low, y); high = Math.Max(high, y);
-                }
-                // 忽略空格、零宽字符以及TextGenerator末尾的空四边形。
-                if (high - low < .01f) continue;
-                bottom = Math.Min(bottom, low); top = Math.Max(top, high);
-            }
-            if (bottom == float.MaxValue)
+            float bottom, top;
+            if (!TryGetTextBounds(visual, out bottom, out top))
             {
                 var center = text.rectTransform.rect.center.y;
                 bottom = center - text.fontSize * .5f; top = center + text.fontSize * .5f;
@@ -165,7 +152,7 @@ namespace MOD_YtxSQ1.UI
             if (caretRect != null)
                 centerY = caretRect.InverseTransformPoint(visual.rectTransform.TransformPoint(new Vector3(0, centerY, 0))).y;
             var shift = centerY - (caretBottom + caretTop) * .5f;
-            var diagnosticKey = input.gameObject.name + (string.IsNullOrEmpty(input.text) ? ":空" : ":输入");
+            var diagnosticKey = field.gameObject.name + (string.IsNullOrEmpty(field.text) ? ":空" : ":输入");
             if (caretDiagnostics.Add(diagnosticKey))
                 Debug.Log("[八荒秘录] 07.31光标：" + diagnosticKey + "；字形=" + bottom + "/" + top +
                     "；原光标=" + caretBottom + "/" + caretTop + "；位移=" + shift +
@@ -179,6 +166,28 @@ namespace MOD_YtxSQ1.UI
                 vertex.position = position;
                 __0.SetUIVertex(vertex, i);
             }
+        }
+
+        // 取实际字形（空文本时取占位文字）的上下边界。
+        // 忽略空格、零宽字符以及TextGenerator末尾的空四边形；无有效字形时返回false由调用方回退。
+        private static bool TryGetTextBounds(Text visual, out float bottom, out float top)
+        {
+            bottom = float.MaxValue; top = float.MinValue;
+            var generator = visual.cachedTextGenerator;
+            var vertices = generator.verts;
+            var units = 1f / visual.pixelsPerUnit;
+            for (int i = 0; i + 3 < generator.vertexCount; i += 4)
+            {
+                float low = float.MaxValue, high = float.MinValue;
+                for (int j = 0; j < 4; j++)
+                {
+                    var y = vertices[i + j].position.y * units;
+                    low = Math.Min(low, y); high = Math.Max(high, y);
+                }
+                if (high - low < .01f) continue;
+                bottom = Math.Min(bottom, low); top = Math.Max(top, high);
+            }
+            return bottom != float.MaxValue;
         }
 
         private static void Trace(string reason)
