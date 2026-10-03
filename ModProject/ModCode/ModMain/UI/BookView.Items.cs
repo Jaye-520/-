@@ -234,7 +234,9 @@ namespace MOD_YtxSQ1.UI
                     if (props == null || props.propsID != item.Id || props.propsCount != item.Count) return;
                     // 技能书是PropsData包装，通过原生To读取；MartialData并非其子类。
                     var martial = props.propsType == DataProps.PropsDataType.Martial ? props.To<DataProps.MartialData>() : null;
-                    var description = martial != null ? UIMartialInfoTool.GetDesc(martial) : UIPropInfo.GetDesc(unit, props);
+                    var description = martial != null
+                        ? UIMartialInfoTool.GetDescRichText(UIMartialInfoTool.GetDesc(martial), new BattleSkillValueData(martial), 2)
+                        : UIPropInfo.GetDesc(unit, props);
                     var info = props.propsInfoBase;
                     var detail = (info?.typeSuffix ?? "") + "\n" + (string.IsNullOrEmpty(description) ? "暂无介绍" : description)
                         + "\n\n出售价格：" + (info == null ? "—" : info.sale.ToString()) + "灵石\n当前持有：" + props.propsCount;
@@ -277,7 +279,7 @@ namespace MOD_YtxSQ1.UI
                 child.SetActive(false); UnityEngine.Object.Destroy(child);
             }
         }
-        private RectTransform ItemDialog(string title, out string unitId, out string context)
+        private RectTransform ItemDialog(string title, out string unitId, out string context, bool primaryLeft = false)
         {
             CloseItemDialog(); CloseItemLibrary(); CloseDropdown(); HideFateTips();
             unitId = selectedUnitId; context = contextKey;
@@ -287,16 +289,16 @@ namespace MOD_YtxSQ1.UI
             var panel = Card(overlay.rectTransform, "物品操作", (contentWidth - width) / 2, (contentHeight - 230) / 2, width, 230);
             Fill(panel, "操作纸底", 1, 1, width - 2, 228, Paper, true); Border(panel, width, 230);
             Label(panel, title, 16, 12, width - 32, 34, 23, Ink);
-            MakeButton(panel, "取消物品操作", 16, 176, 100, 36, "取消", CloseItemDialog);
+            MakeButton(panel, "取消物品操作", primaryLeft ? width - 116 : 16, 176, 100, 36, "取消", CloseItemDialog);
             return panel;
         }
         private void ConfirmGiveItem(ItemEntry entry)
         {
-            string id, context; var panel = ItemDialog("给" + characterName.text + "添加道具", out id, out context);
+            string id, context; var panel = ItemDialog("给" + characterName.text + "添加道具", out id, out context, true);
             Label(panel, entry.Name, 16, 54, panel.sizeDelta.x - 32, 30, 19, Ink);
             itemAmount = CreateSearchInput(panel, "发放数量", 16, 98, panel.sizeDelta.x - 32, 36, "发放数量", _ => { });
             itemAmount.SetTextWithoutNotify("1"); itemAmount.readOnly = !entry.Stackable;
-            MakeButton(panel, "确认添加道具", panel.sizeDelta.x - 136, 176, 120, 36, "添加", () =>
+            MakeButton(panel, "确认添加道具", 16, 176, 120, 36, "添加", () =>
             {
                 if (!string.IsNullOrEmpty(Input.compositionString)) return;
                 int amount;

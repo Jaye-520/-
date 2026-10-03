@@ -259,7 +259,14 @@ public sealed class LayoutUI
 public static class SpriteTool { public static UnityEngine.Object GetLuckBG(ConfRoleCreateFeatureItem item) { return new UnityEngine.Object(); } }
 public class UIIconItemBase : UnityEngine.Component { public UIEventListener uiEvent; public void CloseIconInfo(){} }
 public static class UIPropInfo { public static string GetDesc(WorldUnitBase unit,DataProps.PropsData props){return props.propsItem.desc;} }
-public static class UIMartialInfoTool { public static string GetDesc(DataProps.MartialData props){return "功法详情："+props.ExtraData;} }
+public class BattleSkillValueData { public DataProps.MartialData Martial; public BattleSkillValueData(DataProps.MartialData martial){Martial=martial;} }
+public static class UIMartialInfoTool
+{
+    public static DataProps.MartialData FormattedMartial;
+    public static string GetDesc(DataProps.MartialData props){return "功法详情："+props.ExtraData;}
+    public static string GetDescRichText(string desc,BattleSkillValueData data,int bgType,string valueColorKey="y",string effectColorKey="e")
+    { FormattedMartial=data.Martial;return desc.Replace("&510011_cxsj&","<color=#000000>4.5</color>").Replace("&510011_dmg&","180").Replace("$s_dao$","刀法").Replace("&510011_ydsd&","25").Replace("&510011_huxin&","12"); }
+}
 public static partial class UIIconTool
 {
     public static UIIconItemBase CreatePropsIcon(WorldUnitBase unit,DataProps.PropsData props,UnityEngine.Transform parent,float size,bool destroy,bool operation,bool equip)
@@ -576,10 +583,12 @@ internal static class BookLayoutHarness
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍") && bagWheel.scrollSensitivity==42,"item exit immediately closes tooltip and restores backpack wheel without delay");hp.desc=savedDesc;
         UnityEngine.Time.unscaledTime+=.2f;view.RefreshCharacter();
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍"),"item tooltip closes after pointer leaves");
-        var tipSlot=hoverIcon.transform.parent.GetComponent<UnityEngine.RectTransform>();var martial=new DataProps.PropsData{propsType=DataProps.PropsDataType.Martial,propsItem=unique,propsID=unique.id,propsCount=1,soleID="hover-book",Martial=new DataProps.MartialData{ExtraData="真实功法内容"}};bag.allProps.Add(martial);
+        var tipSlot=hoverIcon.transform.parent.GetComponent<UnityEngine.RectTransform>();var martial=new DataProps.PropsData{propsType=DataProps.PropsDataType.Martial,propsItem=unique,propsID=unique.id,propsCount=1,soleID="hover-book",Martial=new DataProps.MartialData{ExtraData="真实功法内容：&510011_cxsj&秒，&510011_dmg&点$s_dao$伤害；移速&510011_ydsd&，护心&510011_huxin&"}};bag.allProps.Add(martial);
         var bookHover=new UnityEngine.GameObject("book hover");var bookIcon=bookHover.AddComponent<UIIconItemBase>();bookHover.transform.SetParent(tipSlot,false);bookIcon.uiEvent=bookHover.AddComponent<UIEventListener>();
         typeof(BookView).GetMethod("BindBagHover",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(view,new object[]{bookIcon,tipSlot,new InventoryItem{Id=unique.id,SoleId=martial.soleID,Count=1,Name="紫溟跃"}});bookIcon.uiEvent.OnPointerEnter(null);
         Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("真实功法内容")),"martial book hover reads actual martial record instead of ordinary item description");
+        var formattedTip=Walk(book).Select(t=>t.GetComponent<UnityEngine.UI.Text>()).First(t=>t!=null && t.text.Contains("真实功法内容"));
+        Check(UIMartialInfoTool.FormattedMartial==martial.Martial && formattedTip.text.Contains("4.5秒") && formattedTip.text.Contains("180点刀法伤害") && formattedTip.text.Contains("移速25") && formattedTip.text.Contains("护心12") && !formattedTip.text.Contains("&510011_") && !formattedTip.text.Contains("$s_dao$") && !formattedTip.text.Contains("<color"),"martial template passes actual record through native formatter before tooltip strips rich text");
         using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
         { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-tooltip-layout-"+size+".png"),ImageFormat.Png); }
         bookIcon.uiEvent.OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;view.RefreshCharacter();bag.allProps.Remove(martial);UnityEngine.Object.Destroy(bookHover);

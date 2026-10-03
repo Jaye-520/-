@@ -356,3 +356,7 @@ GetPropsNum回读不一致不能一概称为工厂异常或部分写入：原生
 ItemInventory.ReadCapacity只读GetGridCurNum(true)/GetGridMaxNum，与原生新增记录判断一致。UnitDataProps计格有物品类型、hide/playerShow与drop/dieDrop分支，不能把可见条目数当占用数；本机依据.tools/capacity-native.txt。空格严格为max(0,total-used)，虚拟网格长度为可见物品数+剩余格数，末行多余位置禁用；已有超容量物品仍完整显示。
 
 容量纳入刷新指纹；每个池格缓存键包括激活状态，防止原本禁用的尾部位置变为空格时跳过绘制。格底与细线不拦射线，无UIEventListener，原生图标在其上并保留独立悬浮/菜单。Box不接受负坐标，所以采用78×78池格、72×72图标居中，不以负坐标向外扩格底。仅视口附近池格创建Unity对象，空格数量不导致全量实例化。
+
+### 技能书模板格式化防错（07.56）
+
+GetDesc不是最终可读正文：身法/心法模板会含&技能数值键&及$伤害类型$。须GetDesc → new BattleSkillValueData(真实MartialData) → UIMartialInfoTool.GetDescRichText(desc,valueData,2) → 本窗口统一去富文本标签；不能把模板直接ShowFateTip，也不能正则删除变量冒充修复。字符串重载原生可选颜色键为y/e，按本机接口默认值调用；UIMartialPropInfo.UpdateUI的完整格式化流程及UIPropInfo使用的字符串重载见.tools/martial-format-native.txt，签名和默认值由本机Managed反射核对。替身覆盖模板调用链和记录身份，具体原生数值仍须游戏对照。
