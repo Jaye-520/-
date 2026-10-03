@@ -12,7 +12,7 @@ using MOD_YtxSQ1.UI;
 namespace UnityEngine
 {
     public enum KeyCode { Return,KeypadEnter,Escape,Tab }
-    public static class Input { public static string compositionString=""; public static bool MouseDown,Submit,Escape; public static Vector2 mousePosition;public static bool GetMouseButtonDown(int button) { return MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return || Escape && key==KeyCode.Escape; } }
+    public static class Input { public static string compositionString=""; public static bool MouseDown,RightDown,Submit,Escape; public static Vector2 mousePosition;public static bool GetMouseButtonDown(int button) { return button==1 ? RightDown : MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return || Escape && key==KeyCode.Escape; } }
     public class Canvas : Component { public Camera worldCamera; }
     public class CanvasGroup : Component { public float alpha; public bool interactable,blocksRaycasts; }
     public static class RectTransformUtility
@@ -233,7 +233,8 @@ namespace UnityEngine.EventSystems
 public sealed class UIEventListener : UnityEngine.Component
 {
     public bool isMouseEnter;
-    public UnityEngine.Events.UnityEvent onMouseEnter,onMouseExit;
+    public UnityEngine.Events.UnityEvent onMouseEnter,onMouseExit,onPointDown;
+    public void OnPointerDown(object data) { if(onPointDown!=null)onPointDown.Invoke(); }
     public void OnPointerEnter(object data) { isMouseEnter=true;onMouseEnter.Invoke(); }
     public void OnPointerExit(object data) { isMouseEnter=false;onMouseExit.Invoke(); }
 }
@@ -516,6 +517,51 @@ internal static class BookLayoutHarness
         Check(Rejected(()=>ItemInventory.Give(context,"missing-npc",hp.id,1)) && Rejected(()=>ItemInventory.Give("old-world",id,hp.id,1)),"missing target and stale context reject without fallback");
         Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,0)) && Rejected(()=>ItemInventory.Give(context,id,hp.id,10000)) && Rejected(()=>ItemInventory.Give(context,id,unique.id,2)),"invalid counts and nonstackable bulk grant reject before writing");
         Check(Rejected(()=>ItemInventory.Give(context,id,hidden.id,1)),"hidden resources cannot be granted through catalog");
+        var firstItem=ItemInventory.Read(id).First();var storedItem=bag.GetProps(firstItem.SoleId);storedItem.ExtraData="keep-quality-and-affixes";
+        var otherStack=bag.allProps.First(p=>p.propsID==hp.id && p.soleID!=firstItem.SoleId);var otherCount=otherStack.propsCount;
+        var allBefore=bag.allProps.Count;var addsBefore=bag.AddCalls;var deletesBefore=bag.DeleteCalls;
+        ItemInventory.SetCount(context,id,firstItem,7);
+        Check(storedItem.propsCount==7 && storedItem.ExtraData=="keep-quality-and-affixes" && otherStack.propsCount==otherCount && bag.allProps.Count==allBefore && bag.AddCalls==addsBefore && bag.DeleteCalls==deletesBefore,"quantity edit retains identity, extra values, other stacks and indexes without cloning or granting");
+        Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,8)) && Rejected(()=>ItemInventory.Remove(context,id,firstItem)),"stale quantity snapshot rejects editing and deletion");
+        firstItem=ItemInventory.Read(id).First();
+        Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,0)) && Rejected(()=>ItemInventory.SetCount(context,id,firstItem,10000)) && storedItem.propsCount==7,"quantity edit rejects zero and excessive counts without implicit deletion");
+        Check(ItemInventory.SetCount(context,id,firstItem,7)=="数量未改变" && storedItem.propsCount==7,"unchanged quantity is a no-op");
+        var uniqueItem=ItemInventory.Read(id).First(p=>p.Id==unique.id);
+        Check(Rejected(()=>ItemInventory.SetCount(context,id,uniqueItem,2)) && bag.GetProps(uniqueItem.SoleId).propsCount==1,"nonstackable item refuses quantity modification");
+        Check(Rejected(()=>ItemInventory.Remove(context,id,new InventoryItem{SoleId="npc-money",Id=hidden.id,Count=800})) && Rejected(()=>ItemInventory.Remove(context,id,new InventoryItem{SoleId="npc-equipped",Id=unique.id,Count=1})),"single-item operations reject hidden resources and equipped records");
+        Check(Rejected(()=>ItemInventory.SetCount("old-world",id,firstItem,3)) && Rejected(()=>ItemInventory.Remove(context,"missing-npc",firstItem)),"item edit rejects stale world or missing target");
+        DataMgr.isSaveData=true;
+        Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,3)) && Rejected(()=>ItemInventory.Remove(context,id,firstItem)),"single-item mutations refuse writes during native save");DataMgr.isSaveData=false;
+        view.RefreshCharacter(true);
+        Action<bool> pressFirst=right=>{var icon=Walk(book).First(t=>t.gameObject.name=="native item icon");UnityEngine.Input.RightDown=right;icon.GetComponent<UIEventListener>().OnPointerDown(null);UnityEngine.Input.RightDown=false;};
+        pressFirst(false);Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"left press keeps native inventory behavior and does not open menu");
+        pressFirst(true);var menu=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_背包菜单");
+        var area=(UnityEngine.RectTransform)menu.parent.parent;
+        Check(menu.anchoredPosition.x>=8 && menu.anchoredPosition.x+menu.sizeDelta.x<=area.sizeDelta.x-8 && -menu.anchoredPosition.y>=8 && -menu.anchoredPosition.y+menu.sizeDelta.y<=area.sizeDelta.y-8,"right press opens menu beside item within content bounds");
+        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-menu-layout-"+size+".png"),ImageFormat.Png); }
+        ClickNamed(book,"修改背包数量");var countInput=Walk(book).First(t=>t.gameObject.name=="BHML_背包数量").GetComponentInChildren<UnityEngine.UI.InputField>();
+        countInput.text="0";ClickNamed(book,"确认修改背包数量");
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩") && storedItem.propsCount==7,"invalid count keeps editor open and does not modify inventory");
+        countInput.text="9";ClickNamed(book,"确认修改背包数量");
+        Check(storedItem.propsCount==9 && !Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩"),"quantity dialog applies total count to captured NPC item");
+        pressFirst(true);ClickNamed(book,"检索同类物品");Check(field.text==hp.id.ToString() && !Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"search same kind closes menu and filters by ID without inventory write");
+        pressFirst(true);ClickNamed(book,"背包菜单外部");Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"outside click dismisses context menu");
+        pressFirst(true);Walk(book).First(t=>t.gameObject.name=="BHML_背包网格").GetComponent<UnityEngine.UI.ScrollRect>().onValueChanged.Invoke(new UnityEngine.Vector2());
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"scrolling closes menu before pooled item slots can be rebound");
+        pressFirst(true);ClickNamed(book,"卷目2");Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"changing page releases inventory menu");ClickNamed(book,"卷目1");
+        pressFirst(true);view.RefreshCharacter(true);Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"inventory refresh releases menu before replacing its snapshot");
+        var visibleSlot=Walk(book).First(t=>t.gameObject.name=="native item icon").parent.GetComponent<UnityEngine.RectTransform>();
+        typeof(BookView).GetMethod("OpenItemMenu",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(view,new object[]{visibleSlot,uniqueItem});
+        Check(!Walk(book).First(t=>t.gameObject.name=="BHML_修改背包数量").GetComponent<UnityEngine.UI.Button>().interactable,"nonstackable inventory menu disables quantity editing");ClickNamed(book,"背包菜单外部");
+        pressFirst(true);UnityEngine.Input.Escape=true;UnityEngine.Time.frameCount++;view.RefreshCharacter();UnityEngine.Input.Escape=false;
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单") && Walk(book).Any(t=>t.gameObject.name=="BHML_人物背包"),"Escape closes context menu while retaining inventory page");
+        pressFirst(true);view.FocusTarget("player");Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"switching target closes old item menu");view.FocusTarget(id);
+        pressFirst(true);ClickNamed(book,"移除背包单项");storedItem.propsCount++;
+        ClickNamed(book,"确认移除背包单项");Check(bag.IsHasProps(storedItem.soleID),"delete confirmation refuses an item changed after opening");
+        pressFirst(true);ClickNamed(book,"移除背包单项");ClickNamed(book,"确认移除背包单项");
+        Check(!bag.IsHasProps(firstItem.SoleId) && bag.IsHasProps(otherStack.soleID) && otherStack.propsCount==otherCount,"single delete removes exact captured identity and leaves same-kind stacks alone");
+        bag.BadFactoryId=true;Check(Rejected(()=>ItemInventory.Give(context,id,mp.id,1)) && CharacterSave.Pending>0,"grant rejects malformed factory identity and preserves pending after possible partial write");bag.BadFactoryId=false;
         string materialMessage;var playerCounts=ItemInventory.Fingerprint(ItemInventory.Read("player"));
         Check(CharacterActions.Execute(id,"满材料",null,out materialMessage) && bag.allProps[0].propsCount==9999 && ItemInventory.Fingerprint(ItemInventory.Read("player"))==playerCounts,"full materials follows shared NPC target rather than writing player backpack");
         ClickNamed(book,"一键清空");bag.allProps[0].propsCount++;

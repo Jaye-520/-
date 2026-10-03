@@ -90,11 +90,66 @@ namespace MOD_YtxSQ1.Services
             {
                 // 原生代码以customSoleID != ""判断是否覆盖工厂编号；null也会进入
                 // 覆盖分支，随后唯一ID字典拒绝空key。空字符串才是自动生成的约定。
-                bag.AddProps(id, amount, ""); bag.UpdateAllShowProps();
+                var added = bag.AddProps(id, amount, ""); bag.UpdateAllShowProps();
                 if (bag.GetPropsNum(id) != expected) throw new InvalidOperationException("发放数量回读不一致，请核对背包");
+                if (added == null || added.Count == 0) throw new InvalidOperationException("发放结果未返回物品记录");
+                for (int i = 0; i < added.Count; i++)
+                {
+                    var item = added[i];
+                    if (item == null || string.IsNullOrEmpty(item.soleID)) throw new InvalidOperationException("发放结果缺少物品编号");
+                    var stored = bag.GetProps(item.soleID);
+                    if (stored == null || stored.propsID != id || stored.propsCount <= 0)
+                        throw new InvalidOperationException("发放结果与背包索引不一致");
+                }
             }
             catch (Exception ex) { throw new InvalidOperationException("发放未完整确认：" + ex.Message + "；已发生的变化仍在内存，请核对背包后保存"); }
             finally { CharacterSave.MarkDirty(); }
+        }
+        private static DataProps.PropsData RequireItem(WorldUnitBase unit, InventoryItem expected)
+        {
+            if (expected == null || string.IsNullOrEmpty(expected.SoleId)) throw new InvalidOperationException("物品编号无效，请重新选择");
+            var bag = unit.data.unitData.propData; var item = bag.GetProps(expected.SoleId);
+            if (item == null || item.soleID != expected.SoleId || item.propsID != expected.Id || item.propsCount != expected.Count)
+                throw new InvalidOperationException("这项物品已经变化，请重新选择");
+            // 不允许菜单写入已装备、隐藏或不再显示的记录，即使持有旧快照。
+            var visible = bag._allShowProps; bool found = false;
+            for (int i = 0; i < visible.Count; i++)
+                if (visible[i] != null && visible[i].soleID == expected.SoleId) { found = true; break; }
+            if (!found) throw new InvalidOperationException("这项物品已离开可见背包，请重新选择");
+            return item;
+        }
+        internal static string SetCount(string context, string unitId, InventoryItem expected, int count)
+        {
+            var unit = RequireTarget(context, unitId); var item = RequireItem(unit, expected);
+            if (item.propsItem == null || item.propsItem.isOverlay != 1) throw new InvalidOperationException("不可叠加物品不能修改数量");
+            if (count == item.propsCount) return "数量未改变";
+            if (count < 1 || count > 9999) throw new InvalidOperationException("请输入1–9999的数量；清除物品请使用移除操作");
+            var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
+            try
+            {
+                // 原生AddProps/DelProps也使用此setter更新values[2]并失效哈希缓存。
+                // 仅改指定唯一ID的正数量，保留品质、词条等values和所有背包索引。
+                item.propsCount = count; bag.UpdateAllShowProps();
+                var stored = bag.GetProps(expected.SoleId);
+                if (stored == null || stored.propsID != expected.Id || stored.propsCount != count)
+                    throw new InvalidOperationException("数量回读不一致");
+            }
+            catch (Exception ex) { throw new InvalidOperationException("数量修改未完整确认：" + ex.Message + "；请核对背包", ex); }
+            finally { CharacterSave.MarkDirty(); }
+            return expected.Name + "的数量已改为" + count + "；请点击保存";
+        }
+        internal static string Remove(string context, string unitId, InventoryItem expected)
+        {
+            var unit = RequireTarget(context, unitId); RequireItem(unit, expected);
+            var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
+            try
+            {
+                bag.DelProps(expected.SoleId); bag.UpdateAllShowProps();
+                if (bag.IsHasProps(expected.SoleId)) throw new InvalidOperationException("物品仍在背包中");
+            }
+            catch (Exception ex) { throw new InvalidOperationException("移除未完整确认：" + ex.Message + "；请核对背包", ex); }
+            finally { CharacterSave.MarkDirty(); }
+            return "已移除" + expected.Name + "这一项；请点击保存";
         }
         internal static string Clear(string context, string unitId, string expectedFingerprint)
         {

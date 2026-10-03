@@ -290,6 +290,7 @@ namespace MOD_YtxSQ1.UI
                 escapeHandledFrame = Time.frameCount;
                 if (inlineInput != null) FinishInlineEdit(true);
                 else if (dropdownLayer != null) CloseDropdown();
+                else if (itemMenu != null) CloseItemMenu();
                 else if (itemDialog != null) CloseItemDialog();
                 else if (itemLibrary != null) CloseItemLibrary();
                 else if (fateLibrary != null) CloseFateLibrary();

@@ -64,7 +64,7 @@ namespace MOD_YtxSQ1.UI
             bagColumns = Math.Max(1, (int)(itemBagScroll.content.sizeDelta.x / BagPitch));
             var pool = ((int)Math.Ceiling(itemBagScroll.viewport.sizeDelta.y / BagPitch) + 1) * bagColumns;
             for (int i = 0; i < pool; i++) bagSlots.Add(Box("背包格" + i, itemBagScroll.content, 0, 0, 72, 72));
-            itemBagScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderBagSlots())));
+            itemBagScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { CloseItemMenu(); RenderBagSlots(); })));
             FilterItems(false);
         }
         private bool LoadItemCatalog()
@@ -141,6 +141,7 @@ namespace MOD_YtxSQ1.UI
                 var owner = contextKey + ":" + selectedUnitId;
                 itemBagTitle.text = characterName.text + "的背包 · " + items.Count + "项";
                 if (!force && bagOwner == owner && bagFingerprint == signature) return;
+                CloseItemMenu();
                 if (bagOwner != owner) { itemBagScroll.content.anchoredPosition = Vector2.zero; itemBagScroll.verticalNormalizedPosition = 1; }
                 bagOwner = owner; bagFingerprint = signature; bagItems = items;
                 itemBagScroll.content.sizeDelta = new Vector2(itemBagScroll.content.sizeDelta.x,
@@ -179,8 +180,13 @@ namespace MOD_YtxSQ1.UI
                     var scale = rect.rect.width > 0 ? 72 / rect.rect.width : .72f;
                     rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(.5f, .5f);
                     rect.anchoredPosition = Vector2.zero; rect.localScale = Vector3.one * scale;
+                    BindItemMenu(icon.gameObject, slot, bagItems[index]);
                 }
-                catch { Label(slot, bagItems[index].Name + "\n×" + bagItems[index].Count, 0, 0, 72, 72, 13, Ink, TextAnchor.MiddleCenter); }
+                catch
+                {
+                    var fallback = Label(slot, bagItems[index].Name + "\n×" + bagItems[index].Count, 0, 0, 72, 72, 13, Ink, TextAnchor.MiddleCenter);
+                    fallback.raycastTarget = true; BindItemMenu(fallback.gameObject, slot, bagItems[index]);
+                }
             }
         }
         private void RunItemOperation(Func<string> operation)
@@ -277,6 +283,7 @@ namespace MOD_YtxSQ1.UI
         }
         private void CloseItemDialog()
         {
+            CloseItemMenu();
             if (itemAmount != null) WindowInputScope.Unregister(itemAmount); itemAmount = null;
             var old = itemDialog; itemDialog = null; if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
         }
