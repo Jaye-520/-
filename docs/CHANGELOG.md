@@ -2,6 +2,14 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
+## 07.45：死代码检查门禁＋移除BookView遗留方法
+
+起因：前几轮是**偶然**发现死代码的（`WorkshopEntrances.Allowed()`、`BookView.UnavailableButton`），说明这类残留没有主动防线。本轮先做全项目扫描（统计每个`private/internal`成员在“产品源码＋全部harness”文本中的出现次数），确认产品源码里只剩`BookView.UnavailableButton`一处——那是给未接入模块画灰按钮的旧助手，早先换了渲染方式后已无人调用，予以删除。
+
+随后把扫描固化为`run-all.ps1`的第三项自检：只把“声明后接`(`、`=`或`;`”的成员当候选，因此类/结构/枚举声明与harness入口类不会误报；确有正当例外时可加入脚本内`$deadWhitelist`并写明理由。首版正则要求声明位于行首，**负向测试暴露出改个格式即可绕过**（把探针写在同一行就没被抓到），已放宽为“行首或紧跟`{`/`;`之后”，重测确认无误报且能抓到同行声明的成员。
+
+验证：正向`OK 产品源码无未使用的 private/internal 成员`；负向塞入同行声明的`__neverCalledHelper`后报出`CharacterActions.cs:__neverCalledHelper`、`一致性问题 1 个`、`RESULT: FAIL`、退出码1，还原后恢复PASS（探针未进入提交）。构建07.45时`.tools/backups/before-07.45`自动存入07.44的DLL（`C3FB5039…`）；产物`23541993D1117842EA87E59DD78E76966C6D6DCC85D0636AB66607C5AD89962B`，Release与debug一致。门禁：脚本卫生12、工程一致性24文件＋版本单一定义＋死代码、546项托管检查全绿。未操作存档或终止游戏。
+
 ## 07.44：消除光标对齐方法的字段遮蔽（纯结构重构）＋确认升版政策
 
 审查`WindowInputScope`（唯一打Harmony输入补丁的文件）未发现缺陷：补丁安装失败会`Detach`回滚并恢复导航组、只拦本视图输入的无效焦点目标、诊断计数封顶、释放时`UnpatchSelf`且各恢复步骤单独捕获。但发现一处**真实隐患**：`AlignCaret`里的`var input = __instance;`遮蔽了同类static字段`input`，后续维护者在方法内写`IsActive(input)`会静默用到局部量而不是字段。已改名`field`，并把“取字形上下边界”抽成`TryGetTextBounds`（无有效字形返回false由调用方回退），主方法由63行降至约45行。行为等价点：字形遍历仍忽略空格/零宽字符/末尾空四边形、占位文字仅在文本为空时参与、`pixelsPerUnit`换算与光标四顶点平移逐字未变。

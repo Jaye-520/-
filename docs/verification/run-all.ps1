@@ -62,6 +62,30 @@ try {
             Write-Host ("  FAIL  版本号 {0} 应只在 ModVersion.cs 定义，实际还出现在：{1}:{2}" -f $version, (Split-Path $hit.Path -Leaf), $hit.LineNumber) }
         if ($stray.Count -eq 0) { Write-Host ("  OK    版本号 {0} 只在 ModVersion.cs 中定义" -f $version) }
     }
+    # 死代码：产品源码里 private/internal 的方法与字段，若全项目（含harness）只出现一次，说明无人调用。
+    # 只声明后接 ( = ; 的成员才作候选，故类/结构/枚举声明与harness入口类不会误报；确有正当例外时加入白名单并写明理由。
+    $deadWhitelist = @()
+    $declareFiles = @(Get-ChildItem -LiteralPath $codeDirectory -Recurse -Filter '*.cs' -File |
+        Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\|\\Example\\' })
+    $corpusFiles = @(Get-ChildItem -LiteralPath $codeDirectory -Recurse -Filter '*.cs' -File |
+        Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' })
+    $corpusFiles += @(Get-ChildItem -LiteralPath $verificationDirectory -Filter '*.cs' -File)
+    $corpus = ($corpusFiles | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
+    $declaration = [regex]'(?m)(?:^|[;{}])\s*(?:private|internal)\s+(?:static\s+|readonly\s+|sealed\s+|const\s+)*[A-Za-z_][\w<>\[\],\.\?]*\s+([A-Za-z_]\w*)\s*(?:\(|=|;)'
+    $deadCode = @()
+    foreach ($file in $declareFiles) {
+        foreach ($match in $declaration.Matches([IO.File]::ReadAllText($file.FullName))) {
+            $member = $match.Groups[1].Value
+            if ($member -in @('get', 'set', 'value', 'return', 'new', 'var', 'this', 'base')) { continue }
+            if ($deadWhitelist -contains $member) { continue }
+            if (([regex]::Matches($corpus, '\b' + [regex]::Escape($member) + '\b')).Count -le 1) {
+                $deadCode += ("{0}:{1}" -f (Split-Path $file.Name -Leaf), $member) }
+        }
+    }
+    foreach ($item in $deadCode) {
+        $consistencyFailures++
+        Write-Host ("  FAIL  疑似死代码（仅声明、无人调用）：{0}（删除它，或加入白名单并说明理由）" -f $item) }
+    if ($deadCode.Count -eq 0) { Write-Host '  OK    产品源码无未使用的 private/internal 成员' }
 } catch {
     $consistencyFailures++
     Write-Host ("  FAIL  一致性检查无法执行：{0}" -f $_.Exception.Message)

@@ -734,18 +734,6 @@ namespace MOD_YtxSQ1.UI
             }
         }
 
-        private void UnavailableButton(RectTransform parent, string title, float x, float y, float width, float height)
-        {
-            var button = MakeButton(parent, "待接入_" + title, x, y, width, height, title, () => { });
-            button.interactable = false;
-            var caption = button.GetComponentInChildren<Text>();
-            caption.color = new Color(.43f, .43f, .39f, .7f);
-            caption.resizeTextForBestFit = true;
-            caption.resizeTextMinSize = 12;
-            caption.resizeTextMaxSize = 16;
-            caption.horizontalOverflow = HorizontalWrapMode.Overflow;
-        }
-
         public void RefreshCharacter(bool force = false)
         {
             if (root == null) return;
