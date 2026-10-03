@@ -1,6 +1,6 @@
 # 工程手册
 
-更新：2026-10-02。仅维护实际结构、可执行流程和关键经验；当前状态见[项目记忆](../PROJECT_MEMORY.md)，历史证据见[变更记录](CHANGELOG.md)。
+更新：2026-10-03（07.33阶段收尾）。仅维护实际结构、可执行流程和关键经验；当前状态见[项目记忆](../PROJECT_MEMORY.md)，历史证据见[变更记录](CHANGELOG.md)。
 
 ## 代码导航
 
@@ -12,7 +12,7 @@
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
 | UI/BookView.cs | 七项导航布局、普通搜索、名单、角色属性、立绘和固定署名 |
-| UI/WindowInputScope.cs | 本搜索框无效焦点目标保护、光标整体平移与补丁释放 |
+| UI/WindowInputScope.cs | 本视图登记输入的焦点保护、Text到Caret坐标转换、有限诊断与补丁释放 |
 | UI/PaperSkin.cs | 宣纸、墨刷和山水纹理加载与释放 |
 | Services/CharacterRoster.cs | 名单查询、存活有效过滤、ID去重 |
 | Services/CharacterReader.cs | 对象解析、存档上下文、只读快照及数值格式 |
@@ -22,7 +22,10 @@
 | Services/CharacterFateCatalog.cs | 全量可见配置、类型前缀及候选介绍 |
 | Services/CharacterFateOperations.cs | 气运拥有记录与原生运行效果增删 |
 | Services/CharacterSave.cs | 全批写入预检、可回退字段适配、原生保存和主线程回调收取 |
-| UI/BookView.FateLibrary.cs | 全库检索、图鉴多选及可见按钮池 |
+| UI/BookView.FateLibrary.cs | 全库检索、多选与可见按钮池；三处气运共用自绘品阶样式 |
+| UI/BookView.Actions.cs | 七个快捷按钮、六个叠加帮助菱形和满状态金框 |
+| Services/CharacterActions.cs | 六资源恢复、满修为、现有叠加物品补量、NPC传送及双向好感度 |
+| Services/CharacterRealmChange.cs | 境界配置成长差额、品质/经验/瓶颈及降阶截断记录 |
 | UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
 | Services/CharacterPortrait.cs | 原生身份解析与ConfDramaNpc.CreateTexture分流，普通修士保持原路径 |
 | Example/Example.cs | 参与编译的官方示例；不是产品功能清单 |
@@ -30,7 +33,7 @@
 
 调用关系：ModMain → WorkshopController → WorkshopWindow → BookView。视图使用读取/草稿/写入服务与PaperSkin；窗口负责输入补丁生命周期。当前没有独立Modules目录，写入通过明确字段适配和原生动作接入，不提供反射任意写入。
 
-07.28用partial分开编辑与布局，07.29再拆图鉴；新增文件须登记csproj。共享窗口打开期间保留草稿；07.30每次打开清空未应用草稿，世界失效清理。候选读取本机具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽真实type匹配。输入复制搜索控件须清空旧回调，及时Register/Unregister到WindowInputScope；Attach/Detach归窗口所有；Attach清空旧登记后，从当前承载重新登记BHML_前缀的本视图输入，避免Build期间登记的气运搜索丢失保护。07.29的CharacterSave负责全批预检、原生字段写入/缓存维护、保存回调及主线程Poll；CharacterFateOperations负责即时气运生命周期，不能和只读/草稿服务混淆。替身不证明IL2CPP、Windows IME或保存重载结果。
+07.28用partial分开编辑与布局，07.29再拆图鉴；新增文件须登记csproj。同一次窗口打开期间切页/切人物保留草稿；每次重新打开清空未应用草稿，世界失效清理。候选读取本机具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽真实type匹配。输入复制搜索控件须清空旧回调，及时Register/Unregister到WindowInputScope；Attach/Detach归窗口所有；Attach清空旧登记后，从当前承载重新登记BHML_前缀的本视图输入，避免Build期间登记的气运搜索丢失保护。07.29的CharacterSave负责全批预检、原生字段写入/缓存维护、保存回调及主线程Poll；CharacterFateOperations负责即时气运生命周期，不能和只读/草稿服务混淆。替身不证明IL2CPP、Windows IME或保存重载结果。
 
 ## 构建和调试
 
@@ -69,8 +72,8 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 | --- | --- |
 | 搜索 | 普通InputField取自UIType.ModWorkshopUpload；清理旧EventTrigger、验证器和回调，文字变化即时筛选。禁止用弹窗或手工拼接字符串替代 |
 | 失焦 | 实测焦点转移到TextInfoLong/Root/btnGroup/G:btnOK，active=False且不可交互。07.10保护实际命中；原生发起者完整栈未取得，不能断言是导航Update |
-| 焦点保护 | 仅本搜索框选中/编辑时拒绝inactive或不可交互目标；放行正常对象与null。关闭、失效、初始化失败必须卸载与恢复；不逐帧抢焦点或全局禁止失焦 |
-| 光标 | GenerateCaret后仅平移本框四个顶点到字形中心；空文本用占位文字，缓存缺失用文字矩形。保留高度、宽度、X和闪烁；偏低不是变短 |
+| 焦点保护 | 仅本视图登记的输入框选中/编辑时拒绝inactive或不可交互目标；放行正常对象与null。关闭、失效、初始化失败必须卸载与恢复；不逐帧抢焦点或全局禁止失焦 |
+| 光标 | GenerateCaret后将Text字形中心转换到Caret局部坐标，再平移本框四个顶点；空文本用占位文字，缓存缺失用文字矩形。保留高度、宽度、X和闪烁；偏低不是变短 |
 | 属性 | 用真实getter与同人物原UI对照，不用猜测数据自证单位。年龄/寿命按月除12；暴击整数200直接显示200%，旧valueFloat×100及千分比猜测已被推翻 |
 | 字段 | gradeID是配置行ID，应查境界/阶段；水灵根字段basisFroze、功法抗性phycicalFree按本机实际拼写；映射以CharacterReader源码为准 |
 | 名单 | GetUnits(true)/GetUnit(id,true)包含隐藏单位，过滤死亡/无效、ID去重、自己置顶；按打开/刷新缓存，不逐帧扫描。203/204只是当时存档结果 |
@@ -102,14 +105,14 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 ### 07.32显示修正约定
 
-- 按钮介绍只绑说明点，不绑父按钮；点有独立点击接收器，防止把看介绍变成执行操作。提示与对象栏/正文共同使用书页坐标，按按钮下方/上方定位，不能将左栏提示强行约束到正文区域。
+- 除满状态无介绍外，按钮介绍只绑角落帮助标记，不绑父按钮；点有独立点击接收器，防止把看介绍变成执行操作。提示与对象栏/正文共同使用书页坐标，按按钮下方/上方定位，不能将左栏提示强行约束到正文区域。
 - 气运贴图的等比与拉伸均已被用户否定；按当前需求统一自绘色底，不再恢复SpriteTool.GetLuckBG。level在读取快照时保存；滚动池只更新颜色和文字，不加载贴图或重建装饰。名称保留固定品阶栏、删除空间和单行BestFit，检查拥有/检索/图鉴三个入口。
 
 ### 07.31防止重复错误
 
 - 本机Unhollower生成的`Dictionary<TKey,TValue>.TryGetValue`对byref值使用引用包装构造，`float`会报`Single..ctor(IntPtr)`。用Mono.Cecil核对Il2Cppmscorlib的IL后，采用ContainsKey+索引getter的PointerToValueGeneric解箱。新增涉及原生泛型byref基本类型时先核实生成IL，普通托管字典替身不会暴露此问题。
 - UnitActionSetPoint成功和坐标回读不代表地图人数已经刷新。后续走MapWorldMgr.UpdateGridUI/UpdateGridUICmd及UIMapMain.uiGridUnit.UpdateUI(curSelectPoint)，不通过重建单位或直接改人数掩盖显示错误；游戏回归覆盖来、重复来、返和去。
-- Image等比会使宽横条底图留白；完整底图与文字必须共用几何范围。气运候选用Sliced、不preserveAspect，名称矩形先设stretch锚点再设offset，避免TopLeft锚点下offsetMax/Min改变出负宽度。性格描述字段为xdash_54sd；介绍沿用已认可浮窗生命周期。兄弟对象栏按钮先换算到共同父级再进入正文提示定位，保留原气运路径。
+- 07.30等比和07.31拉伸贴图均被后续用户反馈否定，不能继续当成现行方案。当前气运sprite=null，名称用固定左上矩形、品阶栏和删除预留，避免锚点/offset混用。性格描述字段为xdash_54sd；气运/性格保留既有提示路径，快捷说明使用共同书页坐标及下方/上方定位。
 - 资源显示上限不是资源baseValue；满状态和境界后恢复使用`baseValue + max.value - value`保留加法效果，锁定/倍率/固定状态拒绝任意反解。六项先预检，失败恢复所有已尝试字段并核对，无法恢复时保留Pending，不能谎称无修改。
 - 不把所有资质随境界提高当成既定游戏规则。RoleGrade和ItemRarityMaterials官方只读配置、UnitActionRoleUpGrade原生代码应共同核对；保留丹药/修炼和特殊气运效果，不制造无配置的固定资质奖励。
 - 光标连续反馈失败后不能再用托管测试自证：07.31记录每输入框空/非空的真实字形范围、原光标范围、转换位移和两矩形位置。按Unity原生AssignPositioningIfNeeded同步矩形，并将Text字形坐标转换到Caret局部坐标；诊断命中及游戏画面对照仍待取得。参考[Unity InputField源码](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)，具体接口以本机包装程序集为准。
@@ -120,11 +123,11 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 - 用户明确唯一存档是开发测试存档，授权本轮接入真实写入；不终止游戏。使用本机Managed程序集、官方CHM的WorldUnitBase.CreateAction/DataMgr.SaveData和官方RoleCreateFeature/RoleGrade表头及JSON核实接口。新增引用保持Private=False。
 - DynInt.value只读。baseValue setter负责钳制及原生变化回调；加法效果保留，目标显示值换算基础差值，年份保存时保留月余数。倍率/固定效果、缺持久setter、范围异常目前拒绝，不通过试写猜系数。全批先准备，应用顺序资源上限优先；异常逆序回退可回退字段并读回原值。不声称游戏原生复杂动作可事务回退。
 - 名字原GetName只拼二段数组，保持二段结构；兴趣三个ID合并一次写入，重复拒绝；Destroy旧allHobby、按配置item的竖线/下划线拆分调用WorldFactory.CreateUnitHobby/Init重建，GetHobbyItems比较ID更新缓存。不可直接把cacheHobbyItems设null（原生路径会访问它）。性格按真实配置type候选，写入三个原字段并GetCharacterWeight更新。
-- UnitActionRoleUpGrade原生路径修改能力点、寿命、成长属性、恢复资源并记录突破品质/日志及相关逆天气运。SetGradeID只有境界/经验/事件，不能替代完整突破。当前仅下一阶段调用CreateAction；NPC原IsCreate跳过玩家材料要求，玩家材料选择尚未接入；跨境界/降阶/历史品质改写拒绝，境界不可和数字草稿混批。原生动作结果读回核对；不绕过IsCreate强行OnCreate。
+- UnitActionRoleUpGrade原生路径修改能力点、寿命、成长属性、资源、品质/日志和相关逆天气运。SetGradeID不能替代完整突破。07.29仅下一阶段CreateAction的方案已被07.30的CharacterRealmChange成长差额编辑替换：允许升降配置行及品质，不执行材料/突破剧情/随机奖励；境界不可和数字草稿混批。此处保留原生研究依据，不作为旧实现指令。
 - 气运：官方表头type=1先天、2后天、3逆天、4仙人恩赐、5战前（后天）、6壶妖先天、11扩展先天。全库来自roleCreateFeature._allConfList，conceal=1不作为可见配置。原UINPCInfoProperty对type=2且conceal=1过滤，与敖瑶日志8012523/231125吻合；不能转而读取其他玩法DLCUnitData填世界人物。
-- 后天/逆天用UnitActionLuckAdd，删除用UnitActionLuckDel注销运行回调和addLuck；先天添加保留bornLuck记录并CreateLuck/NewCreateLuck，删除补齐原动作不负责的bornLuck。隐藏、同组、成就解锁、全局数量、壶妖修士差异检查避免盲加。气运动作即时影响内存，记录待保存；复杂原生调用可能部分执行，错误后强制重读，不谎称无变化。
+- 后天/逆天用UnitActionLuckAdd，删除用UnitActionLuckDel注销运行回调和addLuck；先天添加保留bornLuck记录并CreateLuck/NewCreateLuck，删除补齐原动作不负责的bornLuck。当前保护重复、隐藏/缺失配置、无运行类及壶妖修士差异；07.30已移除随机生成的同组、成就和全局名额限制，不恢复这些主动赋予门槛。气运动作即时影响内存，记录待保存；复杂原生调用可能部分执行，错误后强制重读，不谎称无变化。
 - DataMgr.isSaveData为静态并发标志，调用g.data.SaveData(Il2CppSystem.Action<bool>)。保留托管/IL2CPP委托，回调只发布托管结果，WorkshopController.Update主线程Poll刷新；成功才清待保存，失败仍可保存内存而不重放草稿；上下文切换的旧回调不清新世界状态。不能承诺游戏不会自动保存。
-- Native反汇编依据存于忽略的.tools/writes-disassembly.txt、apply-disassembly.txt、npcinfo-disassembly.txt、binding-disassembly.txt；自动符号共享地址有误标，结论须结合字段偏移/配置/实际调用。诊断文件是研究缓存，不进入ModAssets或发布包。
+- Native反汇编依据存于忽略的.tools（writes/apply/npcinfo/binding及fate-style-native等研究输出）；自动符号共享地址有误标，结论须结合字段偏移/配置/实际调用。诊断文件是研究缓存，不进入ModAssets或发布包。
 
 | 改动 | 相关检查 | 游戏重点 |
 | --- | --- | --- |
@@ -137,7 +140,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 脚本在`docs/verification/`，使用前核对当前源码适配性。托管替身不覆盖Unity事件顺序、IL2CPP及Windows IME；run-book-layout.ps1会写screenshots模拟预览，必须与实测截图区分。
 
-已有验收摘要仅在项目记忆维护；完整41项数值、IME全流程、多分辨率、跨场景/存档和地图输入隔离尚未全量验收。编译、托管检查、磁盘同步、加载和游戏结果分别记录。
+已有验收摘要仅在项目记忆维护；全部数字字段与单位、IME全流程、多分辨率、跨场景/存档和地图输入隔离尚未全量验收。编译、托管检查、磁盘同步、加载和游戏结果分别记录。
 
 ## 小步迭代与文档维护
 

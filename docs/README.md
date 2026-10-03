@@ -1,6 +1,6 @@
 # 文档入口
 
-每次新会话先读项目记忆与长期计划；其余按任务查阅。当前状态仅由项目记忆维护。
+每次新会话先读项目记忆与长期计划；其余按任务查阅。当前状态仅由项目记忆维护。2026-10-03阶段收尾：基线07.33，先完成游戏验证，再继续功能迭代；整理文档不代表新增验收。
 
 | 文档 | 用途 |
 | --- | --- |
@@ -12,6 +12,6 @@
 
 只保留上述5份文档加本入口，共6份Markdown。普通迭代更新记忆和变更记录，不新增独立模板、报告或逐版说明。新增文档必须有不能被现有文档容纳的长期维护价值。
 
-辅助资料：screenshots保留截图与模拟预览（两者须区分），verification保留检查脚本，api-reference保留官方接口缓存。
+辅助资料：screenshots保留实测截图、用户标注反馈及模拟预览，文件名的feedback表示问题依据、layout表示GDI模拟，不代表已验收。verification保留检查脚本，api-reference保留官方接口缓存。最新[布局反馈](screenshots/role-07-32-feedback-layout.png)、[帮助标记反馈](screenshots/help-mark-07-32-feedback.png)和[满状态反馈](screenshots/restore-07-32-feedback.png)来自用户07.32截图，07.33效果仍待确认。
 
 [旧文档归档](archive/documentation-before-consolidation-2026-10-02.zip)保存精简前34份原文，已逐文件校验。仅追溯时解压至独立目录阅读；其中“当前/最新”不代表现状，不覆盖当前工程。
