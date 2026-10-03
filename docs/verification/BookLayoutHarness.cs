@@ -478,6 +478,32 @@ internal static class BookLayoutHarness
     private static string Selected(BookView view) { return (string)typeof(BookView).GetField("selectedUnitId",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view); }
     private static void ClickNamed(UnityEngine.Transform book,string name) { Walk(book).First(t=>t.gameObject.name=="BHML_"+name).GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); }
     private static bool Rejected(Action action) { try { action();return false; } catch(InvalidOperationException){return true;} catch(OverflowException){return true;} }
+    private static void VerifyMartials(BookView view,UnityEngine.RectTransform book,string[] args,int size)
+    {
+        var target=Selected(view);var pending=CharacterSave.Pending;
+        ClickNamed(book,"卷目2");
+        Check(Selected(view)==target && Walk(book).Any(t=>t.gameObject.name=="BHML_功法选取"),"martial preview keeps shared target at "+size);
+        Check(Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_功法操作") || t.gameObject.name.StartsWith("BHML_修改词条")).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"preview cannot invoke unfinished martial writes at "+size);
+        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"martials-layout-"+size+".png"),ImageFormat.Png); }
+        var search=Walk(book).First(t=>t.gameObject.name=="BHML_功法检索").GetComponentInChildren<UnityEngine.UI.InputField>();
+        search.text="烈火";
+        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_功法条目") && t.gameObject.activeSelf)==1,"martial search filters examples at "+size);
+        ClickNamed(book,"功法条目0");
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="烈火术"),"martial selection displays matching detail at "+size);
+        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"martials-detail-layout-"+size+".png"),ImageFormat.Png); }
+        if(Walk(book).Any(t=>t.gameObject.name=="BHML_返回功法列表")) ClickNamed(book,"返回功法列表");
+        search.text="不存在的示例";
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="没有符合条件的示例功法"),"martial empty results clear stale detail at "+size);
+        search.text="";ClickNamed(book,"功法来源1");
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="获取秘籍"),"library preview shows distinct acquisition actions at "+size);
+        ClickNamed(book,"功法筛选类别");
+        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_功法条目") && t.gameObject.activeSelf)==2,"martial category filter works at "+size);
+        ClickNamed(book,"卷目0");
+        Check(!WindowInputScope.Registered.Contains(search) && CharacterSave.Pending==pending,"leaving preview releases input and never marks writes pending at "+size);
+        ClickNamed(book,"卷目1");
+    }
     private static void VerifyItems(BookView view,UnityEngine.RectTransform book,string[] args,int size)
     {
         var id=Selected(view);var npc=CharacterReader.Resolve(id);var player=g.world.playerUnit;var context=CharacterReader.ContextKey();
@@ -968,6 +994,7 @@ internal static class BookLayoutHarness
             itemButton.onClick.Invoke();
             Check(Walk(book).First(t=>t.gameObject.name=="BHML_对象栏").gameObject.activeInHierarchy && ModelRenderTexture.Active==1,"items page shares target panel and existing portrait");
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_人物背包") && !book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="寿命"),"module switch replaces attributes with item page");
+            VerifyMartials(bookView,book,args,(int)sizes[s][0]);
             VerifyItems(bookView,book,args,(int)sizes[s][0]);
             Walk(book).First(t=>t.gameObject.name=="BHML_卷目0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             search.text="";

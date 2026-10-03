@@ -302,6 +302,11 @@ namespace MOD_YtxSQ1.UI
                 editStatus.text = "检索或选择道具，添加给当前人物；操作后点击保存";
                 BuildItems(); RefreshCharacter(true); return;
             }
+            if (index == 2)
+            {
+                editStatus.text = "界面预览：可检索、筛选与查看示例；功法读取及修改待接入";
+                BuildMartials(); RefreshCharacter(true); return;
+            }
             if (index != 0)
             {
                 var blank = Card(content, "待编纂", 0, 76, contentWidth, contentHeight - 76);

@@ -303,6 +303,7 @@ namespace MOD_YtxSQ1.UI
             Cleanup(CloseDropdown, "关闭下拉");
             Cleanup(ClearFateLibraryView, "气运图鉴");
             Cleanup(ClearItemsView, "道具视图");
+            Cleanup(ClearMartialsView, "功法视图");
             Cleanup(ClearActions, "快捷说明");
             editBindings.Clear();
         }
