@@ -44,12 +44,14 @@ public partial class DataProps
 public class ConfBattleSkillAttackItem { public int id,type,gradeMin,gradeMax;public string name,basType,className; }
 public class ConfBattleStepBaseItem : ConfBattleSkillAttackItem { }
 public class ConfBattleAbilitySuitBaseItem {public int id,suitType;public string suitName,suitMember;}
+public class ConfBattleSkillPrefixNameItem {public int id,index;public string text;}
 public class ConfGameItemRewardAbilitySuitItem {public int id,rewardID,suitID,level,rate,weight;}
 public class ConfGameItemRewardItem {public int id,rewardID,itemType,item;}
 public class ConfBattleAbilityBaseItem { public int id,type,gradeMin,gradeMax;public string name,basType;public int[] className; }
 public class MartialConfig<T> where T:class { public List<T> _allConfList=new List<T>();public T GetItem(int id){return _allConfList.First(x=>(int)typeof(T).GetField("id").GetValue(x)==id);} }
 public sealed partial class Config
 {
+    public MartialConfig<ConfBattleSkillPrefixNameItem> battleSkillPrefixName=new MartialConfig<ConfBattleSkillPrefixNameItem>();
     public MartialConfig<ConfBattleSkillAttackItem> battleSkillAttack=new MartialConfig<ConfBattleSkillAttackItem>();
     public MartialConfig<ConfBattleStepBaseItem> battleStepBase=new MartialConfig<ConfBattleStepBaseItem>();
     public MartialConfig<ConfBattleAbilitySuitBaseItem> battleAbilitySuitBase=new MartialConfig<ConfBattleAbilitySuitBaseItem>();
@@ -80,6 +82,7 @@ public static class MartialFixture
     public static void Load(string folder)
     {
         foreach(Dictionary<string,object> row in Read(folder,"LocalText"))ConfLocalText.Texts[S(row,"key")]=S(row,"ch");
+        foreach(Dictionary<string,object> r in Read(folder,"BattleSkillPrefixName"))g.conf.battleSkillPrefixName._allConfList.Add(new ConfBattleSkillPrefixNameItem{id=I(r,"id"),index=I(r,"index"),text=S(r,"text")});
         foreach(Dictionary<string,object> r in Read(folder,"BattleSkillAttack"))g.conf.battleSkillAttack._allConfList.Add(new ConfBattleSkillAttackItem{id=I(r,"id"),type=I(r,"type"),gradeMin=I(r,"gradeMin"),gradeMax=I(r,"gradeMax"),name=S(r,"name"),className=S(r,"className"),basType=S(r,"basType")});
         foreach(Dictionary<string,object> r in Read(folder,"BattleStepBase"))g.conf.battleStepBase._allConfList.Add(new ConfBattleStepBaseItem{id=I(r,"id"),type=I(r,"type"),gradeMin=I(r,"gradeMin"),gradeMax=I(r,"gradeMax"),name=S(r,"name"),className=S(r,"className"),basType=S(r,"basType")});
         foreach(Dictionary<string,object> r in Read(folder,"BattleAbilityBase"))g.conf.battleAbilityBase._allConfList.Add(new ConfBattleAbilityBaseItem{id=I(r,"id"),type=I(r,"type"),gradeMin=I(r,"gradeMin"),gradeMax=I(r,"gradeMax"),name=S(r,"name"),className=S(r,"className").Split('|').Select(int.Parse).ToArray(),basType=S(r,"basType")});

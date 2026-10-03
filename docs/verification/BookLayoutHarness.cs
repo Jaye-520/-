@@ -505,8 +505,18 @@ internal static class BookLayoutHarness
         ClickNamed(book,"秘籍库");
         Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_秘籍类别"))==5,"library exposes exactly five native categories at "+size);
         var librarySearch=Walk(book).First(t=>t.gameObject.name=="BHML_秘籍库检索").GetComponentInChildren<UnityEngine.UI.InputField>();
+        string basis;
+        var nameMatches=CharacterMartials.SearchCatalog(catalog,"逆鸿神功",0,out basis);
+        Check(basis=="神功" && nameMatches.Count==12 && nameMatches.All(x=>x.SuitId==0),"generated full name resolves twelve schools without inheritance substitution at "+size);
+        Check(CharacterMartials.SearchCatalog(catalog,"不存在的神功",0,out basis).Count==0 && basis==null,"unknown name cannot silently fall back to broad suffix at "+size);
+        Check(CharacterMartials.SearchCatalog(catalog,"过龙门·枪系神功",0,out basis).Count==1 && basis==null,"literal inheritance name takes precedence over generated-name mapping at "+size);
+        Check(CharacterMartials.SearchCatalog(catalog,"逆鸿月影剑",0,out basis).Single().Id==14113 && basis=="月影剑","active full name resolves exact base move at "+size);
+        librarySearch.text="逆鸿神功";
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && (t.GetComponent<UnityEngine.UI.Text>().text??"").Contains("已识别类型「神功」")),"ambiguous full name tells player to select school at "+size);
+        SaveMartialPreview(book,args,size,"martials-fullname-search-layout-");
         librarySearch.text="清风剑";
         Check(Walk(book).Count(t=>t.gameObject.name=="BHML_秘籍条目" && t.gameObject.activeSelf)==1,"library filters actual config names at "+size);
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="剑 · "+CharacterMartials.Realm(grade)+" · 红色"),"available library row explicitly shows acquired realm and red quality at "+size);
         ClickNamed(book,"秘籍条目");
         librarySearch.text="过龙门";
         Check(Walk(book).Count(t=>t.gameObject.name=="BHML_秘籍条目" && t.gameObject.activeSelf)==6 && Walk(book).Where(t=>t.gameObject.name=="BHML_秘籍条目" && t.gameObject.activeSelf).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"global search finds all six dragon gate members from weapon tab and locks low realm at "+size);

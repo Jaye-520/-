@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.64 ｜ **最后更新**：2026-10-04
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.65 ｜ **最后更新**：2026-10-04
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -398,3 +398,7 @@ FrameSearchInput统一修士搜索和CreateSearchInput创建的气运、气运�
 生成沿用原生奖励工厂和NewMartial，再调用 PropsAbilityData.suitID setter；本机SetRewardPropsDataAttr也使用此setter，native调用链确认它更新AbilityData、序列化回原生PropsData附加数据并清除缓存，禁止仅改名称冒充传承或手写JSON。校验suitMember、生成品质/招式/境界与suitID，入包前捕获唯一ID/签名，入包后复核签名及传承身份。未添加运行效果或自动装备，学习/装备后的套装激活走游戏机制、仍待游戏验证。
 
 生成境界从 GameItemRewardAbilitySuit → GameItemReward → BattleAbilityCombine.rewardGradeID 交叉核对：过龙门及24种流派传承为登仙，渡江云等通用传承有羽化版本；这是生成版本约束，不宣称复刻掉落、剧情和区域条件。残天式、卧龙劲在只读数据中只引用无对应奖励项的900001/900002，暂显示但禁用获取，不猜境界。动态配置可能与只读JSON不同，以实际配置解析结果为准。替身加载四张新增真实表，不能证明原生setter/介绍/套装效果或保存重载正确。
+
+### 完整书名检索（07.65）
+
+本机ConfBattleSkillPrefixName.GetName按词条数值选择index=1/2两段前缀，AbilityInfoData/SkillInfoData再拼接基础名称；书名不只由境界决定。目录不枚举所有随机前缀组合。SearchCatalog先匹配真实目录名称/ID，未命中才验证原生前缀并反查普通基础类型；神功等共有后缀返回所有流派候选，UI明确要求选择流派，不根据前缀猜流派或承诺获得同名词条。传承名称直接匹配优先，不把普通候选替换成传承。未知前缀不能只按后缀模糊匹配；已学列表保留真实完整名搜索。获取仍按捕获的当前境界、level=6原生生成，目录提示不改变身份或发放规则。

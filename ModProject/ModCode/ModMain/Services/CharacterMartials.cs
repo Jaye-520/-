@@ -107,6 +107,26 @@ namespace MOD_YtxSQ1.Services
         }
         internal static bool CanAcquire(MartialEntry entry, int grade)
         { return !entry.SuitGradeUnknown && grade >= entry.GradeMin && grade <= entry.GradeMax; }
+        internal static List<MartialEntry> SearchCatalog(List<MartialEntry> catalog, string query, int category, out string basis)
+        {
+            basis = null;
+            var direct = catalog.FindAll(entry => query.Length == 0 ? entry.Category == category
+                : entry.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 || entry.Id.ToString().IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (query.Length < 3 || direct.Count > 0) return direct;
+            // 完整名称只反查基础类型，不能从前缀推定流派或保证生成相同词条。
+            var first = new HashSet<string>(); var second = new HashSet<string>();
+            foreach (var prefix in g.conf.battleSkillPrefixName._allConfList)
+            {
+                if (prefix.index == 1) first.Add(prefix.text);
+                else if (prefix.index == 2) second.Add(prefix.text);
+            }
+            if (!first.Contains(query.Substring(0, 1)) || !second.Contains(query.Substring(1, 1))) return direct;
+            var suffix = query.Substring(2);
+            var matches = catalog.FindAll(entry => entry.SuitId == 0 &&
+                (entry.Type == MartialType.Ability ? Local(g.conf.battleAbilityBase.GetItem(entry.Id).name) : entry.Name) == suffix);
+            if (matches.Count > 0) basis = suffix;
+            return matches;
+        }
         internal static List<MartialEntry> Read(string unitId)
         {
             var unit = CharacterReader.Resolve(unitId);

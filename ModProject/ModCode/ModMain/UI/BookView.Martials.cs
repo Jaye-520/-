@@ -13,7 +13,7 @@ namespace MOD_YtxSQ1.UI
         private InputField martialSearch, martialLibrarySearch;
         private RectTransform martialListPanel, martialDetailPanel;
         private ScrollRect martialListScroll, martialLibraryScroll;
-        private Text martialCount, martialLibraryStatus;
+        private Text martialCount, martialLibraryStatus, martialLibraryHint;
         private Button martialEquippedButton;
         private readonly List<MartialRow> martialRows = new List<MartialRow>(), martialLibraryRows = new List<MartialRow>();
         private List<MartialEntry> martialEntries = new List<MartialEntry>(), martialCatalog = new List<MartialEntry>();
@@ -124,11 +124,19 @@ namespace MOD_YtxSQ1.UI
                 row.Button.GetComponent<RectTransform>().anchoredPosition = new Vector2(index % columns * (width + 10), -(index / columns) * MartialPitch);
                 row.Button.GetComponent<Image>().color = picked ? new Color(.78f, .74f, .62f, 1) : new Color(.88f, .86f, .80f, 1);
                 row.Name.text = (library && picked ? "✓ " : "") + entry.Name;
-                row.Mark.color = library ? Gold : MartialQualityColor(entry.Level);
-                row.Meta.text = library ? entry.School + (entry.SuitId != 0 ? " · 传承" : " · #" + entry.Id) + (entry.SuitGradeUnknown ? " · 境界待核实" : martialLibraryGrade < entry.GradeMin ? " · 最低" + CharacterMartials.Realm(entry.GradeMin) : "")
+                row.Mark.color = library ? CharacterMartials.CanAcquire(entry, martialLibraryGrade) ? MartialQualityColor(6) : Muted : MartialQualityColor(entry.Level);
+                row.Meta.text = library ? LibraryMartialMeta(entry)
                     : CharacterMartials.Realm(entry.Grade) + " · " + CharacterMartials.Categories[entry.Category] + (entry.Equipped ? " · 已装备" : "");
                 row.Button.interactable = !library || CharacterMartials.CanAcquire(entry, martialLibraryGrade);
             }
+        }
+        private string LibraryMartialMeta(MartialEntry entry)
+        {
+            var source = entry.SuitId != 0 ? "传承" : entry.School;
+            if (entry.SuitGradeUnknown) return source + " · 境界待核实 · 不可获取";
+            if (martialLibraryGrade < entry.GradeMin) return source + " · 最低" + CharacterMartials.Realm(entry.GradeMin) + " · 未解锁";
+            if (martialLibraryGrade > entry.GradeMax) return source + " · 最高" + CharacterMartials.Realm(entry.GradeMax) + " · 不可获取";
+            return source + " · " + CharacterMartials.Realm(martialLibraryGrade) + " · 红色";
         }
         private void RenderMartialDetail()
         {
@@ -189,13 +197,14 @@ namespace MOD_YtxSQ1.UI
             {
                 var panel = MartialOverlay("秘籍库"); var width = panel.sizeDelta.x; var height = panel.sizeDelta.y;
                 martialLibrarySearch = CreateSearchInput(panel, "秘籍库检索", 12, 46, width - 24, 32, "检索全部秘籍（名称 / 招式 / ID）", _ => FilterMartialLibrary());
+                martialLibraryHint = Label(panel, "", 12, 82, width - 24, 30, 13, Muted);
                 var tabWidth = (width - 56) / 5;
                 for (int i = 0; i < 5; i++)
                 {
-                    var category = i; var button = MakeButton(panel, "秘籍类别" + i, 12 + i * (tabWidth + 8), 90, tabWidth, 32, CharacterMartials.Categories[i], () => { martialCategory = category; martialLibrarySearch.SetTextWithoutNotify(""); FilterMartialLibrary(); });
+                    var category = i; var button = MakeButton(panel, "秘籍类别" + i, 12 + i * (tabWidth + 8), 118, tabWidth, 32, CharacterMartials.Categories[i], () => { martialCategory = category; martialLibrarySearch.SetTextWithoutNotify(""); FilterMartialLibrary(); });
                     button.GetComponentInChildren<Text>().fontSize = tabWidth < 140 ? 15 : 18; martialCategoryButtons.Add(button);
                 }
-                martialLibraryScroll = ItemScroll(panel, "秘籍库列表", 12, 134, width - 24, height - 210); AddMartialScrollbar(martialLibraryScroll);
+                martialLibraryScroll = ItemScroll(panel, "秘籍库列表", 12, 162, width - 24, height - 238); AddMartialScrollbar(martialLibraryScroll);
                 BuildMartialRows(martialLibraryRows, martialLibraryScroll, MartialLibraryColumns(), true);
                 martialLibraryScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderMartialRows(true))));
                 martialLibraryStatus = Label(panel, "", 12, height - 64, width - 156, 48, 14, Muted);
@@ -212,7 +221,10 @@ namespace MOD_YtxSQ1.UI
         {
             if (martialLibraryScroll == null) return;
             martialLibraryResults.Clear(); var query = martialLibrarySearch.text.Trim();
-            foreach (var entry in martialCatalog) if ((query.Length > 0 || entry.Category == martialCategory) && MatchesMartial(entry, query)) martialLibraryResults.Add(entry);
+            string basis;
+            martialLibraryResults.AddRange(CharacterMartials.SearchCatalog(martialCatalog, query, martialCategory, out basis));
+            martialLibraryHint.text = basis == null ? "目录按基础招式与传承列出；完整书名前缀由词条生成。"
+                : "已识别类型「" + basis + "」：请选择流派；获取后的书名由原生词条生成。";
             for (int i = 0; i < martialCategoryButtons.Count; i++) martialCategoryButtons[i].GetComponent<Image>().color = query.Length == 0 && i == martialCategory ? new Color(.73f, .69f, .56f, 1) : new Color(.87f, .85f, .78f, 1);
             ResizeMartialList(martialLibraryScroll, martialLibraryResults.Count, MartialLibraryColumns()); RenderMartialRows(true); UpdateMartialLibraryStatus();
         }
@@ -290,7 +302,7 @@ namespace MOD_YtxSQ1.UI
         private void CloseMartialOverlay()
         {
             if (martialLibrarySearch != null) WindowInputScope.Unregister(martialLibrarySearch);
-            martialLibrarySearch = null; martialLibraryScroll = null; martialLibraryStatus = null; martialLibraryRows.Clear(); martialLibraryResults.Clear(); martialCategoryButtons.Clear(); martialPicks.Clear();
+            martialLibrarySearch = null; martialLibraryScroll = null; martialLibraryStatus = null; martialLibraryHint = null; martialLibraryRows.Clear(); martialLibraryResults.Clear(); martialCategoryButtons.Clear(); martialPicks.Clear();
             var old = martialOverlay; martialOverlay = null; if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
         }
         private void AddMartialScrollbar(ScrollRect scroll)
