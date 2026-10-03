@@ -47,6 +47,12 @@ namespace UnityEngine.UI
     public class Selectable { public bool enabled=true,interactable=true;public bool IsInteractable() { return interactable; } }
     public class InputField
     {
+        // 不同包装共享一个原生对象（这里以gameObject标识）；托管Equals仍为引用相等。
+        public static bool operator ==(InputField a,InputField b)
+        { return ReferenceEquals(a,b) || (!ReferenceEquals(a,null) && !ReferenceEquals(b,null) && ReferenceEquals(a.gameObject,b.gameObject)); }
+        public static bool operator !=(InputField a,InputField b) { return !(a==b); }
+        public override bool Equals(object other) { return base.Equals(other); }
+        public override int GetHashCode() { return base.GetHashCode(); }
         public bool isFocused;public UnityEngine.GameObject gameObject=new UnityEngine.GameObject();
         public string text="";public void DeactivateInputField() { isFocused=false; }
         public Text textComponent=new Text();public Graphic placeholder;
@@ -157,9 +163,17 @@ internal static class WindowInputScopeHarness
         field.isFocused=false;
         var editor=new UnityEngine.UI.InputField { isFocused=true, text="123" };
         WindowInputScope.Register(editor);
+        var callback=new UnityEngine.UI.InputField { gameObject=editor.gameObject, text="1", textComponent=editor.textComponent };
+        Check(!editor.Equals(callback) && (bool)Call("Owns",callback),"recognizes another managed wrapper of the same registered Unity input");
+        WindowInputScope.Register(callback);
+        var registered=(System.Collections.Generic.List<UnityEngine.UI.InputField>)typeof(WindowInputScope).GetField("editors",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);
+        Check(registered.Count==2,"registering an alternate wrapper does not duplicate native input ownership");
+        Call("AlignCaret",callback,caret,new UnityEngine.Vector2());
+        Check(caret.Vertices[0].position.y==-12 && caret.Vertices[2].position.y==12,"caret hook aligns a registered input through its callback wrapper");
         UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject=editor.gameObject;
         Check(!Allows(hidden) && Allows(field.gameObject),"registered property input gets invalid-focus protection while legitimate search focus is allowed");
-        WindowInputScope.Unregister(editor);
+        WindowInputScope.Unregister(callback);
+        Check(!(bool)Call("Owns",editor),"unregistering an alternate wrapper removes the same native input");
         Check(Allows(hidden),"unregistered property input no longer affects focus handling");
         catalog.isFocused=true;UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject=catalog.gameObject;
         Check(!Allows(hidden),"Attach rediscovers owned catalog search after clearing pre-build registrations");

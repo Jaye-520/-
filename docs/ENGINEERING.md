@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.49 ｜ **最后更新**：2026-10-03
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.50 ｜ **最后更新**：2026-10-03
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -134,10 +134,12 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 ### 07.49共享人物、道具与输入克隆
 
 - `selectedUnitId`是四个人物页唯一选择源，对象栏不随切页重建。写入按世界上下文与明确人物ID解析，失效不回退玩家；弹窗切人/切页关闭，清空还核对唯一ID/配置ID/数量组成的排序指纹。世界切换关闭窗口，下一次由入口明确目标。
-- 道具发放走 `UnitDataProps.AddProps(id,count,null)`，数量回读；删除走 `DelProps(soleID)`保留原生装备生命周期。`ClearAllProps`直接清列表与索引，不能代替逐件删除。原生 `_allShowProps`排除隐藏资源和已装备记录；UI快照仅保留托管值，原生图标对象关闭时调用 `CloseIconInfo`并销毁。原生写入失败不宣称事务回滚，Pending留作保存重试。
+- 道具发放走 `UnitDataProps.AddProps(id,count,"")`，数量回读；空字符串才是工厂生成唯一ID的约定。07.49误传null：原生比较 `customSoleID != ""`，将生成编号覆盖为null，唯一ID字典抛ArgumentNullException。替身也必须体现这项约定，覆盖首次叠加与非叠加发放。删除走 `DelProps(soleID)`保留装备生命周期；不以直接清列表的 `ClearAllProps`替代逐件删除。原生 `_allShowProps`排除隐藏资源和装备，图标关闭调用 `CloseIconInfo`并销毁；写入失败不宣称事务回滚，Pending保留。
 - 普通恢复药限定 `effectType=101`、可用、可叠加、非隐藏、不高于目标境界；使用 `GetPillAddValue(unit,id,false)`比较hp/mp实际药效，同效果按品质优先。两种药各增加20，先预检两项溢出再发放，第二项失败说明第一项已增加。
 - 克隆活跃输入框不能仅看 `caretRectTrans`：非序列化引用可能指向源框，而克隆层级已有独立“ Input Caret”子对象。只删除克隆内生成子对象，置空克隆的renderer/cache/mesh/cursorVerts，不销毁源网格或源Caret。
-- Text字形网格按首顶点 `PixelAdjustPoint`取整，InputField光标按原点取整；不能混用偏移。依据：[Unity InputField](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)、[Unity Text](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/Text.cs)，本机原生 `GenerateCaret`反汇编另留 `.tools/items-native.txt`。具体根因尚无运行时诊断证明，修正不能当成游戏验收。
+- Text字形网格按首顶点 `PixelAdjustPoint`取整，InputField光标按原点取整；不能混用偏移。依据：[Unity InputField](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)、[Unity Text](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/Text.cs)，原生反汇编另留 `.tools/items-native.txt`。这项几何修正没有解决07.49克隆框漏执行，不能当成游戏验收；对象身份原因见下条。
+- 07.50排查确认克隆框的光标补丁漏执行：本机UnhollowerBaseLib的Il2CppObjectBase没有覆盖 `System.Object.Equals`；Unity包装仅提供 `Equals(Il2CppSystem.Object)`，不覆盖托管Equals。`List<InputField>.Contains/Remove`比较包装引用，而Harmony回调可收到新包装；主搜索用Unity `==`所以正常。登记去重、Owns和释放统一用Unity `==`；回归替身必须模拟不同包装指向同一对象，不能全程使用同一个托管引用。旧几何修正保留，实际游戏表现仍待核对。
+- 所有模块标题与状态文字统一左留白20，缩减相应文字宽度，保留右侧操作空间；不移动对象栏与正文卡片。
 
 
 | 主题 | 已确认事实与开发规则 |

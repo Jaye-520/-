@@ -290,8 +290,8 @@ namespace MOD_YtxSQ1.UI
                 var heading = Fill(content, "模块题栏底框", 0, 0, contentWidth, 64, new Color(.92f, .91f, .87f, .35f)).rectTransform;
                 Border(heading, contentWidth, 64);
             }
-            Label(content, index == 0 ? "属性总览" : Modules[index], index == 0 ? 12 : 0, 4, contentWidth - 132, 30, 25, Ink);
-            editStatus = Label(content, index == 0 ? "点击数值修改；选择字段可下拉，修改待保存" : "功能尚未开放", index == 0 ? 12 : 0, 34, contentWidth - 132, 24, 16, Muted);
+            Label(content, index == 0 ? "属性总览" : Modules[index], 20, 4, contentWidth - 152, 30, 25, Ink);
+            editStatus = Label(content, index == 0 ? "点击数值修改；选择字段可下拉，修改待保存" : "功能尚未开放", 20, 34, contentWidth - 152, 24, 16, Muted);
             selectedIndex = index;
             if (index == 1)
             {

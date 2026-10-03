@@ -13,9 +13,14 @@ namespace MOD_YtxSQ1.UI
         private static UIBase owner;
         private static InputField input;
         private static readonly List<InputField> editors = new List<InputField>();
-        internal static void Register(InputField field) { if (field != null && !editors.Contains(field)) editors.Add(field); }
-        internal static void Unregister(InputField field) { editors.Remove(field); }
-        private static bool Owns(InputField field) { return field != null && (field == input || editors.Contains(field)); }
+        // IL2CPP回调可能为同一原生对象创建不同托管包装。List.Contains/Remove使用
+        // System.Object引用相等；必须使用Unity对象相等，与主搜索框的判断一致。
+        internal static void Register(InputField field)
+        { if (field != null && !editors.Exists(registered => registered == field)) editors.Add(field); }
+        internal static void Unregister(InputField field)
+        { if (field != null) editors.RemoveAll(registered => registered == field); }
+        private static bool Owns(InputField field)
+        { return field != null && (field == input || editors.Exists(registered => registered == field)); }
         private static Harmony patches;
         private static int diagnostics;
         private static bool ownerOperation;

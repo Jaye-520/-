@@ -23,7 +23,8 @@ public class DataProps
     {
         AddCalls++; if(FailAdd)throw new InvalidOperationException("add failed");
         var item=allProps.FirstOrDefault(p=>p.propsID==id && p.propsItem.isOverlay==1);
-        if(item==null){item=new PropsData{propsID=id,soleID=sole??Guid.NewGuid().ToString(),propsItem=g.conf.itemProps.GetItem(id)};allProps.Add(item);}
+        // 原生以空字符串为自动生成约定，null覆盖编号后导致唯一ID字典拒绝key。
+        if(item==null){if(sole==null)throw new ArgumentNullException("soleID");item=new PropsData{propsID=id,soleID=sole==""?Guid.NewGuid().ToString():sole,propsItem=g.conf.itemProps.GetItem(id)};allProps.Add(item);}
         item.propsCount+=count;return new List<PropsData>{item};
     }
     public PropsData DelProps(string sole){DeleteCalls++;if(FailDelete)throw new InvalidOperationException("delete failed");var item=GetProps(sole);allProps.Remove(item);return item;}

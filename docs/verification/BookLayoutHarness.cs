@@ -509,6 +509,10 @@ internal static class BookLayoutHarness
         Check(ItemInventory.BestMedicine(npc,"hp")==hp.id && ItemInventory.BestMedicine(npc,"mp")==mp.id,"supply ranks actual effects and excludes higher realm medicine");
         before=bag.GetPropsNum(hp.id);var beforeMp=bag.GetPropsNum(mp.id);ClickNamed(book,"补给");
         Check(bag.GetPropsNum(hp.id)==before+20 && bag.GetPropsNum(mp.id)==beforeMp+20,"supply adds exactly twenty of each medicine to NPC");
+        Check(!string.IsNullOrEmpty(bag.allProps.First(p=>p.propsID==mp.id).soleID),"first grant of a stackable medicine retains native factory identity");
+        ItemInventory.Give(context,id,unique.id,1);
+        var granted=bag.allProps.Last(p=>p.propsID==unique.id);
+        Check(!string.IsNullOrEmpty(granted.soleID) && granted.soleID!="npc-equipped","nonstackable grant generates its own identity without changing equipped item");
         Check(Rejected(()=>ItemInventory.Give(context,"missing-npc",hp.id,1)) && Rejected(()=>ItemInventory.Give("old-world",id,hp.id,1)),"missing target and stale context reject without fallback");
         Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,0)) && Rejected(()=>ItemInventory.Give(context,id,hp.id,10000)) && Rejected(()=>ItemInventory.Give(context,id,unique.id,2)),"invalid counts and nonstackable bulk grant reject before writing");
         Check(Rejected(()=>ItemInventory.Give(context,id,hidden.id,1)),"hidden resources cannot be granted through catalog");

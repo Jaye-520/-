@@ -88,7 +88,9 @@ namespace MOD_YtxSQ1.Services
             CharacterSave.Sync(CharacterReader.ContextKey());
             try
             {
-                bag.AddProps(id, amount, null); bag.UpdateAllShowProps();
+                // 原生代码以customSoleID != ""判断是否覆盖工厂编号；null也会进入
+                // 覆盖分支，随后唯一ID字典拒绝空key。空字符串才是自动生成的约定。
+                bag.AddProps(id, amount, ""); bag.UpdateAllShowProps();
                 if (bag.GetPropsNum(id) != expected) throw new InvalidOperationException("发放数量回读不一致，请核对背包");
             }
             catch (Exception ex) { throw new InvalidOperationException("发放未完整确认：" + ex.Message + "；已发生的变化仍在内存，请核对背包后保存"); }
