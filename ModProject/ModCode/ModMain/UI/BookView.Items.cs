@@ -141,7 +141,7 @@ namespace MOD_YtxSQ1.UI
                 var owner = contextKey + ":" + selectedUnitId;
                 itemBagTitle.text = characterName.text + "的背包 · " + items.Count + "项";
                 if (!force && bagOwner == owner && bagFingerprint == signature) return;
-                CloseItemMenu();
+                CloseItemMenu(); HideFateTips();
                 if (bagOwner != owner) { itemBagScroll.content.anchoredPosition = Vector2.zero; itemBagScroll.verticalNormalizedPosition = 1; }
                 bagOwner = owner; bagFingerprint = signature; bagItems = items;
                 itemBagScroll.content.sizeDelta = new Vector2(itemBagScroll.content.sizeDelta.x,
@@ -173,21 +173,59 @@ namespace MOD_YtxSQ1.UI
                 {
                     var props = unit.data.unitData.propData.GetProps(bagItems[index].SoleId);
                     if (props == null) continue;
-                    // 原生图标带真实品阶、数量与悬停详情，但关闭原生点击操作。
+                    // 原生图标保留品阶、数量；介绍由本窗口承载，避免不同原生提示层互相遮挡。
                     var icon = UIIconTool.CreatePropsIcon(unit, props, slot, 1, false, false, false);
                     if (icon == null) throw new InvalidOperationException("图标未返回");
                     var rect = icon.GetComponent<RectTransform>();
                     var scale = rect.rect.width > 0 ? 72 / rect.rect.width : .72f;
                     rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(.5f, .5f);
                     rect.anchoredPosition = Vector2.zero; rect.localScale = Vector3.one * scale;
+                    BindBagHover(icon, slot, bagItems[index]);
                     BindItemMenu(icon.gameObject, slot, bagItems[index]);
                 }
                 catch
                 {
                     var fallback = Label(slot, bagItems[index].Name + "\n×" + bagItems[index].Count, 0, 0, 72, 72, 13, Ink, TextAnchor.MiddleCenter);
-                    fallback.raycastTarget = true; BindItemMenu(fallback.gameObject, slot, bagItems[index]);
+                    fallback.raycastTarget = true;
+                    BindBagHoverListener(fallback.gameObject.AddComponent<UIEventListener>(), slot, bagItems[index]);
+                    BindItemMenu(fallback.gameObject, slot, bagItems[index]);
                 }
             }
+        }
+        private void BindBagHover(UIIconItemBase icon, RectTransform slot, InventoryItem item)
+        {
+            var listener = icon.uiEvent ?? icon.gameObject.AddComponent<UIEventListener>();
+            BindBagHoverListener(listener, slot, item);
+        }
+        private void BindBagHoverListener(UIEventListener listener, RectTransform slot, InventoryItem item)
+        {
+            // 只替换自建图标的悬浮回调，保留原生点击。不能再次CreatePropInfo重复绑定。
+            listener.onMouseEnterCall = null; listener.onMouseExitCall = null;
+            listener.onMouseEnter = new UnityEvent(); listener.onMouseExit = new UnityEvent();
+            var id = selectedUnitId; var context = contextKey;
+            listener.onMouseEnter.AddListener((UnityAction)(new Action(() =>
+            {
+                if (selectedIndex != 1 || id != selectedUnitId || context != contextKey || itemMenu != null || itemDialog != null) return;
+                try
+                {
+                    var unit = CharacterReader.Resolve(id);
+                    var props = unit?.data.unitData.propData.GetProps(item.SoleId);
+                    if (props == null || props.propsID != item.Id || props.propsCount != item.Count) return;
+                    var martial = props.TryCast<DataProps.MartialData>();
+                    var description = martial != null ? UIMartialInfoTool.GetDesc(martial) : UIPropInfo.GetDesc(unit, props);
+                    var info = props.propsInfoBase;
+                    var detail = (info?.typeSuffix ?? "") + "\n" + (string.IsNullOrEmpty(description) ? "暂无介绍" : description)
+                        + "\n\n出售价格：" + (info == null ? "—" : info.sale.ToString()) + "灵石\n当前持有：" + props.propsCount;
+                    ShowFateTip(slot, new CharacterFate(item.Id, 0, item.Name, detail), content, false, true);
+                }
+                catch (Exception ex)
+                {
+                    ShowFateTip(slot, new CharacterFate(item.Id, 0, item.Name, "当前持有：" + item.Count + "\n介绍暂时无法读取"), content, false, true);
+                    Debug.LogWarning("[八荒秘录] 物品介绍读取失败 #" + item.Id + "：" + ex.Message);
+                }
+            })));
+            listener.onMouseExit.AddListener((UnityAction)(new Action(() =>
+            { if (fateTipOwner == slot) fateTipCloseAt = Time.unscaledTime + .12f; })));
         }
         private void RunItemOperation(Func<string> operation)
         {

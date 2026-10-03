@@ -23,6 +23,7 @@ namespace MOD_YtxSQ1.UI
             if (listener.onPointDown == null) listener.onPointDown = new UnityEvent();
             listener.onPointDown.AddListener((UnityAction)(new Action(() =>
             {
+                HideFateTips();
                 if (Input.GetMouseButtonDown(1) && id == selectedUnitId && context == contextKey)
                     OpenItemMenu(slot, item);
             })));
@@ -49,10 +50,8 @@ namespace MOD_YtxSQ1.UI
             var edit = MakeButton(panel, "修改背包数量", 12, 70, width - 24, 34,
                 stackable ? "修改数量" : "不可叠加 · 数量固定", () => ConfirmItemCount(item, id, context));
             edit.interactable = stackable;
-            MakeButton(panel, "检索同类物品", 12, 112, width - 24, 34, "检索同类", () =>
-            {
-                CloseItemMenu(); itemSearch.text = item.Id.ToString();
-            });
+            var increase = MakeButton(panel, "增加背包数量", 12, 112, width - 24, 34, "增加数量", () => ConfirmItemCount(item, id, context, true));
+            increase.interactable = stackable && item.Count < 9999;
             var remove = MakeButton(panel, "移除背包单项", 12, 154, width - 24, 34, "移除这一项", () => ConfirmRemoveItem(item, id, context));
             remove.GetComponentInChildren<Text>().color = new Color(.62f, .22f, .16f, 1);
         }
@@ -61,22 +60,22 @@ namespace MOD_YtxSQ1.UI
             if (id == selectedUnitId && context == contextKey) return true;
             CloseItemDialog(); SetEditStatus("人物已变化，请重新操作", true); return false;
         }
-        private void ConfirmItemCount(InventoryItem item, string id, string context)
+        private void ConfirmItemCount(InventoryItem item, string id, string context, bool increase = false)
         {
             if (!ItemTargetMatches(id, context)) return;
             string unusedId, unusedContext;
-            var panel = ItemDialog("修改" + characterName.text + "的物品数量", out unusedId, out unusedContext);
+            var panel = ItemDialog((increase ? "增加" : "修改") + characterName.text + "的物品数量", out unusedId, out unusedContext);
             Label(panel, item.Name + " · 当前 " + item.Count, 16, 54, panel.sizeDelta.x - 32, 30, 18, Ink);
             itemAmount = CreateSearchInput(panel, "背包数量", 16, 98, panel.sizeDelta.x - 32, 36, "1–9999", _ => { });
-            itemAmount.SetTextWithoutNotify(item.Count.ToString());
-            Label(panel, "输入修改后的总数量", 16, 138, panel.sizeDelta.x - 32, 24, 14, Muted);
+            itemAmount.SetTextWithoutNotify(increase ? "1" : item.Count.ToString());
+            Label(panel, increase ? "输入追加数量 · 最多增加" + (9999 - item.Count) : "输入修改后的总数量", 16, 138, panel.sizeDelta.x - 32, 24, 14, Muted);
             MakeButton(panel, "确认修改背包数量", panel.sizeDelta.x - 136, 176, 120, 36, "确定", () =>
             {
                 if (!string.IsNullOrEmpty(Input.compositionString) || !ItemTargetMatches(id, context)) return;
                 int count;
-                if (!int.TryParse(itemAmount.text, out count) || count < 1 || (count > 9999 && count != item.Count))
-                { SetEditStatus("请输入1–9999的整数数量", true); return; }
-                RunItemOperation(() => ItemInventory.SetCount(context, id, item, count)); CloseItemDialog();
+                if (!int.TryParse(itemAmount.text, out count) || count < 1 || (increase ? count > 9999 - item.Count : count > 9999 && count != item.Count))
+                { SetEditStatus(increase ? "追加后的总数量不能超过9999" : "请输入1–9999的整数数量", true); return; }
+                RunItemOperation(() => increase ? ItemInventory.IncreaseCount(context, id, item, count) : ItemInventory.SetCount(context, id, item, count)); CloseItemDialog();
             });
         }
         private void ConfirmRemoveItem(InventoryItem item, string id, string context)

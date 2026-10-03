@@ -333,7 +333,7 @@ namespace MOD_YtxSQ1.UI
             rosterScroll.inertia = false; rosterScroll.movementType = ScrollRect.MovementType.Clamped;
             rosterScroll.scrollSensitivity = 32;
             var track = Fill(viewport, "名单滚动轨", targetWidth - 32, 0, 6, rosterHeight, new Color(.35f, .34f, .27f, .12f), true);
-            var handle = Fill(track.rectTransform, "名单滚动柄", 0, 0, 6, 36, new Color(.36f, .34f, .27f, .6f), true);
+            var handle = ScrollHandle(track, "名单滚动柄", 36, new Color(.36f, .34f, .27f, .6f));
             var scrollbar = track.gameObject.AddComponent<Scrollbar>();
             scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle;
             scrollbar.direction = Scrollbar.Direction.BottomToTop; rosterScroll.verticalScrollbar = scrollbar;
@@ -642,7 +642,7 @@ namespace MOD_YtxSQ1.UI
             if (scroll.vertical)
             {
                 var track = Fill(content, "滚动轨", contentWidth - 10, 64, 7, viewportHeight, new Color(.30f, .30f, .24f, .12f), true);
-                var handle = Fill(track.rectTransform, "滚动柄", 0, 0, 7, 40, new Color(.36f, .34f, .27f, .65f), true);
+                var handle = ScrollHandle(track, "滚动柄", 40, new Color(.36f, .34f, .27f, .65f));
                 var scrollbar = track.gameObject.AddComponent<Scrollbar>();
                 scrollbar.handleRect = handle.rectTransform;
                 scrollbar.targetGraphic = handle;
@@ -680,7 +680,7 @@ namespace MOD_YtxSQ1.UI
                 column.horizontal = false; column.vertical = true; column.inertia = false;
                 column.movementType = ScrollRect.MovementType.Clamped; column.scrollSensitivity = 32;
                 var track = Fill(fateViewport, "气运滚动轨_" + i, bodyWidth - 18, 0, 6, bodyHeight - 12, new Color(.35f, .34f, .27f, .12f), true);
-                var handle = Fill(track.rectTransform, "气运滚动柄", 0, 0, 6, 28, new Color(.36f, .34f, .27f, .6f), true);
+                var handle = ScrollHandle(track, "气运滚动柄", 28, new Color(.36f, .34f, .27f, .6f));
                 var scrollbar = track.gameObject.AddComponent<Scrollbar>();
                 scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle;
                 scrollbar.direction = Scrollbar.Direction.BottomToTop;
@@ -986,10 +986,10 @@ namespace MOD_YtxSQ1.UI
             return new Rect(x, -y, row.sizeDelta.x, row.sizeDelta.y);
         }
 
-        private void ShowFateTip(RectTransform row, CharacterFate entry, RectTransform area = null, bool belowButton = false)
+        private void ShowFateTip(RectTransform row, CharacterFate entry, RectTransform area = null, bool belowButton = false, bool itemTip = false)
         {
             HideFateTips();
-            if (row == null || !row.gameObject.activeInHierarchy || selectedIndex != 0) return;
+            if (row == null || !row.gameObject.activeInHierarchy || selectedIndex != (itemTip ? 1 : 0)) return;
             fateTipOwner = row;
             area = area ?? content;
             var width = Mathf.Min(280, area.sizeDelta.x - 20);
@@ -997,7 +997,7 @@ namespace MOD_YtxSQ1.UI
             // 原生tips可能包含字号标签；小提示统一字号，保留介绍内容与换行。
             var description = Regex.Replace(entry.Description.Replace("<br>", "\n").Replace("\\n", "\n"), "<[^>]+>", "");
             if (description.StartsWith(entry.Name + "\n", StringComparison.Ordinal)) description = description.Substring(entry.Name.Length + 1);
-            fateTip = Fill(area, "气运介绍", 8, 8, width, maxHeight, new Color(.96f, .95f, .90f, 1), true).rectTransform;
+            fateTip = Fill(area, itemTip ? "物品介绍" : "气运介绍", 8, 8, width, maxHeight, new Color(.96f, .95f, .90f, 1), true).rectTransform;
             var title = Label(fateTip, entry.Name, 12, 8, width - 24, 24, 17, Cinnabar);
             title.resizeTextForBestFit = true; title.resizeTextMinSize = 12; title.resizeTextMaxSize = 17;
             var viewport = Box("气运介绍视口", fateTip, 12, 40, width - 24, maxHeight - 52);
@@ -1025,7 +1025,7 @@ namespace MOD_YtxSQ1.UI
                 scroll.viewport = viewport; scroll.content = page; scroll.horizontal = false; scroll.vertical = true;
                 scroll.inertia = false; scroll.movementType = ScrollRect.MovementType.Clamped; scroll.scrollSensitivity = 24;
                 var track = Fill(viewport, "介绍滚动轨", width - 30, 0, 6, height - 52, new Color(.35f, .34f, .27f, .12f), true);
-                var handle = Fill(track.rectTransform, "介绍滚动柄", 0, 0, 6, 18, Muted, true);
+                var handle = ScrollHandle(track, "介绍滚动柄", 18, Muted);
                 var scrollbar = track.gameObject.AddComponent<Scrollbar>();
                 scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle; scrollbar.direction = Scrollbar.Direction.BottomToTop;
                 scroll.verticalScrollbar = scrollbar;
@@ -1033,6 +1033,18 @@ namespace MOD_YtxSQ1.UI
             var tipPanel = fateTip;
             BindFateHover(tipPanel.gameObject, () => { if (fateTip == tipPanel) fateTipCloseAt = 0; },
                 () => { if (fateTip == tipPanel) fateTipCloseAt = Time.unscaledTime + .12f; });
+        }
+        private Image ScrollHandle(Image track, string name, float minimum, Color color)
+        {
+            // Unity驱动锚点，但保留sizeDelta。两端各留半个最小柄高，使全程都在轨内。
+            var size = track.rectTransform.sizeDelta;
+            minimum = Mathf.Min(minimum, size.y / 2);
+            var sliding = Box(name + "滑动范围", track.rectTransform, 0, minimum / 2, size.x, size.y - minimum);
+            var handle = NewRect(name, sliding);
+            handle.pivot = new Vector2(.5f, .5f); handle.sizeDelta = new Vector2(0, minimum);
+            handle.anchoredPosition = Vector2.zero;
+            var image = handle.gameObject.AddComponent<Image>(); image.color = color; image.raycastTarget = true;
+            return image;
         }
         private RectTransform NewRect(string name, Transform parent)
         {

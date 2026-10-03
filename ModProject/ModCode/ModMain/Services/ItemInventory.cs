@@ -118,6 +118,13 @@ namespace MOD_YtxSQ1.Services
             if (!found) throw new InvalidOperationException("这项物品已离开可见背包，请重新选择");
             return item;
         }
+        internal static string IncreaseCount(string context, string unitId, InventoryItem expected, int amount)
+        {
+            if (expected == null || amount < 1 || amount > 9999 || expected.Count < 1 || expected.Count > 9999 - amount)
+                throw new InvalidOperationException("追加后的总数量必须在1–9999之间");
+            // 同一唯一ID累加，仍通过SetCount检查人物、存档上下文和数量快照。
+            return SetCount(context, unitId, expected, expected.Count + amount);
+        }
         internal static string SetCount(string context, string unitId, InventoryItem expected, int count)
         {
             var unit = RequireTarget(context, unitId); var item = RequireItem(unit, expected);

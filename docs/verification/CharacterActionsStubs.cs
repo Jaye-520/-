@@ -32,13 +32,14 @@ public class DataProps
     public PropsData GetProps(string sole){return allProps.FirstOrDefault(p=>p.soleID==sole);}
     public int GetPropsNum(int id){return allProps.Where(p=>p.propsID==id).Sum(p=>p.propsCount);}
     public void UpdateAllShowProps() { }
-    public class PropsData { public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public bool Equipped; public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
+    public class PropsData { public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
+    public class MartialData : PropsData { }
 }
 public class ConfItemPropsItem { public int isOverlay,id,hide,level;public string name,desc; }
 public class ItemPropsConfig { public List<ConfItemPropsItem> _allConfList=new List<ConfItemPropsItem>();public ConfItemPropsItem GetItem(int id){return _allConfList.FirstOrDefault(p=>p.id==id);} }
 public class ConfItemPillItem { public int id,effectType=101,grade,operUse=1,battleUIHide;public Dictionary<string,int> Effects=new Dictionary<string,int>(); }
 public class ItemPillConfig { public List<ConfItemPillItem> _allConfList=new List<ConfItemPillItem>(); public Dictionary<string,int> GetPillAddValue(WorldUnitBase unit,int id,bool ignore){return _allConfList.First(p=>p.id==id).Effects;} }
-public static partial class UIIconTool { public class PropsInfoDataBase { public string name; } }
+public static partial class UIIconTool { public class PropsInfoDataBase { public string name,typeSuffix; public int sale; } }
 public class DataObjectData
 {
     private Dictionary<string,string> data=new Dictionary<string,string>();
