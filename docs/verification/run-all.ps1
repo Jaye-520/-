@@ -86,6 +86,18 @@ try {
         $consistencyFailures++
         Write-Host ("  FAIL  疑似死代码（仅声明、无人调用）：{0}（删除它，或加入白名单并说明理由）" -f $item) }
     if ($deadCode.Count -eq 0) { Write-Host '  OK    产品源码无未使用的 private/internal 成员' }
+    # 行尾一致性：工作区行尾必须与 .gitattributes 声明一致（*.cs/*.md=lf、*.ps1/*.sln=crlf）。
+    # 否则同一提交在不同检出状态下会编译出不同哈希——2026-10-03实测：同一提交因BookView.cs为CRLF或LF而得到两个DLL哈希。
+    $eolProblems = 0
+    foreach ($line in (& git -C $projectDirectory ls-files --eol 2>$null)) {
+        if ($line -notmatch '^i/(\S+)\s+w/(\S+)\s+attr/(.*?)\s{2,}(.+)$') { continue }
+        $workEol = $Matches[2]; $attribute = $Matches[3]; $file = $Matches[4].Trim()
+        if ($workEol -eq 'mixed') { $consistencyFailures++; $eolProblems++; Write-Host ("  FAIL  行尾混合：{0}" -f $file); continue }
+        if ($workEol -eq 'none') { continue }
+        if ($attribute -match 'eol=lf' -and $workEol -ne 'lf') { $consistencyFailures++; $eolProblems++; Write-Host ("  FAIL  行尾应为LF：{0}（当前{1}）" -f $file, $workEol) }
+        if ($attribute -match 'eol=crlf' -and $workEol -ne 'crlf') { $consistencyFailures++; $eolProblems++; Write-Host ("  FAIL  行尾应为CRLF：{0}（当前{1}）" -f $file, $workEol) }
+    }
+    if ($eolProblems -eq 0) { Write-Host '  OK    工作区行尾与 .gitattributes 一致' }
 } catch {
     $consistencyFailures++
     Write-Host ("  FAIL  一致性检查无法执行：{0}" -f $_.Exception.Message)

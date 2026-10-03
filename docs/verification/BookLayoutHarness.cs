@@ -517,6 +517,17 @@ internal static class BookLayoutHarness
             var tabs=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_卷目") && t.gameObject.name!="BHML_卷目区").ToArray();
             Check(tabs.Length==7 && tabs.Select(t=>t.GetComponentInChildren<UnityEngine.UI.Text>().text).SequenceEqual(expectedTabs),"seven reference navigation entries in order without sponsor tab");
             var closeButton=Walk(book).First(t=>t.gameObject.name=="BHML_关闭").GetComponent<UnityEngine.UI.Button>();
+            // 垂直分带不变量：页眉→卷目→正文→页脚必须自上而下依次排列且互不重叠。
+            // BookView.Box()只校验子控件不越出父矩形，不校验兄弟重叠；缺这组断言时把BodyTop改小会让正文压住卷目区而365项检查全部通过（2026-10-03变异测试发现）。
+            var headerBand=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_题签区");
+            var navigationBand=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_卷目区");
+            var contentBand=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_卷页");
+            var footerBand=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_页脚分界");
+            System.Func<UnityEngine.RectTransform,float> bandTop=t=>-t.anchoredPosition.y;
+            System.Func<UnityEngine.RectTransform,float> bandBottom=t=>-t.anchoredPosition.y+t.sizeDelta.y;
+            Check(bandBottom(headerBand)<=bandTop(navigationBand)+.1f,"header band ends above the navigation band at "+sizes[s][0]);
+            Check(bandBottom(navigationBand)<=bandTop(contentBand)+.1f,"navigation band ends above the body band at "+sizes[s][0]);
+            Check(bandBottom(contentBand)<=bandTop(footerBand)+.1f,"body band ends above the footer band at "+sizes[s][0]);
             Check(closeButton.targetGraphic is UnityEngine.UI.RawImage && ((UnityEngine.UI.RawImage)closeButton.targetGraphic).texture.Pixels!=null && closeButton.GetComponentInChildren<UnityEngine.UI.Text>().text=="×","round framed x close control exists");
             Check(texts.Any(t=>t.text=="示例修士") && texts.Any(t=>t.text=="16 / 60"),"real BookView reads player and age at "+sizes[s][0]);
             bool allLabels=true;
