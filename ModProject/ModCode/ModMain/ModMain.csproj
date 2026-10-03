@@ -49,6 +49,7 @@
     <Compile Include="Services\CharacterPortrait.cs" />
     <Compile Include="UI\WorkshopWindow.cs" />
     <Compile Include="UI\WorkshopEntrances.cs" />
+    <Compile Include="UI\EntranceLayout.cs" />
     <Compile Include="UI\WindowInputScope.cs" />
     <Compile Include="UI\BookView.cs" />
     <Compile Include="UI\BookView.Editing.cs" />
@@ -61,7 +62,7 @@
     <EmbeddedResource Include="Art\TitleBrush-v1.png">
       <LogicalName>MOD_YtxSQ1.Art.TitleBrush.png</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="Art\EntranceJade-v1.png">
+    <EmbeddedResource Include="Art\EntranceJade-v2.png">
       <LogicalName>MOD_YtxSQ1.Art.EntranceJade.png</LogicalName>
     </EmbeddedResource>
   </ItemGroup>

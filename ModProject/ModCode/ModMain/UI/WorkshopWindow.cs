@@ -48,7 +48,7 @@ namespace MOD_YtxSQ1.UI
                 view.Build(ownedWindow, Close, unitId);
                 var viewMs = openTimer.ElapsedMilliseconds;
                 WindowInputScope.Attach(ownedWindow, view.SearchInput);
-                Debug.Log("[八荒秘录] 07.39打开总计=" + openTimer.ElapsedMilliseconds + "ms；原生窗口=" + nativeMs + "ms；视图初始化=" + (viewMs - nativeMs) + "ms；输入补丁=" + (openTimer.ElapsedMilliseconds - viewMs) + "ms");
+                Debug.Log("[八荒秘录] 07.40打开总计=" + openTimer.ElapsedMilliseconds + "ms；原生窗口=" + nativeMs + "ms；视图初始化=" + (viewMs - nativeMs) + "ms；输入补丁=" + (openTimer.ElapsedMilliseconds - viewMs) + "ms");
             }
             catch (Exception ex)
             {

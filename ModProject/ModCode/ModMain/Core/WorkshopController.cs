@@ -53,7 +53,7 @@ namespace MOD_YtxSQ1.Core
             window.Toggle();
         }
 
-        private static bool IsEditingText()
+        internal static bool IsEditingText()
         {
             var events = EventSystem.current;
             if (events == null || events.currentSelectedGameObject == null) return false;
