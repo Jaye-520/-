@@ -67,6 +67,16 @@ Copy-Item -LiteralPath $stagedDll -Destination $outputDirectory -Force
 Copy-Item -LiteralPath (Join-Path $stagingDirectory ($assemblyName + '.pdb')) -Destination $outputDirectory -Force
 $releaseDll = Join-Path $outputDirectory ($assemblyName + '.dll')
 $releaseHash = (Get-FileHash -LiteralPath $releaseDll -Algorithm SHA256).Hash
+# 源码版本 ↔ 产物元数据一致性：AssemblyVersion/FileVersion保持数字，产品版本取AssemblyInformationalVersion。
+# 这样即使拿到脱离源码的DLL，也能从属性里看出是哪一版构建；不一致说明产物没被本次编译覆盖。
+$versionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $codeDirectory 'ModVersion.cs') -Raw), 'Current\s*=\s*"([^"]+)"')
+if (!$versionMatch.Success) { throw '未能从 ModVersion.cs 解析版本号。' }
+$sourceVersion = $versionMatch.Groups[1].Value
+$artifactVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($releaseDll).ProductVersion
+if ($artifactVersion -ne $sourceVersion) {
+    throw ("产物版本与源码不一致：源码={0}，产物={1}（产物可能未被本次编译覆盖）" -f $sourceVersion, $artifactVersion)
+}
+Write-Host ("产物版本校验通过：{0}" -f $artifactVersion)
 
 if ($NoDeploy) {
     Write-Host "Release 已更新（-NoDeploy，未部署）：$releaseDll"
@@ -81,11 +91,9 @@ $staleDll = Get-ChildItem -LiteralPath $deployDirectory -Filter '*.dll' | Where-
 if ($staleDll) { Write-Warning ('部署目录还有其它 DLL，请确认是否需要：' + ($staleDll.Name -join ', ')) }
 $deployDll = Join-Path $deployDirectory ($assemblyName + '.dll')
 # 部署前把当前调试包里的旧DLL存档到 .tools/backups/before-<新版本>，失败时可快速回退。
-# 版本号来自 ModVersion.cs（唯一来源）；同名备份已存在则保持原样，避免重建同版本时覆盖真正的旧版。
+# 同名备份已存在则保持原样，避免重建同版本时覆盖真正的旧版。
 if (Test-Path -LiteralPath $deployDll) {
-    $versionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $codeDirectory 'ModVersion.cs') -Raw), 'Current\s*=\s*"([^"]+)"')
-    if (!$versionMatch.Success) { throw '未能从 ModVersion.cs 解析版本号，无法命名旧版备份。' }
-    $backupDll = Join-Path $toolsDirectory ('backups\before-' + $versionMatch.Groups[1].Value + '\' + $assemblyName + '.dll')
+    $backupDll = Join-Path $toolsDirectory ('backups\before-' + $sourceVersion + '\' + $assemblyName + '.dll')
     if (Test-Path -LiteralPath $backupDll) { Write-Host "旧版备份已存在，保持原样：$backupDll" }
     else {
         New-Item -ItemType Directory -Path (Split-Path $backupDll -Parent) -Force | Out-Null

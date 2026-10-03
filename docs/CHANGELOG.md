@@ -2,6 +2,18 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
+## 07.48：产物自述版本＋构建交叉校验
+
+此前“这是哪一版”只能靠源码里的`ModVersion.Current`（页脚与日志）或DLL哈希；DLL自身的元数据仍是`1.0.0.0`/`ModMain`时代的占位。本轮让**产物自己声明版本**：`AssemblyInfo.cs`把`AssemblyInformationalVersion`设为`ModVersion.Current`，于是DLL属性的“产品版本”直接是游戏内版本号（`AssemblyVersion`/`FileVersion`必须纯数字，保持不变）。
+
+同时给构建加一道交叉校验：`build.ps1`编译后读取该元数据并与源码版本比对，不一致即报错——用来发现“产物没被本次编译覆盖”这类静默失效（例如上次编译失败后继续用旧DLL）。
+
+验证（含反向）：正常构建输出`产物版本校验通过：07.48`；用`[Diagnostics.FileVersionInfo]::GetVersionInfo()`独立核对`ProductVersion=07.48`、`FileVersion=1.0.0.0`、`ProductName=MOD_YtxSQ1`；反向把`AssemblyInformationalVersion`硬编码为`99.99`后构建报`产物版本与源码不一致：源码=07.48，产物=99.99`并退出码1，还原后恢复正常。
+
+过程中踩到一个编译错误并留档：`AssemblyInfo.cs`位于全局命名空间，引用`ModVersion`必须写全限定名`MOD_YtxSQ1.ModVersion.Current`，否则`CS0103`。另有操作教训：反向测试里`build.ps1`的`throw`会中止调用它的脚本，导致“还原”那一步未执行、文件被留在变异状态；此类反向测试应在**子进程**中运行失败命令，或把还原放在`finally`里。
+
+门禁：5项自检全绿＋558项托管检查，`RESULT: PASS`；产物`CC996489564F88482931968E55E3ED3AD1A8E8E0CAB737DC5030C2835035A520`，`before-07.48`自动存入07.47（`BE5780A7…`）。未操作存档或终止游戏。
+
 ## 2026-10-03：变异测试全部harness＋固化为可重复脚本
 
 接着上一轮的变异测试继续，把**尚未探过的6个harness**各设计一组探针（气运type=3归类、草稿键丢掉Slot、当前值/上限顺序互换、取消四纹理缓存、关闭节流0.5s→0s、窗口释放不解绑输入补丁）。结果**6组全部被抓到**，无缺口；连同上一轮共12组探针、覆盖全部10个harness，仅上一轮那1个真缺口（布局垂直分带）需修。

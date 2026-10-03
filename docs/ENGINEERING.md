@@ -33,7 +33,7 @@
 | UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
 | Services/CharacterPortrait.cs | 原生身份解析与ConfDramaNpc.CreateTexture分流，普通修士保持原路径 |
 | Example/Example.cs | 参与编译的官方示例；不是产品功能清单 |
-| Properties/AssemblyInfo.cs | 程序集元数据；与界面版本分别核对 |
+| Properties/AssemblyInfo.cs | 程序集元数据；产品版本取`ModVersion.Current`，AssemblyVersion/FileVersion保持纯数字 |
 
 调用关系：ModMain → WorkshopController → WorkshopWindow → BookView。视图使用读取/草稿/写入服务与PaperSkin；窗口负责输入补丁生命周期。当前没有独立Modules目录，写入通过明确字段适配和原生动作接入，不提供反射任意写入。
 
@@ -62,6 +62,8 @@
 ```
 
 `build.ps1`默认**编译并部署**：编译成功后才覆盖`bin/Release`，随后复制到游戏实际加载的`debug/Mod_YtxSQ1/ModCode/dll/`并比对两端SHA256，不一致即报错。编译失败不覆盖任何产物；部署失败（例如游戏占用文件）明确报错并保留原文件，不会留下半个包。部署前会把调试包里原有的DLL按`ModVersion.Current`存档到`.tools/backups/before-<新版本>`，同名已存在则保持原样（重建同一版本不会覆盖真正的旧版）；`-NoDeploy`既不部署也不备份。只复制DLL、不部署PDB——官方调试流程只复制DLL，不往调试包里添加额外文件；部署目录若存在其它DLL只警告不阻断（可能是需要的插件DLL）。Release不混入额外DLL。
+
+**产物自述版本并交叉校验（2026-10-03新增）**：`AssemblyInfo.cs`把`AssemblyInformationalVersion`设为`ModVersion.Current`，因此DLL属性的“产品版本”就是游戏内版本号（`AssemblyVersion`/`FileVersion`必须保持纯数字，不参与）。构建后`build.ps1`读取该值并与源码里的`ModVersion.Current`比对，不一致即报错——用于发现“产物没被本次编译覆盖”这类静默失效。脱离源码时可用`[System.Diagnostics.FileVersionInfo]::GetVersionInfo(<dll>).ProductVersion`独立核对。注意`AssemblyInfo.cs`位于全局命名空间，引用`ModVersion`必须写全限定名`MOD_YtxSQ1.ModVersion.Current`，否则编译失败。
 
 磁盘哈希一致只证明文件相同，不证明运行中的游戏已重载该版本；官方编辑器“进入游戏调试”也会复制Release DLL并加载。运行版本以日志、界面和实测反馈核对，不擅自终止游戏。
 

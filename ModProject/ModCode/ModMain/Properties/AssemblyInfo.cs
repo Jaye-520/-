@@ -34,3 +34,7 @@ using System.Runtime.InteropServices;
 // [assembly: AssemblyVersion("1.0.*")]
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
+// 游戏内版本号唯一来源是ModVersion.Current；把它同时写入程序集信息，
+// 这样即使脱离源码，查看DLL属性的“产品版本”也能知道这是哪一版构建。
+// AssemblyVersion/FileVersion必须保持纯数字，故不参与。
+[assembly: AssemblyInformationalVersion(MOD_YtxSQ1.ModVersion.Current)]
