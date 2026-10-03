@@ -61,10 +61,16 @@ namespace MOD_YtxSQ1.UI
             itemBagTitle = Label(bag, "背包", 14, 8, bagWidth - 28, 30, 21, Ink);
             Fill(bag, "背包题栏线", 12, 44, bagWidth - 24, 1, Gold);
             itemBagScroll = ItemScroll(bag, "背包网格", 12, 56, bagWidth - 24, bag.sizeDelta.y - 68);
+            var bagTrack = Fill(itemBagScroll.viewport, "背包滚动轨", itemBagScroll.viewport.sizeDelta.x - 6, 0, 6,
+                itemBagScroll.viewport.sizeDelta.y, new Color(.35f, .34f, .27f, .12f), true);
+            var bagHandle = ScrollHandle(bagTrack, "背包滚动柄", 24, Muted);
+            var bagBar = bagTrack.gameObject.AddComponent<Scrollbar>();
+            bagBar.handleRect = bagHandle.rectTransform; bagBar.targetGraphic = bagHandle;
+            bagBar.direction = Scrollbar.Direction.BottomToTop; itemBagScroll.verticalScrollbar = bagBar;
             bagColumns = Math.Max(1, (int)(itemBagScroll.content.sizeDelta.x / BagPitch));
             var pool = ((int)Math.Ceiling(itemBagScroll.viewport.sizeDelta.y / BagPitch) + 1) * bagColumns;
             for (int i = 0; i < pool; i++) bagSlots.Add(Box("背包格" + i, itemBagScroll.content, 0, 0, 72, 72));
-            itemBagScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { CloseItemMenu(); RenderBagSlots(); })));
+            itemBagScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { CloseItemMenu(); HideFateTips(); RenderBagSlots(); })));
             FilterItems(false);
         }
         private bool LoadItemCatalog()
@@ -226,7 +232,17 @@ namespace MOD_YtxSQ1.UI
                 }
             })));
             listener.onMouseExit.AddListener((UnityAction)(new Action(() =>
-            { if (fateTipOwner == slot) fateTipCloseAt = Time.unscaledTime + .12f; })));
+            { if (fateTipOwner == slot) HideFateTips(); })));
+        }
+        private void TickItemTipWheel()
+        {
+            if (itemTipScroll == null || fateTip == null || itemTipWheelFrame == Time.frameCount) return;
+            itemTipWheelFrame = Time.frameCount;
+            var delta = Input.mouseScrollDelta.y;
+            var overflow = itemTipScroll.content.rect.height - itemTipScroll.viewport.rect.height;
+            if (delta == 0 || overflow <= 0) return;
+            itemTipScroll.verticalNormalizedPosition = Mathf.Clamp(itemTipScroll.verticalNormalizedPosition
+                + delta * itemTipScroll.scrollSensitivity / overflow, 0, 1);
         }
         private void RunItemOperation(Func<string> operation)
         {

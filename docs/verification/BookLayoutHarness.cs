@@ -12,7 +12,7 @@ using MOD_YtxSQ1.UI;
 namespace UnityEngine
 {
     public enum KeyCode { Return,KeypadEnter,Escape,Tab }
-    public static class Input { public static string compositionString=""; public static bool MouseDown,RightDown,Submit,Escape; public static Vector2 mousePosition;public static bool GetMouseButtonDown(int button) { return button==1 ? RightDown : MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return || Escape && key==KeyCode.Escape; } }
+    public static class Input { public static string compositionString=""; public static bool MouseDown,RightDown,Submit,Escape; public static Vector2 mousePosition,mouseScrollDelta;public static bool GetMouseButtonDown(int button) { return button==1 ? RightDown : MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return || Escape && key==KeyCode.Escape; } }
     public class Canvas : Component { public Camera worldCamera; }
     public class CanvasGroup : Component { public float alpha; public bool interactable,blocksRaycasts; }
     public static class RectTransformUtility
@@ -71,7 +71,7 @@ namespace UnityEngine
         public float r,g,b,a; public Color(float r,float g,float b,float a) { this.r=r;this.g=g;this.b=b;this.a=a; }
         public static Color white { get { return new Color(1,1,1,1); } }
     }
-    public static class Mathf { public static float Min(float a,float b) { return Math.Min(a,b); } public static float Max(float a,float b) { return Math.Max(a,b); } }
+    public static class Mathf { public static float Clamp(float v,float min,float max) { return Math.Max(min,Math.Min(max,v)); } public static float Min(float a,float b) { return Math.Min(a,b); } public static float Max(float a,float b) { return Math.Max(a,b); } }
     public static class Time { public static float unscaledTime; public static int frameCount; }
     public static class Debug
     {
@@ -520,6 +520,15 @@ internal static class BookLayoutHarness
         Check(Rejected(()=>ItemInventory.Give(context,"missing-npc",hp.id,1)) && Rejected(()=>ItemInventory.Give("old-world",id,hp.id,1)),"missing target and stale context reject without fallback");
         Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,0)) && Rejected(()=>ItemInventory.Give(context,id,hp.id,10000)) && Rejected(()=>ItemInventory.Give(context,id,unique.id,2)),"invalid counts and nonstackable bulk grant reject before writing");
         Check(Rejected(()=>ItemInventory.Give(context,id,hidden.id,1)),"hidden resources cannot be granted through catalog");
+        var capacityAdds=bag.AddCalls; var pendingBeforeFull=CharacterSave.Pending;
+        bag.gridMaxNum=bag.GetGridCurNum(true);
+        string capacityMessage="";try{ItemInventory.Give(context,id,unique.id,1);}catch(Exception ex){capacityMessage=ex.Message;}
+        Check(capacityMessage.Contains("背包已满") && !capacityMessage.Contains("已发生") && bag.AddCalls==capacityAdds && CharacterSave.Pending==pendingBeforeFull,"full bag rejects new nonstackable record before factory and pending mutation");
+        var capacityBefore=bag.GetPropsNum(hp.id);ItemInventory.Give(context,id,hp.id,1);
+        Check(bag.GetPropsNum(hp.id)==capacityBefore+1,"full bag still accepts existing stack through native factory");
+        var fresh=new ConfItemPropsItem{id=998877,name="新材料",isOverlay=1};g.conf.itemProps._allConfList.Add(fresh);capacityAdds=bag.AddCalls;
+        Check(Rejected(()=>ItemInventory.Give(context,id,fresh.id,9999)) && bag.AddCalls==capacityAdds && bag.GetPropsNum(fresh.id)==0,"full bag rejects first stackable grant without partial write");
+        bag.gridMaxNum=int.MaxValue;g.conf.itemProps._allConfList.Remove(fresh);
         var firstItem=ItemInventory.Read(id).First();var storedItem=bag.GetProps(firstItem.SoleId);storedItem.ExtraData="keep-quality-and-affixes";
         var otherStack=bag.allProps.First(p=>p.propsID==hp.id && p.soleID!=firstItem.SoleId);var otherCount=otherStack.propsCount;
         var allBefore=bag.allProps.Count;var addsBefore=bag.AddCalls;var deletesBefore=bag.DeleteCalls;
@@ -555,7 +564,17 @@ internal static class BookLayoutHarness
         var hoverIcon=Walk(book).First(t=>t.gameObject.name=="native item icon").GetComponent<UIIconItemBase>();var readsBefore=bag.AddCalls;
         hoverIcon.uiEvent.OnPointerEnter(null);
         Check(hoverIcon.uiEvent.onMouseEnterCall==null && Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("恢复体力")) && bag.AddCalls==readsBefore,"medicine hover reads native description in local tooltip without granting items or duplicate native hover");
-        hoverIcon.uiEvent.OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;view.RefreshCharacter();
+        var bagWheel=Walk(book).First(t=>t.gameObject.name=="BHML_背包网格").GetComponent<UnityEngine.UI.ScrollRect>();
+        Check(bagWheel.verticalScrollbar!=null && bagWheel.scrollSensitivity==42,"backpack has independent scrollbar and short tooltip retains bag wheel");
+        var savedDesc=hp.desc;hp.desc=string.Join("\n",Enumerable.Repeat("长物品介绍内容",80));hoverIcon.uiEvent.OnPointerEnter(null);
+        var longTip=Walk(book).First(t=>t.gameObject.name=="BHML_物品介绍");var tipScroll=longTip.GetComponentInChildren<UnityEngine.UI.ScrollRect>();
+        Check(tipScroll!=null && !longTip.GetComponent<UnityEngine.CanvasGroup>().blocksRaycasts && longTip.GetComponent<UnityEngine.RectTransform>().sizeDelta.y<=400 && bagWheel.scrollSensitivity==0,"long item tooltip grows moderately and cannot capture pointer or bag wheel");
+        var bagPosition=bagWheel.verticalNormalizedPosition;UnityEngine.Input.mouseScrollDelta=new UnityEngine.Vector2(0,-1);UnityEngine.Time.frameCount++;
+        var tickWheel=typeof(BookView).GetMethod("TickItemTipWheel",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);tickWheel.Invoke(view,null);var tipPosition=tipScroll.verticalNormalizedPosition;tickWheel.Invoke(view,null);
+        Check(tipPosition<1 && tipScroll.verticalNormalizedPosition==tipPosition && bagWheel.verticalNormalizedPosition==bagPosition,"wheel over item moves long tooltip once per frame without moving backpack");
+        UnityEngine.Input.mouseScrollDelta=UnityEngine.Vector2.zero;hoverIcon.uiEvent.OnPointerExit(null);
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍") && bagWheel.scrollSensitivity==42,"item exit immediately closes tooltip and restores backpack wheel without delay");hp.desc=savedDesc;
+        UnityEngine.Time.unscaledTime+=.2f;view.RefreshCharacter();
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍"),"item tooltip closes after pointer leaves");
         var tipSlot=hoverIcon.transform.parent.GetComponent<UnityEngine.RectTransform>();var martial=new DataProps.PropsData{propsType=DataProps.PropsDataType.Martial,propsItem=unique,propsID=unique.id,propsCount=1,soleID="hover-book",Martial=new DataProps.MartialData{ExtraData="真实功法内容"}};bag.allProps.Add(martial);
         var bookHover=new UnityEngine.GameObject("book hover");var bookIcon=bookHover.AddComponent<UIIconItemBase>();bookHover.transform.SetParent(tipSlot,false);bookIcon.uiEvent=bookHover.AddComponent<UIEventListener>();
@@ -564,6 +583,11 @@ internal static class BookLayoutHarness
         using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
         { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-tooltip-layout-"+size+".png"),ImageFormat.Png); }
         bookIcon.uiEvent.OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;view.RefreshCharacter();bag.allProps.Remove(martial);UnityEngine.Object.Destroy(bookHover);
+        var extraBag=Enumerable.Range(0,100).Select(i=>new DataProps.PropsData{propsItem=unique,propsID=unique.id,propsCount=1,soleID="scroll-extra-"+i}).ToList();bag.allProps.AddRange(extraBag);view.RefreshCharacter(true);
+        Check(bagWheel.content.sizeDelta.y>bagWheel.viewport.sizeDelta.y,"large backpack grows scroll content beyond viewport");
+        bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,bagWheel.content.sizeDelta.y-bagWheel.viewport.sizeDelta.y);bagWheel.verticalNormalizedPosition=0;bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
+        Check(Walk(book).Any(t=>t.gameObject.activeInHierarchy && t.gameObject.name.Contains("scroll-extra-99")),"backpack pool renders final item when scrolled to bottom");
+        bag.allProps.RemoveAll(p=>extraBag.Contains(p));bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.verticalNormalizedPosition=1;view.RefreshCharacter(true);
         pressFirst(true);ClickNamed(book,"背包菜单外部");Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"outside click dismisses context menu");
         pressFirst(true);Walk(book).First(t=>t.gameObject.name=="BHML_背包网格").GetComponent<UnityEngine.UI.ScrollRect>().onValueChanged.Invoke(new UnityEngine.Vector2());
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"scrolling closes menu before pooled item slots can be rebound");

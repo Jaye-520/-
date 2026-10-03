@@ -56,6 +56,9 @@ namespace MOD_YtxSQ1.UI
         private readonly List<ScrollRect> fateColumns = new List<ScrollRect>();
         private RectTransform fateTip, fateTipOwner;
         private float fateTipCloseAt;
+        private ScrollRect itemTipScroll;
+        private float itemBagWheelSensitivity;
+        private int itemTipWheelFrame = -1;
         private CharacterFate[] fates = new CharacterFate[0];
         private string fateReason, fateUnitId;
         private float nextCharacterRefresh;
@@ -776,6 +779,7 @@ namespace MOD_YtxSQ1.UI
         {
             if (root == null) return;
             TickAppearance();
+            TickItemTipWheel();
             TickEditing();
             if (root == null) return;
             if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
@@ -916,6 +920,8 @@ namespace MOD_YtxSQ1.UI
         private void HideFateTips()
         {
             var previous = fateTip;
+            if (itemTipScroll != null && itemBagScroll != null) itemBagScroll.scrollSensitivity = itemBagWheelSensitivity;
+            itemTipScroll = null;
             fateTip = fateTipOwner = null;
             fateTipCloseAt = 0;
             if (previous == null) return;
@@ -993,7 +999,7 @@ namespace MOD_YtxSQ1.UI
             fateTipOwner = row;
             area = area ?? content;
             var width = Mathf.Min(280, area.sizeDelta.x - 20);
-            var maxHeight = Mathf.Min(300, area.sizeDelta.y - 20);
+            var maxHeight = Mathf.Min(itemTip ? 400 : 300, area.sizeDelta.y - 20);
             // 原生tips可能包含字号标签；小提示统一字号，保留介绍内容与换行。
             var description = Regex.Replace(entry.Description.Replace("<br>", "\n").Replace("\\n", "\n"), "<[^>]+>", "");
             if (description.StartsWith(entry.Name + "\n", StringComparison.Ordinal)) description = description.Substring(entry.Name.Length + 1);
@@ -1029,6 +1035,18 @@ namespace MOD_YtxSQ1.UI
                 var scrollbar = track.gameObject.AddComponent<Scrollbar>();
                 scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle; scrollbar.direction = Scrollbar.Direction.BottomToTop;
                 scroll.verticalScrollbar = scrollbar;
+                if (itemTip && itemBagScroll != null)
+                {
+                    itemTipScroll = scroll;
+                    itemBagWheelSensitivity = itemBagScroll.scrollSensitivity;
+                    itemBagScroll.scrollSensitivity = 0;
+                }
+            }
+            if (itemTip)
+            {
+                // 不接收指针，移出图标即关闭；滚轮仍从图标所在位置读取。
+                fateTip.gameObject.AddComponent<CanvasGroup>().blocksRaycasts = false;
+                return;
             }
             var tipPanel = fateTip;
             BindFateHover(tipPanel.gameObject, () => { if (fateTip == tipPanel) fateTipCloseAt = 0; },

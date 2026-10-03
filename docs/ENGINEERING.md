@@ -344,3 +344,9 @@ WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView�
 PropsData与MartialData是包装与读取视图关系，并非继承关系；TryCast会返回空，使技能书误走普通物品描述。原生UIIconMartialBase.OpenMartialInfo通过PropsData.To<MartialData>()传入UIMartialPropInfo.InitData，官方CHM缓存493e4156-d577-4352-0552-9e6f64422251.htm也列出To<T>。本机签名、propsType枚举与原生流程复核记录在.tools/skill-book-api.txt、.tools/skill-book-native.txt。
 
 07.52替身把MartialData继承PropsData，虚构了游戏不存在的继承关系，导致检查通过而实际介绍缺失。替身现拆成两个独立类型，以PropsData.Martial及To<T>模拟包装读取；已有悬浮用例必须通过此路径才能取得真实功法内容。以后不能凭可编译的IL2CPP强转推定数据模型；先核查原生转换和类型关系，再建替身。此路径只读取，不写入功法或存档；844项检查通过不等于游戏验收。
+
+### 物品悬浮滚轮与容量检查（07.54）
+
+物品提示移出所属图标立即Hide，不沿用气运提示的0.12秒移入窗口宽限；CanvasGroup.blocksRaycasts=false，不能抢指针。长介绍上限400并限于窗口内；溢出时暂时关闭背包滚轮灵敏度，TickItemTipWheel每帧一次读Input.mouseScrollDelta，以介绍真实溢出高度换算归一化位置，Hide恢复原值。短介绍不截获背包滚轮；背包滚动条仍可拖动，滚动后释放旧提示防止池格子错配。
+
+GetPropsNum回读不一致不能一概称为工厂异常或部分写入：原生AddProps会在满格新增记录时正常返回空结果。发放前按原生hide=0、已有叠加记录与GetGridCurNum(true)/GetGridMaxNum判断，拒绝发生在Sync/MarkDirty之前；不得绕过容量、盲重试或仅删除回读校验。原生反汇编依据.tools/bulk-items-native.txt，接口依据.tools/hover-capacity-api.txt及官方CHM。截图无物品ID/当时容量，不据此宣称排除了所有回读原因。

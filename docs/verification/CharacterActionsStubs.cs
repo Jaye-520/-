@@ -18,11 +18,16 @@ public class DataProps
 {
     public List<PropsData> allProps = new List<PropsData>();
     public List<PropsData> _allShowProps { get { return allProps.Where(p=>p.propsCount>0 && (p.propsItem==null || p.propsItem.hide!=1) && !p.Equipped).ToList(); } }
+    public int gridMaxNum = int.MaxValue;
+    public int GetGridMaxNum() { return gridMaxNum; }
+    public int GetGridCurNum(bool ignore) { return allProps.Count(p=>p.propsCount>0 && p.propsItem!=null && p.propsItem.hide==0); }
+    public List<PropsData> GetProps(int id) { return allProps.Where(p=>p.propsID==id).ToList(); }
     public int AddCalls, DeleteCalls; public bool FailAdd, FailDelete, BadFactoryId;
     public List<PropsData> AddProps(int id,int count,string sole)
     {
         AddCalls++; if(FailAdd)throw new InvalidOperationException("add failed");
         var item=allProps.FirstOrDefault(p=>p.propsID==id && p.propsItem.isOverlay==1);
+        if(item==null && GetGridCurNum(true)>=GetGridMaxNum()) return new List<PropsData>();
         // 原生以空字符串为自动生成约定，null覆盖编号后导致唯一ID字典拒绝key。
         if(item==null){if(sole==null)throw new ArgumentNullException("soleID");item=new PropsData{propsID=id,soleID=sole==""?Guid.NewGuid().ToString():sole,propsItem=g.conf.itemProps.GetItem(id)};allProps.Add(item);}
         item.propsCount+=count;return new List<PropsData>{BadFactoryId?new PropsData{propsID=id,propsCount=count,soleID="",propsItem=item.propsItem}:item};

@@ -83,6 +83,11 @@ namespace MOD_YtxSQ1.Services
         private static void Add(WorldUnitBase unit, int id, int amount)
         {
             var bag = unit.data.unitData.propData;
+            var conf = g.conf.itemProps.GetItem(id);
+            // 与原生AddProps相同：满格拒绝新记录，已有叠加记录不再占格。
+            if (conf != null && conf.hide == 0 && (conf.isOverlay != 1 || bag.GetProps(id).Count == 0)
+                && bag.GetGridCurNum(true) >= bag.GetGridMaxNum())
+                throw new InvalidOperationException("背包已满，无法新增这一项；请先腾出格子");
             var expected = checked(bag.GetPropsNum(id) + amount);
             // 新建唯一ID、叠加、原生子类回调均由工厂维护；失败不假装复杂回调可回滚。
             CharacterSave.Sync(CharacterReader.ContextKey());
