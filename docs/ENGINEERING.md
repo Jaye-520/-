@@ -2,7 +2,7 @@
 
 更新：2026-10-03（07.40入口校准；按主题重组，去掉逐版标题）。仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
-结构：代码导航 → 构建和调试 → 官方资料 → 必须保留的实现与失败经验（写入与境界、入口坐标、生命周期与释放、打开过渡与固定纹理、视觉约定、原生调用防错等主题规则）→ 常驻与释放审查范围 → 按变更验证 → 小步迭代与文档维护。
+结构：代码导航 → 代码风格与结构约定 → 构建和调试 → 官方资料 → 必须保留的实现与失败经验（写入与境界、入口坐标、生命周期与释放、打开过渡与固定纹理、视觉约定、原生调用防错等主题规则）→ 常驻与释放审查范围 → 按变更验证 → 小步迭代与文档维护。
 
 ## 代码导航
 
@@ -37,6 +37,14 @@
 调用关系：ModMain → WorkshopController → WorkshopWindow → BookView。视图使用读取/草稿/写入服务与PaperSkin；窗口负责输入补丁生命周期。当前没有独立Modules目录，写入通过明确字段适配和原生动作接入，不提供反射任意写入。
 
 07.28用partial分开编辑与布局，07.29再拆图鉴；新增文件须登记csproj。同一次窗口打开期间切页/切人物保留草稿；每次重新打开清空未应用草稿，世界失效清理。候选读取本机具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽真实type匹配。输入复制搜索控件须清空旧回调，及时Register/Unregister到WindowInputScope；Attach/Detach归窗口所有；Attach清空旧登记后，从当前承载重新登记BHML_前缀的本视图输入，避免Build期间登记的气运搜索丢失保护。07.29的CharacterSave负责全批预检、原生字段写入/缓存维护、保存回调及主线程Poll；CharacterFateOperations负责即时气运生命周期，不能和只读/草稿服务混淆。替身不证明IL2CPP、Windows IME或保存重载结果。
+
+## 代码风格与结构约定
+
+- 文件与命名：一个文件一个职责；`partial`只用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）。新增源码必须登记csproj并在上文“代码导航”表登记职责。
+- 方法规模以≤50行为准，超长分派方法按操作拆分。2026-10-03把`CharacterActions.Execute`（133行、四层分支）拆为RestoreStatus/FillCultivation/FillMaterials/AddIntimacy/Move，最长方法降到38行，546项检查全绿。拆分必须**保持分支顺序与报错语义**：未知操作在原实现里会先校验NPC目标再报“未知快捷操作”，拆完仍要先校验。
+- 注释解释“为什么”，不复述代码：原生包装的坑（`Il2CppStructArray`不写回、`Single..ctor(IntPtr)`）、回退顺序与幂等理由必须留在代码旁；纯语言直译的注释不加。
+- 写操作失败一律`throw`，由调用处统一转成用户可见消息并记日志；日志统一`[八荒秘录]`前缀、重复失败去重，不用日志代替返回值表达状态。
+- 任何结构改动都要过`./docs/verification/run-all.ps1`；**行为无变化的重构也必须跑全套**，只编译通过不算验证。
 
 ## 构建和调试
 
