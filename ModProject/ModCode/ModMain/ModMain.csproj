@@ -44,6 +44,8 @@
     <Compile Include="Services\CharacterSave.cs" />
     <Compile Include="Services\CharacterActions.cs" />
     <Compile Include="Services\ItemInventory.cs" />
+    <Compile Include="Services\CharacterMartials.cs" />
+    <Compile Include="Services\MartialBuilds.cs" />
     <Compile Include="UI\BookView.Items.cs" />
     <Compile Include="UI\BookView.ItemMenu.cs" />
     <Compile Include="UI\BookView.Martials.cs" />

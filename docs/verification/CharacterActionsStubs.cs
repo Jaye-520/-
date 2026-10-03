@@ -14,7 +14,7 @@ public class DataWorld
         }
     }
 }
-public class DataProps
+public partial class DataProps
 {
     public List<PropsData> allProps = new List<PropsData>();
     public List<PropsData> _allShowProps { get { return allProps.Where(p=>p.propsCount>0 && (p.propsItem==null || p.propsItem.hide!=1) && !p.Equipped).ToList(); } }
@@ -39,8 +39,8 @@ public class DataProps
     public int GetPropsNum(int id){return allProps.Where(p=>p.propsID==id).Sum(p=>p.propsCount);}
     public void UpdateAllShowProps() { }
     public enum PropsDataType { Props = 1, Martial = 2 }
-    public class PropsData { public PropsDataType propsType = PropsDataType.Props; public MartialData Martial; public T To<T>() where T:class { return Martial as T; } public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public string soleIDHashData { get { return soleID+":"+propsID+":"+propsCount+":"+ExtraData+":"+propsType; } } public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
-    public class MartialData { public string ExtraData; }
+    public partial class PropsData { public PropsDataType propsType = PropsDataType.Props; public MartialData Martial; public T To<T>() where T:class { return Martial as T; } public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public string soleIDHashData { get { return soleID+":"+propsID+":"+propsCount+":"+ExtraData+":"+propsType; } } public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
+    public partial class MartialData { public string ExtraData; }
 }
 public class ConfItemPropsItem { public int drop=1,dieDrop=1;public int isOverlay,id,hide,level;public string name,desc; }
 public class ItemPropsConfig { public List<ConfItemPropsItem> _allConfList=new List<ConfItemPropsItem>();public ConfItemPropsItem GetItem(int id){return _allConfList.FirstOrDefault(p=>p.id==id);} }

@@ -304,7 +304,7 @@ namespace MOD_YtxSQ1.UI
             }
             if (index == 2)
             {
-                editStatus.text = "界面预览：可检索、筛选与查看示例；功法读取及修改待接入";
+                editStatus.text = "读取已学与装备功法；秘籍库和搭配库可获取原生秘籍到背包";
                 BuildMartials(); RefreshCharacter(true); return;
             }
             if (index != 0)
@@ -512,7 +512,7 @@ namespace MOD_YtxSQ1.UI
         public void FocusTarget(string unitId)
         {
             if (string.IsNullOrEmpty(unitId) || !FinishInlineEdit(false)) return;
-            CloseDropdown(); HideFateTips(); CloseItemDialog(); CloseItemLibrary(); CloseFateLibrary();
+            CloseDropdown(); HideFateTips(); CloseItemDialog(); CloseItemLibrary(); CloseFateLibrary(); CloseMartialOverlay();
             selectedUnitId = unitId;
             ReleasePortrait();
             RefreshCharacter(true);
@@ -794,7 +794,7 @@ namespace MOD_YtxSQ1.UI
             if (currentContext != contextKey)
             {
                 FinishInlineEdit(true); CloseDropdown(); edits.Sync(currentContext);
-                CloseFateLibrary(); CloseItemDialog(); CloseItemLibrary();
+                CloseFateLibrary(); CloseItemDialog(); CloseItemLibrary(); CloseMartialOverlay();
                 pickedFates.Clear(); fateCatalog.Clear(); catalogContext = null;
                 itemPicks.Clear(); itemCatalog.Clear(); itemCatalogContext = null;
                 if (itemSearch != null) { itemSearch.SetTextWithoutNotify(""); FilterItems(false); }
@@ -815,6 +815,7 @@ namespace MOD_YtxSQ1.UI
                 FinishInlineEdit(true); CloseDropdown(); RefreshEditors();
                 UpdateFates(new CharacterFate[0], reason);
                 if (selectedIndex == 1) RefreshBag(true);
+                if (selectedIndex == 2) RefreshMartials(true);
                 var failure = CharacterReader.LastFailure;
                 if (failure != null && failure != lastReadFailure)
                     Debug.LogWarning("[八荒秘录] 角色读取失败：" + failure);
@@ -832,6 +833,7 @@ namespace MOD_YtxSQ1.UI
             if (selectedIndex != 0)
             {
                 if (selectedIndex == 1) RefreshBag(force);
+                if (selectedIndex == 2) RefreshMartials(force);
                 return;
             }
             for (int group = 0; group < attributeTexts.Count; group++)

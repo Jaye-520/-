@@ -263,7 +263,7 @@ public class BattleSkillValueData { public DataProps.MartialData Martial; public
 public static class UIMartialInfoTool
 {
     public static DataProps.MartialData FormattedMartial;
-    public static string GetDesc(DataProps.MartialData props){return "功法详情："+props.ExtraData;}
+    public static string GetDesc(DataProps.MartialData props){return "功法详情："+(props.ExtraData??(props.martialInfo==null?"":props.martialInfo.name+"\n原生效果介绍的托管替身；实际效果需游戏验证。"));}
     public static string GetDescRichText(string desc,BattleSkillValueData data,int bgType,string valueColorKey="y",string effectColorKey="e")
     { FormattedMartial=data.Martial;return desc.Replace("&510011_cxsj&","<color=#000000>4.5</color>").Replace("&510011_dmg&","180").Replace("$s_dao$","刀法").Replace("&510011_ydsd&","25").Replace("&510011_huxin&","12"); }
 }
@@ -481,28 +481,64 @@ internal static class BookLayoutHarness
     private static void VerifyMartials(BookView view,UnityEngine.RectTransform book,string[] args,int size)
     {
         var target=Selected(view);var pending=CharacterSave.Pending;
+        var unit=CharacterReader.Resolve(target);var data=unit.data.unitData;var bag=data.propData;
+        var grade=unit.data.dynUnitData.GetGrade();var context=CharacterReader.ContextKey();
+        var catalog=CharacterMartials.Catalog();
+        Check(catalog.GroupBy(x=>x.Category).Count()==5 && catalog.Select(x=>x.School).Distinct().Count()==13,"native JSON catalog covers five categories and twelve schools at "+size);
+        var sample=catalog.First(x=>x.Id==14111);
+        data.Learned.Clear();
+        var props=DataProps.PropsData.NewMartial(sample.Type,new[]{sample.Id,grade});
+        data.Learned[sample.Type]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props,exp=120}};data.skillLeft=props.soleID;
         ClickNamed(book,"卷目2");
-        Check(Selected(view)==target && Walk(book).Any(t=>t.gameObject.name=="BHML_功法选取"),"martial preview keeps shared target at "+size);
-        Check(Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_功法操作") || t.gameObject.name.StartsWith("BHML_修改词条")).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"preview cannot invoke unfinished martial writes at "+size);
-        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
-        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"martials-layout-"+size+".png"),ImageFormat.Png); }
+        Check(Selected(view)==target && CharacterMartials.Read(target).Single().Equipped,"martial page reads actual selected learned and equipped records at "+size);
+        Check(Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修改词条")).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"unfinished prefix editor remains disabled at "+size);
+        SaveMartialPreview(book,args,size,"martials-layout-");
         var search=Walk(book).First(t=>t.gameObject.name=="BHML_功法检索").GetComponentInChildren<UnityEngine.UI.InputField>();
-        search.text="烈火";
-        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_功法条目") && t.gameObject.activeSelf)==1,"martial search filters examples at "+size);
-        ClickNamed(book,"功法条目0");
-        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="烈火术"),"martial selection displays matching detail at "+size);
-        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
-        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"martials-detail-layout-"+size+".png"),ImageFormat.Png); }
-        if(Walk(book).Any(t=>t.gameObject.name=="BHML_返回功法列表")) ClickNamed(book,"返回功法列表");
-        search.text="不存在的示例";
-        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="没有符合条件的示例功法"),"martial empty results clear stale detail at "+size);
-        search.text="";ClickNamed(book,"功法来源1");
-        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="获取秘籍"),"library preview shows distinct acquisition actions at "+size);
-        ClickNamed(book,"功法筛选类别");
-        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_功法条目") && t.gameObject.activeSelf)==2,"martial category filter works at "+size);
+        search.text="不存在的功法";
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="没有符合条件的已学功法"),"empty learned results clear stale detail at "+size);
+        search.text="";ClickNamed(book,"显示装备功法");
+        Check(Walk(book).Count(t=>t.gameObject.name=="BHML_功法条目" && t.gameObject.activeSelf)==1,"equipped toggle filters native identities at "+size);
+        ClickNamed(book,"秘籍库");
+        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_秘籍类别"))==5,"library exposes exactly five native categories at "+size);
+        var librarySearch=Walk(book).First(t=>t.gameObject.name=="BHML_秘籍库检索").GetComponentInChildren<UnityEngine.UI.InputField>();
+        librarySearch.text="清风剑";
+        Check(Walk(book).Count(t=>t.gameObject.name=="BHML_秘籍条目" && t.gameObject.activeSelf)==1,"library filters actual config names at "+size);
+        ClickNamed(book,"秘籍条目");librarySearch.text="";
+        SaveMartialPreview(book,args,size,"martials-library-layout-");
+        ClickNamed(book,"关闭功法弹窗");
+        Check(!WindowInputScope.Registered.Contains(librarySearch),"closing martial modal releases input at "+size);
+        ClickNamed(book,"功法搭配");SaveMartialPreview(book,args,size,"martials-builds-layout-");
+        ClickNamed(book,"流派搭配0");SaveMartialPreview(book,args,size,"martials-build-detail-layout-");ClickNamed(book,"关闭功法弹窗");
+        int calls=bag.AddCalls,generated=RewardTool.Calls,oldMax=bag.gridMaxNum;bag.gridMaxNum=bag.GetGridCurNum(true);
+        Check(Rejected(()=>CharacterMartials.Give(context,target,new[]{sample},grade)) && calls==bag.AddCalls && generated==RewardTool.Calls,"full bag rejected before native generation at "+size);
+        bag.gridMaxNum=bag.GetGridCurNum(true)+1;
+        Check(Rejected(()=>CharacterMartials.Give(context,target,new[]{sample,sample},grade)) && calls==bag.AddCalls && generated==RewardTool.Calls,"whole batch capacity checked before factory at "+size);
+        bag.gridMaxNum=oldMax;
+        Check(Rejected(()=>CharacterMartials.Give(context,target,new[]{sample},grade+1)) && calls==bag.AddCalls,"realm drift rejected before write at "+size);
+        Check(Rejected(()=>MartialBuilds.Resolve(MartialBuilds.Verified[0],catalog,1)),"low realm rejects incomplete fire sword package at "+size);
+        Check(MartialBuilds.Verified.All(x=>MartialBuilds.Resolve(x,catalog,10).Count==12),"every curated package resolves twelve authentic IDs at "+size);
+        RewardTool.WrongIdentity=true;
+        Check(Rejected(()=>CharacterMartials.Give(context,target,new[]{sample},grade)) && calls==bag.AddCalls,"native factory identity mismatch rejected without write at "+size);RewardTool.WrongIdentity=false;
+        var count=bag.allProps.Count;
+        CharacterMartials.Give(context,target,new[]{sample,catalog.First(x=>x.Id==510031),catalog.First(x=>x.Id==86003)},grade);
+        Check(bag.allProps.Count==count+3 && bag.allProps.Skip(count).Select(x=>x.soleID).Distinct().Count()==3 && bag.allProps.Skip(count).All(x=>x.Martial.grade==grade),"three factory branches generate distinct current realm books at "+size);
+        bag.allProps.RemoveRange(count,3);bag.AddCalls=calls;
+        bag.AfterAdd=()=>bag.FailAdd=true;
+        Check(Rejected(()=>CharacterMartials.Give(context,target,new[]{sample,sample},grade)) && bag.allProps.Count==count+1 && bag.AddCalls==calls+2 && CharacterSave.Pending>pending,"partial native failure retains pending and never retries batch at "+size);
+        bag.AfterAdd=null;bag.FailAdd=false;bag.allProps.RemoveRange(count,1);bag.AddCalls=calls;
+        // Pending belongs to simulated writes; save the harness context so later page checks remain independent.
+        ClickNamed(book,"卷目6");g.data.Complete(true);CharacterSave.Poll();
+        pending=CharacterSave.Pending;
+        ClickNamed(book,"秘籍库");view.FocusTarget(target);
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_功法弹窗遮罩" && t.gameObject.activeSelf),"target selection closes acquisition modal at "+size);
         ClickNamed(book,"卷目0");
-        Check(!WindowInputScope.Registered.Contains(search) && CharacterSave.Pending==pending,"leaving preview releases input and never marks writes pending at "+size);
+        Check(!WindowInputScope.Registered.Contains(search) && CharacterSave.Pending==pending,"leaving martial page releases input without new writes at "+size);
         ClickNamed(book,"卷目1");
+    }
+    private static void SaveMartialPreview(UnityEngine.RectTransform book,string[] args,int size,string prefix)
+    {
+        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+        {graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],prefix+size+".png"),ImageFormat.Png);}
     }
     private static void VerifyItems(BookView view,UnityEngine.RectTransform book,string[] args,int size)
     {
@@ -749,6 +785,7 @@ internal static class BookLayoutHarness
         var afterScroll=BookView.FateRowBounds(testRow,testArea);
         Check(beforeScroll.x==45 && beforeScroll.y==136 && afterScroll.y==100,"real anchored hierarchy includes scroll displacement");
         PaperSkin.ArtDirectory=args[0];
+        MartialFixture.Load(args[2]);
         g.world.playerUnit.data.unitData.propertyData.Name="示例修士";
         for(int i=0;i<300;i++)
         {

@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.62 ｜ **最后更新**：2026-10-03
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.63 ｜ **最后更新**：2026-10-04
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -44,7 +44,9 @@
 | Services/ItemInventory.cs | 道具配置、背包快照、原生发放/逐件删除、境界药效补给与人物上下文预检 |
 | UI/BookView.Items.cs | 道具三栏、物品图鉴、背包网格与原生内容悬浮、绑定人物的添加/清空弹窗 |
 | UI/BookView.ItemMenu.cs | 背包右键菜单、按唯一ID修改/增加数量及移除单项、菜单释放 |
-| UI/BookView.Martials.cs | 功法页界面预览、示例搜索筛选、详情与词条布局；无游戏功法读取或写入 |
+| UI/BookView.Martials.cs | 已学/装备功法、五类秘籍弹窗、多选添加和有来源的搭配获取；修炼与词条编辑待接入 |
+| Services/CharacterMartials.cs | 原生功法配置/拥有记录、效果介绍、奖励工厂生成及背包容量预检/入包回读 |
+| Services/MartialBuilds.cs | 已核对攻略的搭配清单、出处/依赖说明、全套境界检查 |
 | Services/CharacterRealmChange.cs | 境界配置成长差额、品质/经验/瓶颈及降阶截断记录 |
 | UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
 | Services/CharacterPortrait.cs | 原生身份解析与ConfDramaNpc.CreateTexture分流，普通修士保持原路径 |
@@ -382,3 +384,9 @@ FrameSearchInput统一修士搜索和CreateSearchInput创建的气运、气运�
 07.60：FrameSearchInput调用Border(..., transparentInner:true)，内侧上下线alpha为0，节点/尺寸保留；外侧框线可见。线条只是装饰，实际留白和光标安全区域由文字内边距/AlignCaret保障，不依赖线条是否可见。其他卡片默认transparentInner=false。
 
 07.61：SearchWithLibrary负责气运/道具检索和列表入口组合；CreateSearchInput(..., framed:false)及MakeButton(..., framed:false)关闭组合内部的各自外框，只在组合父节点Border一次。按钮仍是独立Button，分隔线不拦射线；移除气运第四题栏的额外Border，避免三层框挤压。独立搜索与其他按钮默认framed=true。
+
+### 功法获取接口依据（07.63）
+
+本机 BattleSkillAttack / BattleStepBase / BattleAbilityBase 的普通 className=1 配置形成五类目录，排除怪物及专属内部招式。招式 ID 跨境界固定，gradeMin/gradeMax 决定是否可生成；奖励工厂按境界选择数值、消耗和合法前缀。GetSkillReward 用指定 baseID，GetStepReward/GetAbilityReward 用原生 ReturnAction 过滤精确 ID；然后 PropsData.NewMartial 创建秘籍唯一身份，AddProps(PropsData) 入包，GetProps(soleID) 回读核对。未直接拼装词条、附加数据或序列化存档。红品质 level=6 为当前获取默认，词条随机；不伪造掉落事件或特定产地。
+
+整批先按 GetGridCurNum(true)/GetGridMaxNum 检查每本一格，再全批生成并检查 ID/境界，逐次入包前重验世界/人物/保存状态/境界/剩余容量。原生回调可能部分写入，异常保留 Pending 并关闭获取弹窗，不盲重试、不宣称事务回滚。新增秘籍即时改变内存，顶部保存负责持久化，原生自动保存也可能落盘。托管替身加载官方只读 JSON 验证目录和分支，但不能证明游戏奖励工厂、真实入包、词条或保存重载成功。

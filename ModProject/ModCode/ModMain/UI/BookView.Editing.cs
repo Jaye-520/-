@@ -294,6 +294,7 @@ namespace MOD_YtxSQ1.UI
                 else if (itemDialog != null) CloseItemDialog();
                 else if (itemLibrary != null) CloseItemLibrary();
                 else if (fateLibrary != null) CloseFateLibrary();
+                else if (martialOverlay != null) CloseMartialOverlay();
                 else if (requestClose != null) requestClose();
             }
         }
