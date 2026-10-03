@@ -18,7 +18,7 @@ public class DataProps
 {
     public List<PropsData> allProps = new List<PropsData>();
     public List<PropsData> _allShowProps { get { return allProps.Where(p=>p.propsCount>0 && (p.propsItem==null || p.propsItem.hide!=1) && !p.Equipped).ToList(); } }
-    public int gridMaxNum = int.MaxValue;
+    public int gridMaxNum = 120;
     public int GetGridMaxNum() { return gridMaxNum; }
     public int GetGridCurNum(bool ignore) { return allProps.Count(p=>p.propsCount>0 && p.propsItem!=null && p.propsItem.hide==0); }
     public List<PropsData> GetProps(int id) { return allProps.Where(p=>p.propsID==id).ToList(); }

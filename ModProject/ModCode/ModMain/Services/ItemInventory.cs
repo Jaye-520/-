@@ -54,6 +54,14 @@ namespace MOD_YtxSQ1.Services
             }
             return result;
         }
+        internal static void ReadCapacity(string unitId, out int used, out int total)
+        {
+            var unit = CharacterReader.Resolve(unitId);
+            if (unit == null) throw new InvalidOperationException("当前人物已失效");
+            var bag = unit.data.unitData.propData;
+            used = Math.Max(0, bag.GetGridCurNum(true));
+            total = Math.Max(0, bag.GetGridMaxNum());
+        }
         internal static string Fingerprint(List<InventoryItem> items)
         {
             var sorted = new List<InventoryItem>(items); sorted.Sort((a, b) => string.CompareOrdinal(a.SoleId, b.SoleId));

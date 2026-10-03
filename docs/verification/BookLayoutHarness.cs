@@ -528,7 +528,7 @@ internal static class BookLayoutHarness
         Check(bag.GetPropsNum(hp.id)==capacityBefore+1,"full bag still accepts existing stack through native factory");
         var fresh=new ConfItemPropsItem{id=998877,name="新材料",isOverlay=1};g.conf.itemProps._allConfList.Add(fresh);capacityAdds=bag.AddCalls;
         Check(Rejected(()=>ItemInventory.Give(context,id,fresh.id,9999)) && bag.AddCalls==capacityAdds && bag.GetPropsNum(fresh.id)==0,"full bag rejects first stackable grant without partial write");
-        bag.gridMaxNum=int.MaxValue;g.conf.itemProps._allConfList.Remove(fresh);
+        bag.gridMaxNum=120;g.conf.itemProps._allConfList.Remove(fresh);
         var firstItem=ItemInventory.Read(id).First();var storedItem=bag.GetProps(firstItem.SoleId);storedItem.ExtraData="keep-quality-and-affixes";
         var otherStack=bag.allProps.First(p=>p.propsID==hp.id && p.soleID!=firstItem.SoleId);var otherCount=otherStack.propsCount;
         var allBefore=bag.allProps.Count;var addsBefore=bag.AddCalls;var deletesBefore=bag.DeleteCalls;
@@ -583,11 +583,30 @@ internal static class BookLayoutHarness
         using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
         { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-tooltip-layout-"+size+".png"),ImageFormat.Png); }
         bookIcon.uiEvent.OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;view.RefreshCharacter();bag.allProps.Remove(martial);UnityEngine.Object.Destroy(bookHover);
-        var extraBag=Enumerable.Range(0,100).Select(i=>new DataProps.PropsData{propsItem=unique,propsID=unique.id,propsCount=1,soleID="scroll-extra-"+i}).ToList();bag.allProps.AddRange(extraBag);view.RefreshCharacter(true);
+        var extraBag=Enumerable.Range(0,100).Select(i=>new DataProps.PropsData{propsItem=unique,propsID=unique.id,propsCount=1,soleID="scroll-extra-"+i}).ToList();bag.allProps.AddRange(extraBag);bag.gridMaxNum=bag.GetGridCurNum(true);view.RefreshCharacter(true);
         Check(bagWheel.content.sizeDelta.y>bagWheel.viewport.sizeDelta.y,"large backpack grows scroll content beyond viewport");
         bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,bagWheel.content.sizeDelta.y-bagWheel.viewport.sizeDelta.y);bagWheel.verticalNormalizedPosition=0;bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
         Check(Walk(book).Any(t=>t.gameObject.activeInHierarchy && t.gameObject.name.Contains("scroll-extra-99")),"backpack pool renders final item when scrolled to bottom");
-        bag.allProps.RemoveAll(p=>extraBag.Contains(p));bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.verticalNormalizedPosition=1;view.RefreshCharacter(true);
+        var refreshBag=typeof(BookView).GetMethod("RefreshBag",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
+        var capacityText=(UnityEngine.UI.Text)typeof(BookView).GetField("itemBagCapacity",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view);
+        bag.gridMaxNum=bag.GetGridCurNum(true)+3;refreshBag.Invoke(view,new object[]{false});
+        bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,bagWheel.content.sizeDelta.y-bagWheel.viewport.sizeDelta.y);bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
+        var emptyCells=Walk(book).Where(t=>t.gameObject.name=="BHML_空背包格底" && t.gameObject.activeInHierarchy && t.parent.gameObject.activeInHierarchy).ToArray();
+        Check(emptyCells.Length==3 && capacityText.text.Contains("剩余 3 格"),"capacity-only change redraws exactly three native free cells without row padding");
+        Check(emptyCells.All(t=>!t.GetComponent<UnityEngine.UI.Image>().raycastTarget && t.parent.GetComponentsInChildren<UIEventListener>(true).Length==0),"empty cells cannot trigger item tooltip or menu and leave wheel hit to viewport");
+        Check(Walk(book).Where(t=>t.gameObject.name=="native item icon").All(t=>t.parent.Children.Any(c=>c.gameObject.name=="BHML_背包格底")),"occupied item icons sit above faint cell backgrounds");
+        bag.gridMaxNum=bag.GetGridCurNum(true);refreshBag.Invoke(view,new object[]{false});
+        Check(capacityText.text.Contains("已满") && !Walk(book).Any(t=>t.gameObject.name=="BHML_空背包格底" && t.parent.gameObject.activeInHierarchy),"full capacity removes free cells and reports full without a fake spare row");
+        bag.gridMaxNum=bag.GetGridCurNum(true)-2;refreshBag.Invoke(view,new object[]{false});
+        Check(capacityText.text.Contains("已满") && !capacityText.text.Contains("剩余 -"),"over-capacity backpack keeps existing items and never invents negative free cells");
+        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-capacity-full-layout-"+size+".png"),ImageFormat.Png); }
+        bag.allProps.RemoveAll(p=>extraBag.Contains(p));bag.gridMaxNum=120;bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.verticalNormalizedPosition=1;view.RefreshCharacter(true);
+        bag.gridMaxNum=bag.GetGridCurNum(true)+7;refreshBag.Invoke(view,new object[]{false});
+        bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,bagWheel.content.sizeDelta.y-bagWheel.viewport.sizeDelta.y);bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
+        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-capacity-free-layout-"+size+".png"),ImageFormat.Png); }
+        bag.gridMaxNum=120;bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.verticalNormalizedPosition=1;view.RefreshCharacter(true);
         pressFirst(true);ClickNamed(book,"背包菜单外部");Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"outside click dismisses context menu");
         pressFirst(true);Walk(book).First(t=>t.gameObject.name=="BHML_背包网格").GetComponent<UnityEngine.UI.ScrollRect>().onValueChanged.Invoke(new UnityEngine.Vector2());
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"scrolling closes menu before pooled item slots can be rebound");

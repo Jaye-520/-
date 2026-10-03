@@ -17,7 +17,7 @@ namespace MOD_YtxSQ1.UI
         }
         private InputField itemSearch, itemLibrarySearch, itemAmount;
         private ScrollRect itemResultsScroll, itemBagScroll, itemLibraryScroll;
-        private Text itemBagTitle, itemLibraryCount;
+        private Text itemBagTitle, itemBagCapacity, itemLibraryCount;
         private GameObject itemLibrary, itemDialog;
         private List<ItemEntry> itemCatalog = new List<ItemEntry>();
         private readonly List<ItemEntry> itemResults = new List<ItemEntry>(), itemLibraryResults = new List<ItemEntry>();
@@ -27,7 +27,7 @@ namespace MOD_YtxSQ1.UI
         private List<InventoryItem> bagItems = new List<InventoryItem>();
         private string bagOwner, bagFingerprint, itemCatalogContext;
         private const float ItemRowPitch = 42, BagPitch = 86;
-        private int bagColumns;
+        private int bagColumns, bagFreeSlots;
 
         private ScrollRect ItemScroll(RectTransform parent, string name, float x, float y, float width, float height)
         {
@@ -59,8 +59,11 @@ namespace MOD_YtxSQ1.UI
             var bag = Card(content, "人物背包", searchWidth + 16, 76, bagWidth, contentHeight - 76);
             Border(bag, bagWidth, bag.sizeDelta.y);
             itemBagTitle = Label(bag, "背包", 14, 8, bagWidth - 28, 30, 21, Ink);
-            Fill(bag, "背包题栏线", 12, 44, bagWidth - 24, 1, Gold);
-            itemBagScroll = ItemScroll(bag, "背包网格", 12, 56, bagWidth - 24, bag.sizeDelta.y - 68);
+            itemBagTitle.resizeTextForBestFit = true; itemBagTitle.resizeTextMinSize = 14; itemBagTitle.resizeTextMaxSize = 21;
+            itemBagCapacity = Label(bag, "", 14, 36, bagWidth - 28, 20, 14, Muted);
+            itemBagCapacity.resizeTextForBestFit = true; itemBagCapacity.resizeTextMinSize = 11; itemBagCapacity.resizeTextMaxSize = 14;
+            Fill(bag, "背包题栏线", 12, 60, bagWidth - 24, 1, Gold);
+            itemBagScroll = ItemScroll(bag, "背包网格", 12, 72, bagWidth - 24, bag.sizeDelta.y - 84);
             var bagTrack = Fill(itemBagScroll.viewport, "背包滚动轨", itemBagScroll.viewport.sizeDelta.x - 6, 0, 6,
                 itemBagScroll.viewport.sizeDelta.y, new Color(.35f, .34f, .27f, .12f), true);
             var bagHandle = ScrollHandle(bagTrack, "背包滚动柄", 24, Muted);
@@ -69,7 +72,7 @@ namespace MOD_YtxSQ1.UI
             bagBar.direction = Scrollbar.Direction.BottomToTop; itemBagScroll.verticalScrollbar = bagBar;
             bagColumns = Math.Max(1, (int)(itemBagScroll.content.sizeDelta.x / BagPitch));
             var pool = ((int)Math.Ceiling(itemBagScroll.viewport.sizeDelta.y / BagPitch) + 1) * bagColumns;
-            for (int i = 0; i < pool; i++) bagSlots.Add(Box("背包格" + i, itemBagScroll.content, 0, 0, 72, 72));
+            for (int i = 0; i < pool; i++) bagSlots.Add(Box("背包格" + i, itemBagScroll.content, 0, 0, 78, 78));
             itemBagScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { CloseItemMenu(); HideFateTips(); RenderBagSlots(); })));
             FilterItems(false);
         }
@@ -143,20 +146,25 @@ namespace MOD_YtxSQ1.UI
             if (itemBagScroll == null) return;
             try
             {
-                var items = ItemInventory.Read(selectedUnitId); var signature = ItemInventory.Fingerprint(items);
+                var items = ItemInventory.Read(selectedUnitId);
+                int used, total; ItemInventory.ReadCapacity(selectedUnitId, out used, out total);
+                var free = Math.Max(0, total - used);
+                var signature = ItemInventory.Fingerprint(items) + "|capacity:" + used + ":" + total;
                 var owner = contextKey + ":" + selectedUnitId;
                 itemBagTitle.text = characterName.text + "的背包 · " + items.Count + "项";
+                itemBagCapacity.text = "占用 " + used + " / " + total + " 格 · " + (free == 0 ? "已满" : "剩余 " + free + " 格");
+                itemBagCapacity.color = free == 0 ? Cinnabar : Muted;
                 if (!force && bagOwner == owner && bagFingerprint == signature) return;
                 CloseItemMenu(); HideFateTips();
                 if (bagOwner != owner) { itemBagScroll.content.anchoredPosition = Vector2.zero; itemBagScroll.verticalNormalizedPosition = 1; }
-                bagOwner = owner; bagFingerprint = signature; bagItems = items;
+                bagOwner = owner; bagFingerprint = signature; bagItems = items; bagFreeSlots = free;
                 itemBagScroll.content.sizeDelta = new Vector2(itemBagScroll.content.sizeDelta.x,
-                    Mathf.Max(itemBagScroll.viewport.sizeDelta.y, (float)Math.Ceiling((double)items.Count / bagColumns) * BagPitch));
+                    Mathf.Max(itemBagScroll.viewport.sizeDelta.y, (float)Math.Ceiling(((double)items.Count + bagFreeSlots) / bagColumns) * BagPitch));
                 RenderBagSlots();
             }
             catch (Exception ex)
             {
-                bagItems.Clear(); bagOwner = null; bagFingerprint = null; RenderBagSlots();
+                bagItems.Clear(); bagFreeSlots = 0; bagOwner = null; bagFingerprint = null; itemBagCapacity.text = ""; RenderBagSlots();
                 itemBagTitle.text = "背包读取失败"; SetEditStatus(ex.Message, true);
             }
         }
@@ -168,13 +176,20 @@ namespace MOD_YtxSQ1.UI
             for (int i = 0; i < bagSlots.Count; i++)
             {
                 var slot = bagSlots[i]; var index = first + i;
-                slot.gameObject.SetActive(index < bagItems.Count && unit != null);
-                var key = index < bagItems.Count ? bagOwner + ":" + bagItems[index].SoleId + ":" + bagItems[index].Count : "空";
+                slot.gameObject.SetActive(index < (long)bagItems.Count + bagFreeSlots && unit != null);
+                slot.anchoredPosition = new Vector2(index % bagColumns * BagPitch, -(index / bagColumns) * BagPitch);
+                var key = index < bagItems.Count ? bagOwner + ":" + bagItems[index].SoleId + ":" + bagItems[index].Count : bagOwner + ":empty:" + index;
+                key += slot.gameObject.activeSelf ? ":on" : ":off";
                 if (slot.gameObject.name == key) continue;
                 slot.gameObject.name = key;
                 ClearBagSlot(slot);
-                if (index >= bagItems.Count || unit == null) continue;
-                slot.anchoredPosition = new Vector2(index % bagColumns * BagPitch, -(index / bagColumns) * BagPitch);
+                if (!slot.gameObject.activeSelf || unit == null) continue;
+                var empty = index >= bagItems.Count;
+                Fill(slot, empty ? "空背包格底" : "背包格底", 0, 0, 78, 78, new Color(.52f, .53f, .51f, .14f));
+                var edge = new Color(.40f, .42f, .39f, .20f);
+                Fill(slot, "格上沿", 0, 0, 78, 1, edge); Fill(slot, "格下沿", 0, 77, 78, 1, edge);
+                Fill(slot, "格左沿", 0, 0, 1, 78, edge); Fill(slot, "格右沿", 77, 0, 1, 78, edge);
+                if (empty) continue;
                 try
                 {
                     var props = unit.data.unitData.propData.GetProps(bagItems[index].SoleId);

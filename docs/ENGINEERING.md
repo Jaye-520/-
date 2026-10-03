@@ -350,3 +350,9 @@ PropsData与MartialData是包装与读取视图关系，并非继承关系；Try
 物品提示移出所属图标立即Hide，不沿用气运提示的0.12秒移入窗口宽限；CanvasGroup.blocksRaycasts=false，不能抢指针。长介绍上限400并限于窗口内；溢出时暂时关闭背包滚轮灵敏度，TickItemTipWheel每帧一次读Input.mouseScrollDelta，以介绍真实溢出高度换算归一化位置，Hide恢复原值。短介绍不截获背包滚轮；背包滚动条仍可拖动，滚动后释放旧提示防止池格子错配。
 
 GetPropsNum回读不一致不能一概称为工厂异常或部分写入：原生AddProps会在满格新增记录时正常返回空结果。发放前按原生hide=0、已有叠加记录与GetGridCurNum(true)/GetGridMaxNum判断，拒绝发生在Sync/MarkDirty之前；不得绕过容量、盲重试或仅删除回读校验。原生反汇编依据.tools/bulk-items-native.txt，接口依据.tools/hover-capacity-api.txt及官方CHM。截图无物品ID/当时容量，不据此宣称排除了所有回读原因。
+
+### 容量格底与网格池（07.55）
+
+ItemInventory.ReadCapacity只读GetGridCurNum(true)/GetGridMaxNum，与原生新增记录判断一致。UnitDataProps计格有物品类型、hide/playerShow与drop/dieDrop分支，不能把可见条目数当占用数；本机依据.tools/capacity-native.txt。空格严格为max(0,total-used)，虚拟网格长度为可见物品数+剩余格数，末行多余位置禁用；已有超容量物品仍完整显示。
+
+容量纳入刷新指纹；每个池格缓存键包括激活状态，防止原本禁用的尾部位置变为空格时跳过绘制。格底与细线不拦射线，无UIEventListener，原生图标在其上并保留独立悬浮/菜单。Box不接受负坐标，所以采用78×78池格、72×72图标居中，不以负坐标向外扩格底。仅视口附近池格创建Unity对象，空格数量不导致全量实例化。
