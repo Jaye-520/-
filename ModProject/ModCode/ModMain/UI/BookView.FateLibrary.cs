@@ -35,6 +35,7 @@ namespace MOD_YtxSQ1.UI
         {
             switch (level)
             {
+                case 7: return new Color(.76f, .56f, .20f, 1); // 天：琥珀金，与仙级浅金区分
                 case 6: return new Color(.53f, .19f, .16f, 1); // 神：朱红
                 case 5: return new Color(.85f, .78f, .55f, 1); // 仙：淡金
                 case 4: return new Color(.40f, .29f, .49f, 1); // 圣：紫
@@ -67,9 +68,22 @@ namespace MOD_YtxSQ1.UI
                 Fill(image.rectTransform, "气运品阶分隔", 28, 6, 1, height - 12, line);
                 rank = Label(image.rectTransform, "", 4, 0, 22, height, 14, name.color, TextAnchor.MiddleCenter);
                 rank.gameObject.name = "BHML_气运品阶";
+                var carving = NewRect("天级纹饰", rank.rectTransform);
+                carving.anchorMin = carving.anchorMax = new Vector2(0, 1); carving.pivot = new Vector2(0, 1);
+                carving.anchoredPosition = new Vector2(-4, 0); carving.sizeDelta = new Vector2(width, height);
+                var bright = new Color(1, .91f, .58f, .9f);
+                var shade = new Color(.39f, .24f, .05f, .65f);
+                Fill(carving, "天级金线上", 2, 1, width - 4, 1, bright);
+                Fill(carving, "天级金线下", 2, height - 2, width - 4, 1, shade);
+                Fill(carving, "天级金线左", 1, 1, 1, height - 2, bright);
+                Fill(carving, "天级金线右", width - 2, 1, 1, height - 2, shade);
+                Fill(carving, "天级雕线左上", 4, 4, 8, 1, bright);
+                Fill(carving, "天级雕线右下", width - 12, height - 5, 8, 1, bright);
+                Fill(carving, "天级金印", 4, 5, 22, height - 10, new Color(1, .91f, .58f, .22f));
             }
+            rank.transform.GetChild(0).gameObject.SetActive(entry.Level == 7);
             rank.color = name.color;
-            rank.text = entry.Level == 6 ? "神" : entry.Level == 5 ? "仙" : entry.Level == 4 ? "圣" : "·";
+            rank.text = entry.Level == 7 ? "天" : entry.Level == 6 ? "神" : entry.Level == 5 ? "仙" : entry.Level == 4 ? "圣" : "·";
             return rank;
         }
 

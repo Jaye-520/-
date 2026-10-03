@@ -489,6 +489,8 @@ internal static class BookLayoutHarness
                 ConfLocalText.Texts["preview"+f]=previewNames[f];
             }
             g.conf.roleCreateFeature.Items[9001]=new FateItem{level=2,type=3,name="catalog9001",tips="0"};ConfLocalText.Texts["catalog9001"]="未拥有气运";
+            string[] heavenNames={"噬魂剑","阴阳眼","莲花剑意"};
+            for(int h=0;h<3;h++){g.conf.roleCreateFeature.Items[2804+h]=new FateItem{level=6,type=1,name="heaven"+h,tips="0"};ConfLocalText.Texts["heaven"+h]=heavenNames[h];}
             var canvas=new UnityEngine.GameObject("canvas");canvas.transform.sizeDelta=new UnityEngine.Vector2(sizes[s][0],sizes[s][1]);g.ui=new LayoutUI { canvas=canvas.transform };
             bool closeRequested=false;
             var window=new UITextInfoLong();var bookView=new BookView();bookView.Build(window,()=>{closeRequested=true;});
@@ -514,18 +516,19 @@ internal static class BookLayoutHarness
             var restore=Walk(book).First(t=>t.gameObject.name=="BHML_快捷_满状态");
             Check(Walk(restore).Any(t=>t.gameObject.name=="BHML_金线上") && Walk(restore).Any(t=>t.gameObject.name=="BHML_金线右"),"full status action has a quiet gold inset frame");
             var dots=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_说明点_")).ToArray();
-            Check(dots.Length==7 && dots.All(t=>t.GetComponent<UnityEngine.UI.Text>().raycastTarget && t.GetComponent<UnityEngine.UI.Button>()!=null) && Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_快捷_")).All(t=>t.GetComponent<UIEventListener>()==null),"seven help dots receive hover and clicks independently from action bodies");
-            var helpDot=Walk(restore).First(t=>t.gameObject.name=="BHML_说明点_满状态");
+            Check(dots.Length==6 && dots.All(t=>t.GetComponent<UnityEngine.UI.Text>().raycastTarget && t.GetComponent<UnityEngine.UI.Button>()!=null) && Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_快捷_")).All(t=>t.GetComponent<UIEventListener>()==null),"six overlay help diamonds receive hover and clicks independently from action bodies");
+            Check(!Walk(restore).Any(t=>t.gameObject.name.StartsWith("BHML_说明点_")),"full status has no help mark or hover hint");
+            var helpDot=dots.First(); var hintedButton=helpDot.parent;
             var beforeHp=g.world.playerUnit.data.dynUnitData.hp.Stored; helpDot.GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             Check(g.world.playerUnit.data.dynUnitData.hp.Stored==beforeHp,"clicking help dot does not run restore action");
             helpDot.GetComponent<UIEventListener>().OnPointerEnter(null);
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"target column action hover converts sibling coordinates safely");
             var actionTip=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍");
-            var restoreBounds=BookView.FateRowBounds((UnityEngine.RectTransform)restore,(UnityEngine.RectTransform)book);
-            Check(actionTip.parent==book && Math.Abs(actionTip.anchoredPosition.x-restoreBounds.x)<1 && -actionTip.anchoredPosition.y>=restoreBounds.y+restoreBounds.height,"full status hint stays below its button in book coordinates");
+            var restoreBounds=BookView.FateRowBounds((UnityEngine.RectTransform)hintedButton,(UnityEngine.RectTransform)book);
+            Check(actionTip.parent==book && Math.Abs(actionTip.anchoredPosition.x-restoreBounds.x)<1 && Math.Abs(-actionTip.anchoredPosition.y-restoreBounds.y)>restoreBounds.height,"action hint stays adjacent to its button in book coordinates");
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
-            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"action-tip-07-32-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"action-tip-07-33-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
             helpDot.GetComponent<UIEventListener>().OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;bookView.RefreshCharacter();
             Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_气运行_0_"))==3 && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2").GetComponentInChildren<UnityEngine.UI.Text>().text=="天三才","all three born entries render as individual rows");
             var ownedRows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_气运行_")).ToArray();
@@ -540,6 +543,11 @@ internal static class BookLayoutHarness
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运候选"&&t.GetComponentInChildren<UnityEngine.UI.Text>().text=="[逆] 未拥有气运"),"global search includes unowned configuration entries with category prefix");
             var candidate=Walk(book).First(t=>t.gameObject.name=="BHML_气运候选");
             Check(candidate.GetComponent<UnityEngine.UI.Image>().sprite==null && candidate.GetComponent<UnityEngine.UI.Image>().color.g>candidate.GetComponent<UnityEngine.UI.Image>().color.r && candidate.GetComponentInChildren<UnityEngine.UI.Text>().rectTransform.anchoredPosition.x==34,"candidate uses a sprite-free grade color and consistently inset title");
+            globalSearch.text="莲花剑意";
+            Check(candidate.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="天") && Walk(candidate).Any(t=>t.gameObject.name=="BHML_天级纹饰") && candidate.GetComponent<UnityEngine.UI.Image>().color.r>candidate.GetComponent<UnityEngine.UI.Image>().color.g,"special talent uses heaven rank with amber gold and engraved frame");
+            globalSearch.text="未拥有";
+            Check(!Walk(candidate).First(t=>t.gameObject.name=="BHML_天级纹饰").gameObject.activeSelf && candidate.GetComponent<UnityEngine.UI.Image>().color.g>candidate.GetComponent<UnityEngine.UI.Image>().color.r,"pooled tile clears heaven ornament when reused for ordinary fate");
+            Check(dots.All(t=>t.GetComponent<UnityEngine.UI.Text>().text=="◆" && t.parent.GetComponentInChildren<UnityEngine.UI.Text>().rectTransform.anchoredPosition.x==0),"help diamond overlays corner without shifting button title");
             Walk(book).First(t=>t.gameObject.name=="BHML_气运列表").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             var library=Walk(book).First(t=>t.gameObject.name=="BHML_气运图鉴");
             Check(Walk(library).Count(t=>t.gameObject.name=="BHML_气运候选")<128&&Walk(library).First(t=>t.gameObject.name=="BHML_图鉴长页").GetComponent<UnityEngine.RectTransform>().sizeDelta.y>10000,"thousands of catalog records use a bounded visible tile pool");
@@ -612,13 +620,15 @@ internal static class BookLayoutHarness
                 var panels=MOD_YtxSQ1.Services.CharacterSnapshot.GroupNames.Take(5).Select(n=>(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_"+n)).ToArray();
                 Check(panels.All(p=>p.parent==frame && p.anchoredPosition.y==panels[0].anchoredPosition.y && p.sizeDelta.y==panels[0].sizeDelta.y),"five panels share top and bottom boundaries");
             }
+            globalSearch.text="莲花剑意";
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-32-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-33-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
+            globalSearch.text="";
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
             Check(rows.Length<12 && rows.Length>0,"300 NPCs use a fixed row pool");
@@ -727,7 +737,7 @@ internal static class BookLayoutHarness
             Check(tip.sizeDelta.y<150,"short introduction has compact content-driven height");
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
-            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-32-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-33-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
             UnityEngine.Time.frameCount++;UnityEngine.Input.Escape=true;bookView.RefreshCharacter();UnityEngine.Input.Escape=false;
             Check(closeRequested,"Escape forwards window close callback when no editor or child view is open");
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");

@@ -167,19 +167,19 @@ namespace MOD_YtxSQ1.UI
                 tabMarks.Add(Fill(tab.GetComponent<RectTransform>(), "选中标记", 8, 12, 3, 18, Cinnabar));
             }
             targetWidth = width < 1300 ? 190f : 224f;
-            var bodyHeight = height - BodyTop - 66;
+            var bodyHeight = height - BodyTop - 50;
             BuildTargetPanel(book, bodyHeight);
             contentWidth = width - targetWidth - 76;
             contentHeight = bodyHeight;
             content = Box("卷页", book, targetWidth + 52, BodyTop, contentWidth, contentHeight);
 
-            Fill(book, "页脚分界", 24, height - 54, width - 48, 1, Gold);
-            var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
+            Fill(book, "页脚分界", 24, height - 40, width - 48, 1, Gold);
+            var footer = Box("页脚", book, 24, height - 36, width - 48, 28);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
-            Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.32 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "Jaye@2026-爱你一生一世", 214, 1, width - 48 - 428, 24, 16, Ink, TextAnchor.MiddleCenter);
+            Label(footer, "07.33 / F8 收起", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.32界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.33界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)

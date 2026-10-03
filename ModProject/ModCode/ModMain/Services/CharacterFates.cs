@@ -11,7 +11,11 @@ namespace MOD_YtxSQ1.Services
         public readonly int Id, Category, Level;
         public readonly string Name, Description;
         public CharacterFate(int id, int category, string name, string description, int level = 0)
-        { Id = id; Category = category; Name = name; Description = description; Level = level; }
+        {
+            Id = id; Category = category; Name = name; Description = description;
+            // 原配置三项特殊天赋仍写level=6，显示天级；不更改游戏配置。
+            Level = id >= 2804 && id <= 2806 ? 7 : level;
+        }
     }
 
     internal static class CharacterFates
