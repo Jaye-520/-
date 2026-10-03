@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.63 ｜ **最后更新**：2026-10-04
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.64 ｜ **最后更新**：2026-10-04
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -45,7 +45,7 @@
 | UI/BookView.Items.cs | 道具三栏、物品图鉴、背包网格与原生内容悬浮、绑定人物的添加/清空弹窗 |
 | UI/BookView.ItemMenu.cs | 背包右键菜单、按唯一ID修改/增加数量及移除单项、菜单释放 |
 | UI/BookView.Martials.cs | 已学/装备功法、五类秘籍弹窗、多选添加和有来源的搭配获取；修炼与词条编辑待接入 |
-| Services/CharacterMartials.cs | 原生功法配置/拥有记录、效果介绍、奖励工厂生成及背包容量预检/入包回读 |
+| Services/CharacterMartials.cs | 基础/传承功法配置与拥有记录、奖励工厂/传承身份生成及背包预检/回读 |
 | Services/MartialBuilds.cs | 已核对攻略的搭配清单、出处/依赖说明、全套境界检查 |
 | Services/CharacterRealmChange.cs | 境界配置成长差额、品质/经验/瓶颈及降阶截断记录 |
 | UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
@@ -390,3 +390,11 @@ FrameSearchInput统一修士搜索和CreateSearchInput创建的气运、气运�
 本机 BattleSkillAttack / BattleStepBase / BattleAbilityBase 的普通 className=1 配置形成五类目录，排除怪物及专属内部招式。招式 ID 跨境界固定，gradeMin/gradeMax 决定是否可生成；奖励工厂按境界选择数值、消耗和合法前缀。GetSkillReward 用指定 baseID，GetStepReward/GetAbilityReward 用原生 ReturnAction 过滤精确 ID；然后 PropsData.NewMartial 创建秘籍唯一身份，AddProps(PropsData) 入包，GetProps(soleID) 回读核对。未直接拼装词条、附加数据或序列化存档。红品质 level=6 为当前获取默认，词条随机；不伪造掉落事件或特定产地。
 
 整批先按 GetGridCurNum(true)/GetGridMaxNum 检查每本一格，再全批生成并检查 ID/境界，逐次入包前重验世界/人物/保存状态/境界/剩余容量。原生回调可能部分写入，异常保留 Pending 并关闭获取弹窗，不盲重试、不宣称事务回滚。新增秘籍即时改变内存，顶部保存负责持久化，原生自动保存也可能落盘。托管替身加载官方只读 JSON 验证目录和分支，但不能证明游戏奖励工厂、真实入包、词条或保存重载成功。
+
+### 传承目录与身份（07.64）
+
+07.63只枚举基础表，遗漏过龙门等传承心法；不能称185项为全部秘籍。BattleAbilitySuitBase 的35个系列以 suitMember 关联基础心法，展开182个独立成员，目录合计367项，其中心法223项。普通心法与同baseID不同suitID必须有不同选择键；基础搭配解析仅选suitID=0，避免误用传承替代普通版本。查询名称/ID时跨五类检索；点分类清空查询、回到分类列表，底部显示结果数。不可生成的配置仍显示并说明原因。
+
+生成沿用原生奖励工厂和NewMartial，再调用 PropsAbilityData.suitID setter；本机SetRewardPropsDataAttr也使用此setter，native调用链确认它更新AbilityData、序列化回原生PropsData附加数据并清除缓存，禁止仅改名称冒充传承或手写JSON。校验suitMember、生成品质/招式/境界与suitID，入包前捕获唯一ID/签名，入包后复核签名及传承身份。未添加运行效果或自动装备，学习/装备后的套装激活走游戏机制、仍待游戏验证。
+
+生成境界从 GameItemRewardAbilitySuit → GameItemReward → BattleAbilityCombine.rewardGradeID 交叉核对：过龙门及24种流派传承为登仙，渡江云等通用传承有羽化版本；这是生成版本约束，不宣称复刻掉落、剧情和区域条件。残天式、卧龙劲在只读数据中只引用无对应奖励项的900001/900002，暂显示但禁用获取，不猜境界。动态配置可能与只读JSON不同，以实际配置解析结果为准。替身加载四张新增真实表，不能证明原生setter/介绍/套装效果或保存重载正确。

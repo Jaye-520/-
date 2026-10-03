@@ -7,9 +7,9 @@ namespace MOD_YtxSQ1.Services
 {
     internal sealed class MartialEntry
     {
-        internal int Id, Category, GradeMin, GradeMax, Grade, Level, Exp;
+        internal int Id, Category, GradeMin, GradeMax, Grade, Level, Exp, SuitId;
         internal string Name, School, SoleId, Signature;
-        internal bool Equipped;
+        internal bool Equipped, SuitGradeUnknown;
         internal MartialType Type;
     }
     internal static class CharacterMartials
@@ -59,9 +59,54 @@ namespace MOD_YtxSQ1.Services
                 result.Add(new MartialEntry { Id = conf.id, Name = (school == "通用" ? "" : school + "系") + Local(conf.name), School = school,
                     Type = MartialType.Ability, Category = 3, GradeMin = conf.gradeMin, GradeMax = conf.gradeMax });
             }
-            result.Sort((a, b) => a.Category == b.Category ? a.Id.CompareTo(b.Id) : a.Category.CompareTo(b.Category));
+            AddSuitCatalog(result);
+            result.Sort((a, b) => a.Category != b.Category ? a.Category.CompareTo(b.Category)
+                : a.SuitId != b.SuitId ? a.SuitId.CompareTo(b.SuitId) : a.Id.CompareTo(b.Id));
             return result;
         }
+        private static void AddSuitCatalog(List<MartialEntry> result)
+        {
+            var grades = SuitRewardGrades(); var baseEntries = new List<MartialEntry>(result);
+            foreach (var suit in g.conf.battleAbilitySuitBase._allConfList)
+            {
+                int minimum; var known = grades.TryGetValue(suit.id, out minimum);
+                foreach (var member in (suit.suitMember ?? "").Split('|'))
+                {
+                    int id; if (!int.TryParse(member, out id)) continue;
+                    var basis = baseEntries.Find(entry => entry.Type == MartialType.Ability && entry.Id == id);
+                    if (basis == null) continue;
+                    result.Add(new MartialEntry { Id = id, SuitId = suit.id, Category = 3, Type = MartialType.Ability,
+                        Name = Local(suit.suitName) + "·" + basis.Name, School = basis.School,
+                        GradeMin = known ? Math.Max(basis.GradeMin, minimum) : basis.GradeMin,
+                        GradeMax = basis.GradeMax, SuitGradeUnknown = !known });
+                }
+            }
+        }
+        private static Dictionary<int, int> SuitRewardGrades()
+        {
+            // 境界来自传承奖励所引用的心法生成配置；未知来源不猜低阶版本。
+            var rewardIds = new HashSet<int>(); var rewardGrades = new Dictionary<int, int>();
+            foreach (var suit in g.conf.gameItemRewardAbilitySuit._allConfList)
+                if (suit.level <= 6 && suit.rate > 0 && suit.weight > 0) rewardIds.Add(suit.rewardID);
+            foreach (var reward in g.conf.gameItemReward._allConfList)
+            {
+                if (reward.itemType != 4 || !rewardIds.Contains(reward.rewardID)) continue;
+                var combine = g.conf.battleAbilityCombine.GetItem(reward.item);
+                if (combine == null || combine.rewardGradeID < 1 || combine.rewardGradeID > 10) continue;
+                int old; if (!rewardGrades.TryGetValue(reward.rewardID, out old) || combine.rewardGradeID < old)
+                    rewardGrades[reward.rewardID] = combine.rewardGradeID;
+            }
+            var result = new Dictionary<int, int>();
+            foreach (var suit in g.conf.gameItemRewardAbilitySuit._allConfList)
+            {
+                int grade, old;
+                if (suit.level > 6 || suit.rate <= 0 || suit.weight <= 0 || !rewardGrades.TryGetValue(suit.rewardID, out grade)) continue;
+                if (!result.TryGetValue(suit.suitID, out old) || grade < old) result[suit.suitID] = grade;
+            }
+            return result;
+        }
+        internal static bool CanAcquire(MartialEntry entry, int grade)
+        { return !entry.SuitGradeUnknown && grade >= entry.GradeMin && grade <= entry.GradeMax; }
         internal static List<MartialEntry> Read(string unitId)
         {
             var unit = CharacterReader.Resolve(unitId);
@@ -79,6 +124,7 @@ namespace MOD_YtxSQ1.Services
                     if (info.abilitys != null) foreach (var id in info.abilitys) if (id == props.soleID) equipped = true;
                     result.Add(new MartialEntry { Id = martial.baseID, Name = Plain(value.name), School = School(value.basType), Type = type,
                         Category = type == MartialType.SkillLeft ? 0 : type == MartialType.SkillRight ? 1 : type == MartialType.Step ? 2 : type == MartialType.Ability ? 3 : 4,
+                        SuitId = type == MartialType.Ability ? props.To<DataProps.PropsAbilityData>().suitID : 0,
                         SoleId = props.soleID, Signature = props.soleIDHashData, Grade = martial.grade, Level = value.level, Exp = data.exp, Equipped = equipped });
                 }
             }
@@ -102,7 +148,7 @@ namespace MOD_YtxSQ1.Services
         }
         private static DataProps.PropsData Generate(MartialEntry entry, int grade)
         {
-            if (grade < entry.GradeMin || grade > entry.GradeMax) throw new InvalidOperationException(entry.Name + "在当前境界不可获取");
+            if (!CanAcquire(entry, grade)) throw new InvalidOperationException(entry.Name + (entry.SuitGradeUnknown ? "的获取境界来源尚未核实" : "在当前境界不可获取"));
             UnhollowerBaseLib.Il2CppStructArray<int> values;
             if (entry.Type == MartialType.Step)
             {
@@ -121,8 +167,20 @@ namespace MOD_YtxSQ1.Services
             }
             var props = DataProps.PropsData.NewMartial(entry.Type, values);
             if (props == null || string.IsNullOrEmpty(props.soleID)) throw new InvalidOperationException("原生秘籍生成失败");
+            if (entry.SuitId != 0)
+            {
+                var suit = g.conf.battleAbilitySuitBase.GetItem(entry.SuitId);
+                if (entry.Type != MartialType.Ability || suit == null || Array.IndexOf(suit.suitMember.Split('|'), entry.Id.ToString()) < 0)
+                    throw new InvalidOperationException("传承与心法成员不匹配，未发放");
+                // 原生奖励 SetRewardPropsDataAttr 也通过此 setter 写入 AbilityData 并失效缓存。
+                var ability = props.To<DataProps.PropsAbilityData>();
+                if (ability == null) throw new InvalidOperationException("原生心法类型不匹配，未发放");
+                ability.suitID = entry.SuitId;
+                if (props.To<DataProps.PropsAbilityData>().suitID != entry.SuitId)
+                    throw new InvalidOperationException("原生传承身份回读不匹配，未发放");
+            }
             var data = props.To<DataProps.MartialData>();
-            if (data == null || data.baseID != entry.Id || data.grade != grade) throw new InvalidOperationException("原生秘籍的招式或境界不匹配，未发放");
+            if (data == null || data.baseID != entry.Id || data.grade != grade || data.martialInfo.level != 6) throw new InvalidOperationException("原生秘籍的招式或境界不匹配，未发放");
             return props;
         }
         internal static string Give(string context, string unitId, IList<MartialEntry> entries, int expectedGrade)
@@ -144,13 +202,17 @@ namespace MOD_YtxSQ1.Services
                     if (unit.data.dynUnitData.GetGrade() != expectedGrade) throw new InvalidOperationException("人物境界已变化");
                     ItemInventory.ReadCapacity(unitId, out used, out total);
                     if (used >= total) throw new InvalidOperationException("背包空间已变化");
+                    var signature = item.soleIDHashData; var soleId = item.soleID;
+                    var source = entries[completed];
                     try
                     {
                         unit.data.unitData.propData.AddProps(item);
                         unit.data.unitData.propData.UpdateAllShowProps();
-                        var stored = unit.data.unitData.propData.GetProps(item.soleID);
-                        if (stored == null || stored.propsType != DataProps.PropsDataType.Martial || stored.soleIDHashData != item.soleIDHashData)
+                        var stored = unit.data.unitData.propData.GetProps(soleId);
+                        if (stored == null || stored.propsType != DataProps.PropsDataType.Martial || stored.soleIDHashData != signature)
                             throw new InvalidOperationException("入包记录回读不一致");
+                        if (source.SuitId != 0 && stored.To<DataProps.PropsAbilityData>().suitID != source.SuitId)
+                            throw new InvalidOperationException("入包传承身份回读不一致");
                         completed++;
                     }
                     finally { CharacterSave.MarkDirty(); }

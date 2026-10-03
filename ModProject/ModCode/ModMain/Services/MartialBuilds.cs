@@ -37,7 +37,7 @@ namespace MOD_YtxSQ1.Services
             var result = new List<MartialEntry>(); var missing = new List<string>();
             foreach (var id in build.Ids)
             {
-                var entry = catalog.Find(item => item.Id == id);
+                var entry = catalog.Find(item => item.Id == id && item.SuitId == 0);
                 if (entry == null) missing.Add("配置#" + id);
                 else if (grade < entry.GradeMin || grade > entry.GradeMax) missing.Add(entry.Name + "（最低" + CharacterMartials.Realm(entry.GradeMin) + "）");
                 else result.Add(entry);

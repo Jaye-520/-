@@ -101,7 +101,7 @@ namespace MOD_YtxSQ1.UI
                 rows.Add(row);
             }
         }
-        private static string MartialKey(MartialEntry entry) { return ((int)entry.Type) + ":" + entry.Id; }
+        private static string MartialKey(MartialEntry entry) { return ((int)entry.Type) + ":" + entry.Id + ":" + entry.SuitId; }
         private int MartialLibraryColumns() { return martialLibraryScroll.content.sizeDelta.x >= 900 ? 3 : martialLibraryScroll.content.sizeDelta.x >= 600 ? 2 : 1; }
         private void ResizeMartialList(ScrollRect scroll, int count, int columns)
         {
@@ -125,9 +125,9 @@ namespace MOD_YtxSQ1.UI
                 row.Button.GetComponent<Image>().color = picked ? new Color(.78f, .74f, .62f, 1) : new Color(.88f, .86f, .80f, 1);
                 row.Name.text = (library && picked ? "✓ " : "") + entry.Name;
                 row.Mark.color = library ? Gold : MartialQualityColor(entry.Level);
-                row.Meta.text = library ? entry.School + " · #" + entry.Id + (martialLibraryGrade < entry.GradeMin ? " · 最低" + CharacterMartials.Realm(entry.GradeMin) : "")
+                row.Meta.text = library ? entry.School + (entry.SuitId != 0 ? " · 传承" : " · #" + entry.Id) + (entry.SuitGradeUnknown ? " · 境界待核实" : martialLibraryGrade < entry.GradeMin ? " · 最低" + CharacterMartials.Realm(entry.GradeMin) : "")
                     : CharacterMartials.Realm(entry.Grade) + " · " + CharacterMartials.Categories[entry.Category] + (entry.Equipped ? " · 已装备" : "");
-                row.Button.interactable = !library || martialLibraryGrade >= entry.GradeMin && martialLibraryGrade <= entry.GradeMax;
+                row.Button.interactable = !library || CharacterMartials.CanAcquire(entry, martialLibraryGrade);
             }
         }
         private void RenderMartialDetail()
@@ -192,7 +192,7 @@ namespace MOD_YtxSQ1.UI
                 var tabWidth = (width - 56) / 5;
                 for (int i = 0; i < 5; i++)
                 {
-                    var category = i; var button = MakeButton(panel, "秘籍类别" + i, 12 + i * (tabWidth + 8), 90, tabWidth, 32, CharacterMartials.Categories[i], () => { martialCategory = category; FilterMartialLibrary(); });
+                    var category = i; var button = MakeButton(panel, "秘籍类别" + i, 12 + i * (tabWidth + 8), 90, tabWidth, 32, CharacterMartials.Categories[i], () => { martialCategory = category; martialLibrarySearch.SetTextWithoutNotify(""); FilterMartialLibrary(); });
                     button.GetComponentInChildren<Text>().fontSize = tabWidth < 140 ? 15 : 18; martialCategoryButtons.Add(button);
                 }
                 martialLibraryScroll = ItemScroll(panel, "秘籍库列表", 12, 134, width - 24, height - 210); AddMartialScrollbar(martialLibraryScroll);
@@ -212,15 +212,15 @@ namespace MOD_YtxSQ1.UI
         {
             if (martialLibraryScroll == null) return;
             martialLibraryResults.Clear(); var query = martialLibrarySearch.text.Trim();
-            foreach (var entry in martialCatalog) if (entry.Category == martialCategory && MatchesMartial(entry, query)) martialLibraryResults.Add(entry);
-            for (int i = 0; i < martialCategoryButtons.Count; i++) martialCategoryButtons[i].GetComponent<Image>().color = i == martialCategory ? new Color(.73f, .69f, .56f, 1) : new Color(.87f, .85f, .78f, 1);
+            foreach (var entry in martialCatalog) if ((query.Length > 0 || entry.Category == martialCategory) && MatchesMartial(entry, query)) martialLibraryResults.Add(entry);
+            for (int i = 0; i < martialCategoryButtons.Count; i++) martialCategoryButtons[i].GetComponent<Image>().color = query.Length == 0 && i == martialCategory ? new Color(.73f, .69f, .56f, 1) : new Color(.87f, .85f, .78f, 1);
             ResizeMartialList(martialLibraryScroll, martialLibraryResults.Count, MartialLibraryColumns()); RenderMartialRows(true); UpdateMartialLibraryStatus();
         }
         private void UpdateMartialLibraryStatus()
         {
             if (martialLibraryStatus == null) return;
             int used, total;
-            try { ItemInventory.ReadCapacity(martialLibraryOwner, out used, out total); martialLibraryStatus.text = "已选 " + martialPicks.Count + " 本 · 空格 " + Math.Max(0, total - used) + "\n" + CharacterMartials.Realm(martialLibraryGrade) + " · 红色秘籍，词条原生随机"; }
+            try { ItemInventory.ReadCapacity(martialLibraryOwner, out used, out total); martialLibraryStatus.text = (martialLibrarySearch.text.Trim().Length > 0 ? "全库检索" : CharacterMartials.Categories[martialCategory]) + " " + martialLibraryResults.Count + " 项 · 已选 " + martialPicks.Count + " 本 · 空格 " + Math.Max(0, total - used) + "\n" + CharacterMartials.Realm(martialLibraryGrade) + " · 红色秘籍，词条原生随机"; }
             catch (Exception ex) { martialLibraryStatus.text = ex.Message; }
         }
         private void AddMartialBooks(List<MartialEntry> entries)
