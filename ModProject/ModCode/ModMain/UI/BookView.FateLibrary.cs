@@ -117,7 +117,7 @@ namespace MOD_YtxSQ1.UI
         {
             var background = field.GetComponent<Image>();
             if (background != null) { background.sprite = null; background.color = new Color(.96f, .94f, .87f, .85f); }
-            Border(host, host.sizeDelta.x, host.sizeDelta.y);
+            Border(host, host.sizeDelta.x, host.sizeDelta.y, true);
         }
 
         private InputField CreateSearchInput(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed)

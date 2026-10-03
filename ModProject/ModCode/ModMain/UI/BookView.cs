@@ -1173,14 +1173,14 @@ namespace MOD_YtxSQ1.UI
             return button;
         }
 
-        private void Border(RectTransform parent, float width, float height)
+        private void Border(RectTransform parent, float width, float height, bool transparentInner = false)
         {
             var edge = new Color(.43f, .39f, .28f, .62f);
             Fill(parent, "上边", 0, 0, width, 1, edge);
             Fill(parent, "下边", 0, height - 1, width, 1, edge);
             Fill(parent, "左边", 0, 0, 1, height, edge);
             Fill(parent, "右边", width - 1, 0, 1, height, edge);
-            var trim = new Color(.55f, .48f, .32f, .30f);
+            var trim = new Color(.55f, .48f, .32f, transparentInner ? 0 : .30f);
             Fill(parent, "上内线", 3, 3, width - 6, 1, trim);
             Fill(parent, "下内线", 3, height - 4, width - 6, 1, trim);
         }
