@@ -98,6 +98,7 @@ namespace MOD_YtxSQ1.UI
                 row.Mark = Fill(panel, "功法品质侧线", 0, 0, 3, 64, Gold);
                 row.Name = Label(panel, "", 12, 6, width - 24, 28, 19, Ink);
                 row.Meta = Label(panel, "", 12, 36, width - 24, 22, 13, Muted);
+                if (library) { row.Meta.resizeTextForBestFit = true; row.Meta.resizeTextMinSize = 10; row.Meta.resizeTextMaxSize = 13; }
                 rows.Add(row);
             }
         }
@@ -132,7 +133,7 @@ namespace MOD_YtxSQ1.UI
         }
         private string LibraryMartialMeta(MartialEntry entry)
         {
-            var source = entry.SuitId != 0 ? "传承" : entry.School;
+            var source = CharacterMartials.Categories[entry.Category] + " · " + entry.School + (entry.SuitId != 0 ? "/传承" : "");
             if (entry.SuitGradeUnknown) return source + " · 境界待核实 · 不可获取";
             if (martialLibraryGrade < entry.GradeMin) return source + " · 最低" + CharacterMartials.Realm(entry.GradeMin) + " · 未解锁";
             if (martialLibraryGrade > entry.GradeMax) return source + " · 最高" + CharacterMartials.Realm(entry.GradeMax) + " · 不可获取";

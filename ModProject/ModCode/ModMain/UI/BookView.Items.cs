@@ -149,11 +149,15 @@ namespace MOD_YtxSQ1.UI
             try
             {
                 var items = ItemInventory.Read(selectedUnitId);
+                var resources = items.FindAll(item => item.Hidden);
+                resources.Sort((a, b) => a.Id != b.Id ? a.Id.CompareTo(b.Id) : string.CompareOrdinal(a.SoleId, b.SoleId));
+                resources.AddRange(items.FindAll(item => !item.Hidden)); items = resources;
                 int used, total; ItemInventory.ReadCapacity(selectedUnitId, out used, out total);
                 var free = Math.Max(0, total - used);
                 var signature = ItemInventory.Fingerprint(items, true) + "|capacity:" + used + ":" + total;
                 var owner = contextKey + ":" + selectedUnitId;
-                itemBagTitle.text = characterName.text + "的背包 · " + items.Count + "项";
+                var resourceCount = items.FindAll(item => item.Hidden).Count;
+                itemBagTitle.text = characterName.text + "的背包 · " + (items.Count - resourceCount) + "项" + (resourceCount > 0 ? " + " + resourceCount + "项隐藏资源" : "");
                 itemBagCapacity.text = "占用 " + used + " / " + total + " 格 · " + (free == 0 ? "已满" : "剩余 " + free + " 格");
                 itemBagCapacity.color = free == 0 ? Cinnabar : Muted;
                 if (!force && bagOwner == owner && bagFingerprint == signature) return;
@@ -190,8 +194,10 @@ namespace MOD_YtxSQ1.UI
                 ClearBagSlot(slot);
                 if (!slot.gameObject.activeSelf || unit == null) continue;
                 var empty = index >= bagItems.Count;
-                Fill(slot, empty ? "空背包格底" : "背包格底", 0, 0, 78, 78, new Color(.52f, .53f, .51f, .14f));
-                var edge = new Color(.40f, .42f, .39f, .20f);
+                var resource = !empty && bagItems[index].Hidden;
+                Fill(slot, resource ? "隐藏资源格底" : empty ? "空背包格底" : "背包格底", 0, 0, 78, 78,
+                    resource ? new Color(.66f, .22f, .18f, .25f) : new Color(.52f, .53f, .51f, .14f));
+                var edge = resource ? new Color(.65f, .24f, .20f, .6f) : new Color(.40f, .42f, .39f, .20f);
                 Fill(slot, "格上沿", 0, 0, 78, 1, edge); Fill(slot, "格下沿", 0, 77, 78, 1, edge);
                 Fill(slot, "格左沿", 0, 0, 1, 78, edge); Fill(slot, "格右沿", 77, 0, 1, 78, edge);
                 if (empty) continue;
@@ -332,7 +338,7 @@ namespace MOD_YtxSQ1.UI
         {
             try
             {
-                var snapshot = ItemInventory.Read(selectedUnitId); var signature = ItemInventory.Fingerprint(snapshot);
+                var snapshot = ItemInventory.Read(selectedUnitId, false); var signature = ItemInventory.Fingerprint(snapshot);
                 string id, context; var panel = ItemDialog("清空" + characterName.text + "的背包", out id, out context);
                 Label(panel, "将移除背包中的" + snapshot.Count + "项物品。\n不含已装备物品和灵石等隐藏资源。\n此操作无法撤销。", 16, 54, panel.sizeDelta.x - 32, 98, 17, Ink);
                 MakeButton(panel, "确认清空背包", panel.sizeDelta.x - 136, 176, 120, 36, "确认清空", () =>

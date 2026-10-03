@@ -9,6 +9,7 @@ namespace MOD_YtxSQ1.Services
     {
         internal string SoleId, Name, DataSignature;
         internal int Id, Count;
+        internal bool Hidden;
     }
     internal sealed class ItemEntry
     {
@@ -31,13 +32,13 @@ namespace MOD_YtxSQ1.Services
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                if (item == null || item.id <= 0 || (item.hide == 1 && item.id != 10001) || !seen.Add(item.id)) continue;
+                if (item == null || item.id <= 0 || !seen.Add(item.id)) continue;
                 result.Add(new ItemEntry { Id = item.id, Name = LocalText(item.name, "道具 #" + item.id),
                     Description = LocalText(item.desc, "暂无介绍"), Stackable = item.isOverlay == 1 });
             }
             return result;
         }
-        internal static List<InventoryItem> Read(string unitId)
+        internal static List<InventoryItem> Read(string unitId, bool includeHidden = true)
         {
             var unit = CharacterReader.Resolve(unitId);
             if (unit == null) throw new InvalidOperationException("当前人物已失效");
@@ -52,6 +53,14 @@ namespace MOD_YtxSQ1.Services
                 result.Add(new InventoryItem { SoleId = item.soleID, Id = item.propsID, Count = item.propsCount,
                     DataSignature = item.soleIDHashData, Name = info == null ? "道具 #" + item.propsID : info.name });
             }
+            if (includeHidden)
+                foreach (var item in unit.data.unitData.propData.allProps)
+                {
+                    if (item == null || item.propsCount <= 0 || item.propsItem == null || item.propsItem.hide != 1 || result.Exists(value => value.SoleId == item.soleID)) continue;
+                    var info = item.propsInfoBase;
+                    result.Add(new InventoryItem { SoleId = item.soleID, Id = item.propsID, Count = item.propsCount, Hidden = true,
+                        DataSignature = item.soleIDHashData, Name = info == null ? "道具 #" + item.propsID : info.name });
+                }
             return result;
         }
         internal static void ReadCapacity(string unitId, out int used, out int total)
@@ -82,7 +91,7 @@ namespace MOD_YtxSQ1.Services
         {
             var unit = RequireTarget(context, unitId);
             var conf = g.conf.itemProps.GetItem(id);
-            if (conf == null || (conf.hide == 1 && id != 10001)) throw new InvalidOperationException("道具配置不可发放");
+            if (conf == null) throw new InvalidOperationException("道具配置不可发放");
             if (amount < 1 || (conf.isOverlay != 1 && amount != 1))
                 throw new InvalidOperationException(conf.isOverlay == 1 ? "请输入正整数数量（最大2147483647）" : "不可叠加道具每次发放1个");
             Add(unit, id, amount);
@@ -120,16 +129,14 @@ namespace MOD_YtxSQ1.Services
             catch (Exception ex) { throw new InvalidOperationException("发放未完整确认：" + ex.Message + "；已发生的变化仍在内存，请核对背包后保存"); }
             finally { CharacterSave.MarkDirty(); }
         }
-        private static DataProps.PropsData RequireItem(WorldUnitBase unit, InventoryItem expected)
+        private static DataProps.PropsData RequireItem(WorldUnitBase unit, InventoryItem expected, bool includeHidden = true)
         {
             if (expected == null || string.IsNullOrEmpty(expected.SoleId)) throw new InvalidOperationException("物品编号无效，请重新选择");
             var bag = unit.data.unitData.propData; var item = bag.GetProps(expected.SoleId);
             if (item == null || item.soleID != expected.SoleId || item.propsID != expected.Id || item.propsCount != expected.Count || string.IsNullOrEmpty(expected.DataSignature) || item.soleIDHashData != expected.DataSignature)
                 throw new InvalidOperationException("这项物品已经变化，请重新选择");
             // 不允许菜单写入已装备、隐藏或不再显示的记录，即使持有旧快照。
-            var visible = bag._allShowProps; bool found = false;
-            for (int i = 0; i < visible.Count; i++)
-                if (visible[i] != null && visible[i].soleID == expected.SoleId) { found = true; break; }
+            bool found = Read(unit.data.unitData.unitID, includeHidden).Exists(value => value.SoleId == expected.SoleId);
             if (!found) throw new InvalidOperationException("这项物品已离开可见背包，请重新选择");
             return item;
         }
@@ -165,7 +172,7 @@ namespace MOD_YtxSQ1.Services
         }
         internal static string Remove(string context, string unitId, InventoryItem expected)
         {
-            var unit = RequireTarget(context, unitId); RequireItem(unit, expected);
+            var unit = RequireTarget(context, unitId); RequireItem(unit, expected, false);
             var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
             try
             {
@@ -178,7 +185,7 @@ namespace MOD_YtxSQ1.Services
         }
         internal static string Clear(string context, string unitId, string expectedFingerprint)
         {
-            var unit = RequireTarget(context, unitId); var items = Read(unitId);
+            var unit = RequireTarget(context, unitId); var items = Read(unitId, false);
             if (Fingerprint(items) != expectedFingerprint) throw new InvalidOperationException("背包内容已变化，请重新确认清空");
             if (items.Count == 0) return "背包已经为空";
             var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
@@ -187,7 +194,7 @@ namespace MOD_YtxSQ1.Services
                 foreach (var item in items)
                 {
                     // 上一件的原生删除回调可能改变下一件或世界；逐件再次核对。
-                    var current = RequireTarget(context, unitId); RequireItem(current, item);
+                    var current = RequireTarget(context, unitId); RequireItem(current, item, false);
                     current.data.unitData.propData.DelProps(item.SoleId);
                 }
                 bag.UpdateAllShowProps();

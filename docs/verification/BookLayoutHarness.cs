@@ -516,7 +516,7 @@ internal static class BookLayoutHarness
         SaveMartialPreview(book,args,size,"martials-fullname-search-layout-");
         librarySearch.text="清风剑";
         Check(Walk(book).Count(t=>t.gameObject.name=="BHML_秘籍条目" && t.gameObject.activeSelf)==1,"library filters actual config names at "+size);
-        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="剑 · "+CharacterMartials.Realm(grade)+" · 红色"),"available library row explicitly shows acquired realm and red quality at "+size);
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="武技 / 灵技 · 剑 · "+CharacterMartials.Realm(grade)+" · 红色"),"available library row explicitly shows acquired realm and red quality at "+size);
         ClickNamed(book,"秘籍条目");
         librarySearch.text="过龙门";
         Check(Walk(book).Count(t=>t.gameObject.name=="BHML_秘籍条目" && t.gameObject.activeSelf)==6 && Walk(book).Where(t=>t.gameObject.name=="BHML_秘籍条目" && t.gameObject.activeSelf).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"global search finds all six dragon gate members from weapon tab and locks low realm at "+size);
@@ -598,12 +598,16 @@ internal static class BookLayoutHarness
         bag.allProps.Add(new DataProps.PropsData{propsID=hidden.id,propsItem=hidden,soleID="npc-money",propsCount=800});
         bag.allProps.Add(new DataProps.PropsData{propsID=unique.id,propsItem=unique,soleID="npc-equipped",propsCount=1,Equipped=true});
         view.RefreshCharacter(true);
-        Check(ItemInventory.Read(id).Count==110 && ItemInventory.Catalog().Count==5 && ItemInventory.Catalog().Any(x=>x.Id==10001),"native visible inventory preserves hidden resources while catalog exposes spirit stones only");
+        Check(ItemInventory.Read(id).Count==111 && ItemInventory.Catalog().Count==6 && ItemInventory.Catalog().Any(x=>x.Id==10001),"inventory includes held hidden resources and catalog includes every configured resource");
         ItemInventory.Give(CharacterReader.ContextKey(),id,hidden.id,10000000);
-        Check(bag.GetPropsNum(hidden.id)==10000800 && ItemInventory.Read(id).Count==110,"large spirit stone grant uses native hidden resource without consuming visible slot");
+        Check(bag.GetPropsNum(hidden.id)==10000800 && ItemInventory.Read(id).Count==111,"large spirit stone grant uses native hidden resource without consuming visible slot");
         var moneyAdds=bag.AddCalls;
         Check(Rejected(()=>ItemInventory.Give(CharacterReader.ContextKey(),id,hidden.id,int.MaxValue)) && bag.AddCalls==moneyAdds && bag.GetPropsNum(hidden.id)==10000800,"spirit stone overflow rejected before native write");
         bag.GetProps("npc-money").propsCount=800;bag.AddCalls=0;
+        var firstResource=Walk(book).First(t=>t.gameObject.name=="native item icon");
+        Check(firstResource.parent.gameObject.name.Contains("npc-money") && firstResource.parent.Children.Any(c=>c.gameObject.name=="BHML_隐藏资源格底"),"hidden resource sorts before normal native records on red resource cell");
+        int resourceUsed,resourceTotal;ItemInventory.ReadCapacity(id,out resourceUsed,out resourceTotal);
+        Check(resourceUsed==111 && resourceTotal==120 && ItemInventory.Read(id,false).Count==110,"resource display leaves native normal capacity and visible item collection unchanged");
         Check(Walk(book).Count(t=>t.gameObject.name=="native item icon")<110,"inventory creates only visible native icon pool");
         var shared=Walk(book).First(t=>t.gameObject.name=="BHML_对象栏");
         foreach(var tab in new[]{2,3,0,1}) { ClickNamed(book,"卷目"+tab);Check(Selected(view)==id && Walk(book).First(t=>t.gameObject.name=="BHML_对象栏")==shared,"tab "+tab+" retains shared NPC target and panel"); }
@@ -649,7 +653,26 @@ internal static class BookLayoutHarness
         Check(!string.IsNullOrEmpty(granted.soleID) && granted.soleID!="npc-equipped","nonstackable grant generates its own identity without changing equipped item");
         Check(Rejected(()=>ItemInventory.Give(context,"missing-npc",hp.id,1)) && Rejected(()=>ItemInventory.Give("old-world",id,hp.id,1)),"missing target and stale context reject without fallback");
         Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,0)) && Rejected(()=>ItemInventory.Give(context,id,hp.id,-1)) && Rejected(()=>ItemInventory.Give(context,id,unique.id,2)),"invalid counts and nonstackable bulk grant reject before writing");
-        Check(Rejected(()=>ItemInventory.Give(context,id,otherHidden.id,1)) && !ItemInventory.Catalog().Any(x=>x.Id==otherHidden.id),"other hidden resources remain excluded from catalog and grant");
+        ItemInventory.Give(context,id,otherHidden.id,100000);
+        Check(ItemInventory.Catalog().Any(x=>x.Id==otherHidden.id) && ItemInventory.Read(id).Any(x=>x.Id==otherHidden.id && x.Hidden),"all hidden resources support catalog grant and inventory display");
+        bag.allProps.RemoveAll(p=>p.propsID==otherHidden.id);
+        var moneySnapshot=ItemInventory.Read(id).Single(p=>p.SoleId=="npc-money");
+        ItemInventory.SetCount(context,id,moneySnapshot,2000000);
+        moneySnapshot=ItemInventory.Read(id).Single(p=>p.SoleId=="npc-money");
+        ItemInventory.IncreaseCount(context,id,moneySnapshot,3000000);
+        Check(bag.GetPropsNum(hidden.id)==5000000,"held hidden resource supports large total editing and addition");
+        moneySnapshot=ItemInventory.Read(id).Single(p=>p.SoleId=="npc-money");
+        Check(Rejected(()=>ItemInventory.SetCount(context,id,new InventoryItem{SoleId=moneySnapshot.SoleId,Id=moneySnapshot.Id,Count=800,DataSignature=moneySnapshot.DataSignature},1)),"hidden resource editing rejects stale amount snapshot");
+        ItemInventory.SetCount(context,id,moneySnapshot,800);
+        moneySnapshot=ItemInventory.Read(id).Single(p=>p.SoleId=="npc-money");
+        var resourceSlot=Walk(book).First(t=>t.gameObject.name=="native item icon").parent.GetComponent<UnityEngine.RectTransform>();
+        typeof(BookView).GetMethod("OpenItemMenu",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(view,new object[]{resourceSlot,moneySnapshot});
+        Check(Walk(book).First(t=>t.gameObject.name=="BHML_修改背包数量").GetComponent<UnityEngine.UI.Button>().interactable && !Walk(book).First(t=>t.gameObject.name=="BHML_移除背包单项").GetComponent<UnityEngine.UI.Button>().interactable,"hidden resource menu enables count editing and preserves removal protection");
+        ClickNamed(book,"修改背包数量");
+        Walk(book).First(t=>t.gameObject.name=="BHML_背包数量").GetComponentInChildren<UnityEngine.UI.InputField>().text="9000000";
+        ClickNamed(book,"确认修改背包数量");
+        Check(bag.GetPropsNum(hidden.id)==9000000,"hidden resource quantity dialog applies captured resource identity");
+        ItemInventory.SetCount(context,id,ItemInventory.Read(id).Single(p=>p.SoleId=="npc-money"),800);
         var capacityAdds=bag.AddCalls; var pendingBeforeFull=CharacterSave.Pending;
         bag.gridMaxNum=bag.GetGridCurNum(true);
         string capacityMessage="";try{ItemInventory.Give(context,id,unique.id,1);}catch(Exception ex){capacityMessage=ex.Message;}
@@ -708,7 +731,7 @@ internal static class BookLayoutHarness
         DataMgr.isSaveData=true;
         Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,3)) && Rejected(()=>ItemInventory.Remove(context,id,firstItem)),"single-item mutations refuse writes during native save");DataMgr.isSaveData=false;
         view.RefreshCharacter(true);
-        Action<bool> pressFirst=right=>{var icon=Walk(book).First(t=>t.gameObject.name=="native item icon");UnityEngine.Input.RightDown=right;icon.GetComponent<UIEventListener>().OnPointerDown(null);UnityEngine.Input.RightDown=false;};
+        Action<bool> pressFirst=right=>{var icon=Walk(book).First(t=>t.gameObject.name=="native item icon" && t.parent.gameObject.name.Contains(storedItem.soleID));UnityEngine.Input.RightDown=right;icon.GetComponent<UIEventListener>().OnPointerDown(null);UnityEngine.Input.RightDown=false;};
         pressFirst(false);Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"left press keeps native inventory behavior and does not open menu");
         pressFirst(true);var menu=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_背包菜单");
         var area=(UnityEngine.RectTransform)menu.parent.parent;
@@ -724,7 +747,7 @@ internal static class BookLayoutHarness
         countInput.text="2147483647";ClickNamed(book,"确认修改背包数量");Check(storedItem.propsCount==9 && Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩"),"increase rejects overflowing total without a write");
         countInput.text="20";ClickNamed(book,"确认修改背包数量");Check(storedItem.propsCount==29 && otherStack.propsCount==otherCount && storedItem.ExtraData=="keep-quality-and-affixes","increase adds to captured stack without changing other stacks or extra values");
         Check(Rejected(()=>ItemInventory.IncreaseCount(context,id,firstItem,1)) && Rejected(()=>ItemInventory.IncreaseCount(context,id,uniqueItem,1)),"increase rejects stale snapshot and nonstackable item");
-        var hoverIcon=Walk(book).First(t=>t.gameObject.name=="native item icon").GetComponent<UIIconItemBase>();var readsBefore=bag.AddCalls;
+        var hoverIcon=Walk(book).First(t=>t.gameObject.name=="native item icon" && t.parent.gameObject.name.Contains(storedItem.soleID)).GetComponent<UIIconItemBase>();var readsBefore=bag.AddCalls;
         hoverIcon.uiEvent.OnPointerEnter(null);
         Check(hoverIcon.uiEvent.onMouseEnterCall==null && Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("恢复体力")) && bag.AddCalls==readsBefore,"medicine hover reads native description in local tooltip without granting items or duplicate native hover");
         var bagWheel=Walk(book).First(t=>t.gameObject.name=="BHML_背包网格").GetComponent<UnityEngine.UI.ScrollRect>();
@@ -759,7 +782,7 @@ internal static class BookLayoutHarness
         var emptyCells=Walk(book).Where(t=>t.gameObject.name=="BHML_空背包格底" && t.gameObject.activeInHierarchy && t.parent.gameObject.activeInHierarchy).ToArray();
         Check(emptyCells.Length==3 && capacityText.text.Contains("剩余 3 格"),"capacity-only change redraws exactly three native free cells without row padding");
         Check(emptyCells.All(t=>!t.GetComponent<UnityEngine.UI.Image>().raycastTarget && t.parent.GetComponentsInChildren<UIEventListener>(true).Length==0),"empty cells cannot trigger item tooltip or menu and leave wheel hit to viewport");
-        Check(Walk(book).Where(t=>t.gameObject.name=="native item icon").All(t=>t.parent.Children.Any(c=>c.gameObject.name=="BHML_背包格底")),"occupied item icons sit above faint cell backgrounds");
+        Check(Walk(book).Where(t=>t.gameObject.name=="native item icon").All(t=>t.parent.Children.Any(c=>c.gameObject.name=="BHML_背包格底" || c.gameObject.name=="BHML_隐藏资源格底")),"occupied item icons sit above faint cell backgrounds");
         bag.gridMaxNum=bag.GetGridCurNum(true);refreshBag.Invoke(view,new object[]{false});
         Check(capacityText.text.Contains("已满") && !Walk(book).Any(t=>t.gameObject.name=="BHML_空背包格底" && t.parent.gameObject.activeInHierarchy),"full capacity removes free cells and reports full without a fake spare row");
         bag.gridMaxNum=bag.GetGridCurNum(true)-2;refreshBag.Invoke(view,new object[]{false});
@@ -778,7 +801,7 @@ internal static class BookLayoutHarness
         UIIconTool.FailAfterCreate=true;refreshBag.Invoke(view,new object[]{true});
         Check(!Walk(book).Any(t=>t.gameObject.name=="native item icon") && Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("×")),"throwing icon cleanup and partially created factory child leave only usable fallback");
         UIIconTool.FailAfterCreate=false;foreach(var auditSlot in auditSlots)auditSlot.gameObject.name="invalidate";refreshBag.Invoke(view,new object[]{true});
-        var beforeAffixIcon=Walk(book).First(t=>t.gameObject.name=="native item icon").GetComponent<UIIconItemBase>();bag.GetProps(ItemInventory.Read(id).First().SoleId).ExtraData+="-redraw";refreshBag.Invoke(view,new object[]{false});
+        var beforeAffixIcon=Walk(book).First(t=>t.gameObject.name=="native item icon").GetComponent<UIIconItemBase>();bag.GetProps("npc-money").ExtraData+="-redraw";refreshBag.Invoke(view,new object[]{false});
         Check(!Walk(book).Any(t=>t.GetComponent<UIIconItemBase>()==beforeAffixIcon),"affix-only native change rebuilds cached icon");
         var beforeOrder=ItemInventory.Read(id);bag.allProps.Reverse();refreshBag.Invoke(view,new object[]{false});
         Check(ItemInventory.Fingerprint(beforeOrder)==ItemInventory.Fingerprint(ItemInventory.Read(id)) && ItemInventory.Fingerprint(beforeOrder,true)!=ItemInventory.Fingerprint(ItemInventory.Read(id),true),"display order refresh is distinct from order-independent clear confirmation");bag.allProps.Reverse();view.RefreshCharacter(true);
@@ -806,7 +829,7 @@ internal static class BookLayoutHarness
         ClickNamed(book,"一键清空");view.FocusTarget("player");
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩") && bag.DeleteCalls==deletes,"switching person cancels destructive dialog");
         view.FocusTarget(id);ClickNamed(book,"一键清空");ClickNamed(book,"确认清空背包");
-        Check(ItemInventory.Read(id).Count==0 && bag.IsHasProps("npc-money") && bag.IsHasProps("npc-equipped"),"clear uses native per-item delete while preserving hidden resources and equipment");
+        Check(ItemInventory.Read(id,false).Count==0 && ItemInventory.Read(id).Count==1 && bag.IsHasProps("npc-money") && bag.IsHasProps("npc-equipped"),"clear uses native per-item delete while preserving hidden resources and equipment");
         Check(ItemInventory.Fingerprint(new List<InventoryItem>{new InventoryItem{SoleId="b",Id=2,Count=1},new InventoryItem{SoleId="a",Id=1,Count=2}})==ItemInventory.Fingerprint(new List<InventoryItem>{new InventoryItem{SoleId="a",Id=1,Count=2},new InventoryItem{SoleId="b",Id=2,Count=1}}),"clear fingerprint ignores ordering while tracking exact identity and counts");
         view.FocusTarget("missing-npc");Check(Selected(view)=="missing-npc" && !Walk(book).Any(t=>t.gameObject.name=="native item icon"),"invalid target clears stale bag and keeps explicit target identity");
         view.FocusTarget(id);
