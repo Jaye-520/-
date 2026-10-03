@@ -20,7 +20,7 @@ namespace MOD_YtxSQ1
             try
             {
                 updateTimer = g.timer.Frame(new Action(OnUpdate), 1, true);
-                Debug.Log("[八荒秘录] 07.41已初始化；点击主界面或NPC面板玉简打开秘录，F8备用。");
+                Debug.Log("[八荒秘录] 07.42已初始化；点击主界面或NPC面板玉简打开秘录，F8备用。");
             }
             catch { Destroy(); throw; }
         }

@@ -49,7 +49,6 @@
     <Compile Include="Services\CharacterPortrait.cs" />
     <Compile Include="UI\WorkshopWindow.cs" />
     <Compile Include="UI\WorkshopEntrances.cs" />
-    <Compile Include="UI\EntranceLayout.cs" />
     <Compile Include="UI\WindowInputScope.cs" />
     <Compile Include="UI\BookView.cs" />
     <Compile Include="UI\BookView.Editing.cs" />

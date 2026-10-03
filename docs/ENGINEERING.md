@@ -12,8 +12,7 @@
 | --- | --- |
 | ModMain.cs | 初始化、帧计时器、重复释放和异常熔断 |
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
-| UI/WorkshopEntrances.cs | 原生双入口挂载、单值坐标转换、F9拖动/缩放、点击核对、独立于内容熔断的生命周期 |
-| UI/EntranceLayout.cs | 独立map/npc归一化位置/尺寸、配置校验、文件读写及原子更新；不访问存档 |
+| UI/WorkshopEntrances.cs | 原生双入口挂载、单值坐标转换、出厂位置常量、点击核对、独立于内容熔断的生命周期 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
 | UI/BookView.cs | 七项导航布局、普通搜索、名单、角色属性、立绘和固定署名 |
 | UI/WindowInputScope.cs | 本视图登记输入的焦点保护、Text到Caret坐标转换、有限诊断与补丁释放 |
@@ -54,7 +53,7 @@ Get-FileHash -LiteralPath ./ModProject/ModCode/ModMain/bin/Release/MOD_YtxSQ1.dl
 
 build.ps1成功前不会覆盖上次Release产物；Release不混入额外DLL。PDB按实际同步情况单独记录。官方编辑器“进入游戏调试”复制Release DLL并加载；手动复制与哈希只能证明磁盘一致，不证明运行游戏重载。运行版本以日志、界面和实测反馈核对，不擅自终止游戏。
 
-**脚本编码约定（2026-10-03实测并修复）**：`build.ps1`与`docs/verification/run-*.ps1`原先是无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误、完全无法运行**（本机仅有5.1：`$PSVersionTable.PSVersion`为5.1、`[Text.Encoding]::Latin1`不存在；修复前实测11个脚本全部解析失败，`build.ps1`含5处错误）。已给全部11个受跟踪`.ps1`加UTF-8 BOM（字节级前置，不改内容与换行，diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1下执行。**今后新增或改写`.ps1`必须保留BOM**（或写成纯ASCII），否则本机下次又会整体失效；`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。
+**脚本编码约定（2026-10-03实测并修复）**：`build.ps1`与`docs/verification/run-*.ps1`原先是无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误、完全无法运行**（本机仅有5.1：`$PSVersionTable.PSVersion`为5.1、`[Text.Encoding]::Latin1`不存在；修复前实测11个脚本全部解析失败，`build.ps1`含5处错误）。已给全部11个受跟踪`.ps1`加UTF-8 BOM（字节级前置，不改内容与换行，diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1下执行。**今后新增或改写`.ps1`必须保留BOM**（或写成纯ASCII），否则本机下次又会整体失效；`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。**改写`.ps1`会丢掉BOM**：2026-10-03用文本编辑方式改`run-entrances.ps1`后脚本立即无法解析，须在改完后按字节重新前置`EF BB BF`，并在提交前用`[System.Management.Automation.Language.Parser]::ParseFile`复验全部受跟踪`.ps1`。
 
 2026-10-02按用户指令在工程根建立本地Git，主分支main，无远程。初始提交包含当时07.15源码、工程会话入口、配置、源资源、检查脚本及文档；最新验收以项目记忆为准。未配置原用户提交身份，因此仅仓库内使用Codex <codex@localhost>作为自动化身份，不修改全局设置。
 
@@ -150,14 +149,11 @@ PaperSkin.Acquire在主线程懒创建唯一四纹理缓存（纸、刷、山水
 ### 入口定位与坐标
 
 - 07.39错误：GetWorldCorners实际签名为Il2CppStructArray<Vector3>，普通Vector3[]隐式转换只复制输入到新数组；读取原数组仍是零。不能把本机原生包装API当普通Unity托管方法。处理输出数组须读原生包装索引或改用单值返回；当前使用reference.rect→TransformPoint→root.InverseTransformPoint。禁止恢复原代码，托管数组替身通过不能证明原生写回。
-- 默认位置：主界面=textSPValue右边中点+40单位，按原生参照控件计算；NPC入口在无坐标文件时改用出厂归一化预设（见下条），参照控件`btnAppellationAttack`只用于缩放与就绪判断，不再决定默认位置。根矩形/缩放未就绪拒绝，半秒挂载核对，错误3秒重试。保持原UI层，不使用截图像素硬编码原生坐标。
-- F9仅无文本编辑且有效入口在层顶时切换；调整期间入口点击不打开内容。鼠标按下命中图标后保留抓取偏移，ScreenPointToLocalPointInRectangle使用所属UI canvas.worldCamera；松手记录并短时抑制Click。滚轮仅悬停修改本入口size40–100。提示显示局部坐标，靠边自动向内/上下面板。
-- EntranceLayout独立map/npc，Custom位置是相对各自UI根矩形的x/y归一化中心，尺寸是参照控件单位；保存后常规Sync使用Custom，不能把拖动结果每半秒覆写。存放Application.persistentDataPath/BHML/entrance-layout.ini，Player.log记录路径、两组值和画面尺寸。纯布局文件不关联人物/世界存档；换档保留布局，清理入口和调整状态。
-- 出厂预设与用户调整必须分开：`Position.Preset`是随代码发布的归一化默认（当前只有NPC入口，取自用户2560x1600实测），仅在文件缺少该入口时生效；`Position.Custom`表示用户调整过、需要写回文件。`Sync`按`Custom || Preset`使用归一化中心，`Save`只写`Custom`条目，日志区分`default`/`preset`/实测值。不得把预设直接标成`Custom`，否则文件和日志会谎称用户调整过；用户重新拖动后`Custom`自然覆盖预设。主界面入口不设预设，仍按原生参照控件计算。
-- 写入UTF8、InvariantCulture、同目录.tmp+File.Replace+bak；校验范围、NaN/Infinity及文件大小，非法条目忽略，读失败保留默认。写失败保留dirty并提示，可F9再次锁定重试。不得提前编造最终用户坐标；用户说调整好后读本机ini和日志再固化默认值。
-- 入口由ModMain独立持有，内容熔断后点击重建控制器，不重放修改；关闭/离图/换世界/卸载清理回调及原生对象。正常模式只检测F9，不逐帧查原生世界/UI；调整模式才逐帧处理鼠标。
+- 出厂位置全部是代码常量，不从任何文件读取：主界面=textSPValue右边中点+40单位，按原生参照控件计算；NPC=归一化中心`0.2542969,0.746458352`（2026-10-03用户在2560x1600游戏内实测微调后固化），参照控件`btnAppellationAttack`只用于缩放与就绪判断。两处尺寸均为56参照单位×参照缩放。根矩形/缩放未就绪拒绝，半秒挂载核对，错误3秒重试。保持原UI层，不使用截图像素硬编码原生坐标。
+- F9自由移动在07.42整体移除：不再有调整模式、拖动、滚轮缩放、坐标文件读写与点击抑制，`EntranceLayout`与`entrance-layout.ini`一并废弃。不要以“方便微调”为由恢复文件读取——那会重新引入“磁盘文件静默覆盖代码默认值”的隐患；位置改动改为改常量、重编译并同步DLL。用户目录里遗留的`BHML/entrance-layout.ini`已无任何作用，可留可删。
+- 入口由ModMain独立持有，内容熔断后点击重建控制器，不重放修改；关闭/离图/换世界/卸载清理回调及原生对象。不逐帧查原生世界/UI，只在半秒节流内Sync；点击时仍重新核对上下文、所有权与顶层。
 - 图标v2减少细碎纹饰；mipmap=true+Trilinear处理1254原图缩小采样。原图高清不能自证56单位下清晰；必须按真实游戏截图评估。只共用一张纹理，卸载释放。
-- run-entrances.ps1编译真实入口及真实布局文件服务；26项涵盖独立拖动/保存/恢复/大小、松手抑制、非法值与原子写入，仍不模拟IL2CPP、CanvasScaler或真实指针时序。原生方法签名/隐式转换IL已用本机Cecil核对；同类byref/数组输出必须再查包装语义。
+- run-entrances.ps1编译真实入口，21项涵盖双入口出厂位置、F9失效的反向断言（按键/拖动/滚轮都不改位置且不产生文件）、点击门禁、缩放与边界、释放与内容熔断重试；不模拟IL2CPP、CanvasScaler或真实指针时序。原生方法签名/隐式转换IL已用本机Cecil核对；同类byref/数组输出必须再查包装语义。
 
 ### 视图异常释放
 

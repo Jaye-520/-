@@ -71,10 +71,9 @@ internal static class EntrancesHarness {
         Check(Entry(g.ui.Map)!=null && Entry(g.ui.Npc)!=null,"both native hosts receive entrances");
         var mapEntry=Entry(g.ui.Map);var npcEntry=Entry(g.ui.Npc);
         Check(mapEntry.gameObject.layer==5 && npcEntry.gameObject.layer==7 && npcEntry.Children[0].gameObject.layer==7 && npcEntry.Children[0].Children[0].gameObject.layer==7,"icon and tooltip inherit native camera layers");
-        Check(mapEntry.localPosition.x==180 && mapEntry.localPosition.y==-300,"map entrance follows resource right edge");
-        var preset=new EntranceLayout(layoutPath);
-        Check(!preset.Npc.Custom && preset.Npc.Preset && !preset.Map.Preset,"NPC entrance ships a preset that is not treated as user-set");
-        Check(Math.Abs(npcEntry.localPosition.x-(-960f+preset.Npc.X*1920f))<.01f && Math.Abs(npcEntry.localPosition.y-(-540f+preset.Npc.Y*1080f))<.01f,"NPC entrance falls back to the shipped preset without a file value");
+        Check(mapEntry.localPosition.x==180 && mapEntry.localPosition.y==-300,"map entrance follows the native resource reading");
+        // 出厂位置与WorkshopEntrances的NpcAnchorX/NpcAnchorY一致，改动任一处都必须同步本断言。
+        Check(Math.Abs(npcEntry.localPosition.x-(-960f+0.2542969f*1920f))<.01f && Math.Abs(npcEntry.localPosition.y-(-540f+0.746458352f*1080f))<.01f,"NPC entrance uses the frozen user-measured position");
         Tick(entrances);Check(g.ui.Map.transform.Children.Count==1 && g.ui.Npc.transform.Children.Count==1,"polls do not duplicate controls");
         mapEntry.GetComponent<Button>().onClick.Invoke();Check(opens==1 && selected==null,"map click requests player");
         g.ui.Top=g.ui.Npc;Tick(entrances);g.ui.Npc.unit.data.unitData.unitID="npc-B";npcEntry.GetComponent<Button>().onClick.Invoke();Check(selected=="npc-B" && opens==2,"NPC click reads current panel target rather than creation target");
@@ -87,22 +86,18 @@ internal static class EntrancesHarness {
         g.world.isIntoWorld=false;Tick(entrances);Check(Entry(g.ui.Map)==null,"world exit removes map entrance");entrances.Dispose();entrances.Dispose();Check(g.ui.Map.transform.Children.Count==0 && g.ui.Npc.transform.Children.Count==0,"repeat dispose leaves no controls");
         g.world.isIntoWorld=true;g.ui.Npc.gameObject.activeInHierarchy=true;g.ui.Top=g.ui.Map;value.transform.localPosition=new Vector3(100,-300,0);value.transform.lossyScale=new Vector3(1,1,1);
         entrances=new WorkshopEntrances(id=>{opens++;});Tick(entrances);mapEntry=Entry(g.ui.Map);
-        Input.F9=true;entrances.Update();Input.F9=false;var openCount=opens;mapEntry.GetComponent<Button>().onClick.Invoke();Check(opens==openCount,"calibration clicks never open content");
-        Input.mousePosition=mapEntry.localPosition;Input.Down=true;Input.Held=true;entrances.Update();Input.Down=false;Input.mousePosition=new Vector3(500,-200,0);entrances.Update();
-        Check(mapEntry.localPosition.x==500 && mapEntry.localPosition.y==-200,"drag uses pointer coordinates without snapping to reference");
-        Input.Held=false;entrances.Update();Check(System.IO.File.Exists(layoutPath),"mouse release persists coordinate file");
-        Tick(entrances);Check(mapEntry.localPosition.x==500 && mapEntry.localPosition.y==-200,"regular polling does not overwrite customized position");
-        Input.F9=true;entrances.Update();Input.F9=false;mapEntry.GetComponent<Button>().onClick.Invoke();Check(opens==openCount,"lock suppresses drag release click");Time.unscaledTime+=.2f;mapEntry.GetComponent<Button>().onClick.Invoke();Check(opens==openCount+1,"lock restores normal entrance click");
-        g.ui.Top=g.ui.Npc;Tick(entrances);npcEntry=Entry(g.ui.Npc);Input.F9=true;entrances.Update();Input.F9=false;
-        Input.mousePosition=npcEntry.localPosition;Input.Down=true;Input.Held=true;entrances.Update();Input.Down=false;Input.mousePosition=new Vector3(-520,450,0);entrances.Update();Input.Held=false;entrances.Update();
-        Input.mouseScrollDelta=new Vector2(0,2);entrances.Update();Input.mouseScrollDelta=Vector2.zero;
-        var loaded=new EntranceLayout(layoutPath);loaded.Load();
-        Check(loaded.Map.Custom && loaded.Npc.Custom && Math.Abs(loaded.Map.X-(1460f/1920))<.00001 && Math.Abs(loaded.Npc.X-(440f/1920))<.00001,"two entry coordinates persist independently");
-        Check(loaded.Map.Size==56 && loaded.Npc.Size==64,"wheel size adjustment persists per entry");entrances.Dispose();
-        entrances=new WorkshopEntrances(id=>{});Tick(entrances);Check(Entry(g.ui.Map).localPosition.x==500 && Math.Abs(Entry(g.ui.Npc).localPosition.y-450)<.001,"recreated entrances restore saved coordinates");entrances.Dispose();
-        System.IO.File.WriteAllText(layoutPath,"map=NaN,0.5,56\nnpc=0.5,0.5,200\n");loaded=new EntranceLayout(layoutPath);loaded.Load();Check(!loaded.Map.Custom && !loaded.Npc.Custom,"invalid or nonfinite positions and sizes are ignored");
-        loaded.Map.Custom=true;loaded.Map.X=.25f;loaded.Map.Y=.75f;loaded.Save();var reloaded=new EntranceLayout(layoutPath);reloaded.Load();Check(reloaded.Map.X==.25f && reloaded.Map.Y==.75f && System.IO.File.Exists(layoutPath+".bak"),"atomic replacement reloads new values and preserves backup");
-        System.IO.File.Delete(layoutPath);if(System.IO.File.Exists(layoutPath+".bak"))System.IO.File.Delete(layoutPath+".bak");
+        // F9自由移动已移除：按键、拖动与滚轮都不应改变位置，也不应再产生坐标文件。
+        var openCount=opens;
+        Input.F9=true;Input.mousePosition=mapEntry.localPosition;Input.Down=true;Input.Held=true;Input.mouseScrollDelta=new Vector2(0,2);entrances.Update();
+        Input.Down=false;Input.mousePosition=new Vector3(500,-200,0);entrances.Update();Input.Held=false;Input.mouseScrollDelta=Vector2.zero;entrances.Update();Input.F9=false;
+        Tick(entrances);
+        Check(mapEntry.localPosition.x==180 && mapEntry.localPosition.y==-300,"F9 press, drag and wheel leave the map entrance in place");
+        Check(!System.IO.File.Exists(layoutPath),"F9 removal writes no coordinate file");
+        mapEntry.GetComponent<Button>().onClick.Invoke();Check(opens==openCount+1,"map entrance click still opens after F9 removal");
+        g.ui.Top=g.ui.Npc;Tick(entrances);npcEntry=Entry(g.ui.Npc);
+        Check(Math.Abs(npcEntry.localPosition.x-(-960f+0.2542969f*1920f))<.01f && Math.Abs(npcEntry.localPosition.y-(-540f+0.746458352f*1080f))<.01f,"NPC entrance keeps the frozen position across polls");
+        entrances.Dispose();
+        entrances=new WorkshopEntrances(id=>{});Tick(entrances);Check(Entry(g.ui.Map).localPosition.x==180 && Math.Abs(Entry(g.ui.Npc).localPosition.y-(-540f+0.746458352f*1080f))<.01f,"recreated entrances reuse positions without any file");entrances.Dispose();
         Console.WriteLine("TOTAL: "+count);
     }
 }
