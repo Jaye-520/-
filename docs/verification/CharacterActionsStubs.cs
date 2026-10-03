@@ -22,6 +22,7 @@ public class DataProps
     public int GetGridMaxNum() { return gridMaxNum; }
     public int GetGridCurNum(bool ignore) { return allProps.Count(p=>p.propsCount>0 && p.propsItem!=null && p.propsItem.hide==0); }
     public List<PropsData> GetProps(int id) { return allProps.Where(p=>p.propsID==id).ToList(); }
+    public Action AfterAdd, AfterDelete;
     public int AddCalls, DeleteCalls; public bool FailAdd, FailDelete, BadFactoryId;
     public List<PropsData> AddProps(int id,int count,string sole)
     {
@@ -30,18 +31,18 @@ public class DataProps
         if(item==null && GetGridCurNum(true)>=GetGridMaxNum()) return new List<PropsData>();
         // 原生以空字符串为自动生成约定，null覆盖编号后导致唯一ID字典拒绝key。
         if(item==null){if(sole==null)throw new ArgumentNullException("soleID");item=new PropsData{propsID=id,soleID=sole==""?Guid.NewGuid().ToString():sole,propsItem=g.conf.itemProps.GetItem(id)};allProps.Add(item);}
-        item.propsCount+=count;return new List<PropsData>{BadFactoryId?new PropsData{propsID=id,propsCount=count,soleID="",propsItem=item.propsItem}:item};
+        item.propsCount+=count;if(AfterAdd!=null)AfterAdd();return new List<PropsData>{BadFactoryId?new PropsData{propsID=id,propsCount=count,soleID="",propsItem=item.propsItem}:item};
     }
-    public PropsData DelProps(string sole){DeleteCalls++;if(FailDelete)throw new InvalidOperationException("delete failed");var item=GetProps(sole);allProps.Remove(item);return item;}
+    public PropsData DelProps(string sole){DeleteCalls++;if(FailDelete)throw new InvalidOperationException("delete failed");var item=GetProps(sole);allProps.Remove(item);if(AfterDelete!=null)AfterDelete();return item;}
     public bool IsHasProps(string sole){return GetProps(sole)!=null;}
     public PropsData GetProps(string sole){return allProps.FirstOrDefault(p=>p.soleID==sole);}
     public int GetPropsNum(int id){return allProps.Where(p=>p.propsID==id).Sum(p=>p.propsCount);}
     public void UpdateAllShowProps() { }
     public enum PropsDataType { Props = 1, Martial = 2 }
-    public class PropsData { public PropsDataType propsType = PropsDataType.Props; public MartialData Martial; public T To<T>() where T:class { return Martial as T; } public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
+    public class PropsData { public PropsDataType propsType = PropsDataType.Props; public MartialData Martial; public T To<T>() where T:class { return Martial as T; } public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public string soleIDHashData { get { return soleID+":"+propsID+":"+propsCount+":"+ExtraData+":"+propsType; } } public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
     public class MartialData { public string ExtraData; }
 }
-public class ConfItemPropsItem { public int isOverlay,id,hide,level;public string name,desc; }
+public class ConfItemPropsItem { public int drop=1,dieDrop=1;public int isOverlay,id,hide,level;public string name,desc; }
 public class ItemPropsConfig { public List<ConfItemPropsItem> _allConfList=new List<ConfItemPropsItem>();public ConfItemPropsItem GetItem(int id){return _allConfList.FirstOrDefault(p=>p.id==id);} }
 public class ConfItemPillItem { public int id,effectType=101,grade,operUse=1,battleUIHide;public Dictionary<string,int> Effects=new Dictionary<string,int>(); }
 public class ItemPillConfig { public List<ConfItemPillItem> _allConfList=new List<ConfItemPillItem>(); public Dictionary<string,int> GetPillAddValue(WorldUnitBase unit,int id,bool ignore){return _allConfList.First(p=>p.id==id).Effects;} }

@@ -7,7 +7,7 @@ namespace MOD_YtxSQ1.Services
     // UI仅保存上下文、人物ID与物品唯一ID；原生引用只在一次读取/操作内使用。
     internal sealed class InventoryItem
     {
-        internal string SoleId, Name;
+        internal string SoleId, Name, DataSignature;
         internal int Id, Count;
     }
     internal sealed class ItemEntry
@@ -50,7 +50,7 @@ namespace MOD_YtxSQ1.Services
                 if (item == null || item.propsCount <= 0) continue;
                 var info = item.propsInfoBase;
                 result.Add(new InventoryItem { SoleId = item.soleID, Id = item.propsID, Count = item.propsCount,
-                    Name = info == null ? "道具 #" + item.propsID : info.name });
+                    DataSignature = item.soleIDHashData, Name = info == null ? "道具 #" + item.propsID : info.name });
             }
             return result;
         }
@@ -62,11 +62,11 @@ namespace MOD_YtxSQ1.Services
             used = Math.Max(0, bag.GetGridCurNum(true));
             total = Math.Max(0, bag.GetGridMaxNum());
         }
-        internal static string Fingerprint(List<InventoryItem> items)
+        internal static string Fingerprint(List<InventoryItem> items, bool ordered = false)
         {
-            var sorted = new List<InventoryItem>(items); sorted.Sort((a, b) => string.CompareOrdinal(a.SoleId, b.SoleId));
+            var sorted = new List<InventoryItem>(items); if (!ordered) sorted.Sort((a, b) => string.CompareOrdinal(a.SoleId, b.SoleId));
             var text = new StringBuilder();
-            foreach (var item in sorted) text.Append(item.SoleId.Length).Append(':').Append(item.SoleId).Append(':').Append(item.Id).Append(':').Append(item.Count).Append(';');
+            foreach (var item in sorted) text.Append(item.SoleId.Length).Append(':').Append(item.SoleId).Append(':').Append(item.Id).Append(':').Append(item.Count).Append(':').Append((item.DataSignature ?? "").Length).Append(':').Append(item.DataSignature).Append(';');
             return text.ToString();
         }
         internal static WorldUnitBase RequireTarget(string context, string unitId)
@@ -122,7 +122,7 @@ namespace MOD_YtxSQ1.Services
         {
             if (expected == null || string.IsNullOrEmpty(expected.SoleId)) throw new InvalidOperationException("物品编号无效，请重新选择");
             var bag = unit.data.unitData.propData; var item = bag.GetProps(expected.SoleId);
-            if (item == null || item.soleID != expected.SoleId || item.propsID != expected.Id || item.propsCount != expected.Count)
+            if (item == null || item.soleID != expected.SoleId || item.propsID != expected.Id || item.propsCount != expected.Count || string.IsNullOrEmpty(expected.DataSignature) || item.soleIDHashData != expected.DataSignature)
                 throw new InvalidOperationException("这项物品已经变化，请重新选择");
             // 不允许菜单写入已装备、隐藏或不再显示的记录，即使持有旧快照。
             var visible = bag._allShowProps; bool found = false;
@@ -179,7 +179,12 @@ namespace MOD_YtxSQ1.Services
             var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
             try
             {
-                foreach (var item in items) bag.DelProps(item.SoleId);
+                foreach (var item in items)
+                {
+                    // 上一件的原生删除回调可能改变下一件或世界；逐件再次核对。
+                    var current = RequireTarget(context, unitId); RequireItem(current, item);
+                    current.data.unitData.propData.DelProps(item.SoleId);
+                }
                 bag.UpdateAllShowProps();
                 foreach (var item in items) if (bag.IsHasProps(item.SoleId)) throw new InvalidOperationException("部分物品未清除，请核对背包");
             }
@@ -211,10 +216,21 @@ namespace MOD_YtxSQ1.Services
         {
             var unit = RequireTarget(context, unitId);
             int hp = BestMedicine(unit, "hp"), mp = BestMedicine(unit, "mp");
-            // 两项先校验溢出，再开始发放。重试会再次增加，失败需明确展示已应用边界。
-            checked { var bag = unit.data.unitData.propData; _ = bag.GetPropsNum(hp) + 20; _ = bag.GetPropsNum(mp) + 20; }
+            var bag = unit.data.unitData.propData;
+            checked { _ = bag.GetPropsNum(hp) + (hp == mp ? 40 : 20); _ = bag.GetPropsNum(mp) + 20; }
+            var simulatedUsed = bag.GetGridCurNum(true); var maximum = bag.GetGridMaxNum();
+            foreach (var id in hp == mp ? new[] { hp } : new[] { hp, mp })
+            {
+                var conf = g.conf.itemProps.GetItem(id);
+                if (conf.hide == 0 && (conf.isOverlay != 1 || bag.GetProps(id).Count == 0))
+                {
+                    if (simulatedUsed >= maximum) throw new InvalidOperationException("背包空格不足，未发放补给；请先腾出格子");
+                    // 普通物品drop/dieDrop均为0时不计入原生GetGridCurNum(true)。
+                    if (conf.drop != 0 || conf.dieDrop != 0) simulatedUsed++;
+                }
+            }
             Add(unit, hp, 20);
-            try { Add(unit, mp, 20); }
+            try { Add(RequireTarget(context, unitId), mp, 20); }
             catch (Exception ex) { throw new InvalidOperationException("回血药已增加20个，回蓝药未确认完成：" + ex.Message); }
             return LocalText(g.conf.itemProps.GetItem(hp).name, "回血药") + "、" + LocalText(g.conf.itemProps.GetItem(mp).name, "回蓝药") + "各增加20个；请点击保存";
         }

@@ -58,6 +58,7 @@ namespace MOD_YtxSQ1.UI
         private float fateTipCloseAt;
         private ScrollRect itemTipScroll;
         private float itemBagWheelSensitivity;
+        private ScrollRect itemTipSourceScroll;
         private int itemTipWheelFrame = -1;
         private CharacterFate[] fates = new CharacterFate[0];
         private string fateReason, fateUnitId;
@@ -920,8 +921,8 @@ namespace MOD_YtxSQ1.UI
         private void HideFateTips()
         {
             var previous = fateTip;
-            if (itemTipScroll != null && itemBagScroll != null) itemBagScroll.scrollSensitivity = itemBagWheelSensitivity;
-            itemTipScroll = null;
+            if (itemTipSourceScroll != null) itemTipSourceScroll.scrollSensitivity = itemBagWheelSensitivity;
+            itemTipScroll = itemTipSourceScroll = null;
             fateTip = fateTipOwner = null;
             fateTipCloseAt = 0;
             if (previous == null) return;
@@ -992,7 +993,7 @@ namespace MOD_YtxSQ1.UI
             return new Rect(x, -y, row.sizeDelta.x, row.sizeDelta.y);
         }
 
-        private void ShowFateTip(RectTransform row, CharacterFate entry, RectTransform area = null, bool belowButton = false, bool itemTip = false)
+        private void ShowFateTip(RectTransform row, CharacterFate entry, RectTransform area = null, bool belowButton = false, bool itemTip = false, ScrollRect itemSource = null)
         {
             HideFateTips();
             if (row == null || !row.gameObject.activeInHierarchy || selectedIndex != (itemTip ? 1 : 0)) return;
@@ -1035,11 +1036,12 @@ namespace MOD_YtxSQ1.UI
                 var scrollbar = track.gameObject.AddComponent<Scrollbar>();
                 scrollbar.handleRect = handle.rectTransform; scrollbar.targetGraphic = handle; scrollbar.direction = Scrollbar.Direction.BottomToTop;
                 scroll.verticalScrollbar = scrollbar;
-                if (itemTip && itemBagScroll != null)
+                if (itemTip && (itemSource ?? itemBagScroll) != null)
                 {
                     itemTipScroll = scroll;
-                    itemBagWheelSensitivity = itemBagScroll.scrollSensitivity;
-                    itemBagScroll.scrollSensitivity = 0;
+                    itemTipSourceScroll = itemSource ?? itemBagScroll;
+                    itemBagWheelSensitivity = itemTipSourceScroll.scrollSensitivity;
+                    itemTipSourceScroll.scrollSensitivity = 0;
                 }
             }
             if (itemTip)

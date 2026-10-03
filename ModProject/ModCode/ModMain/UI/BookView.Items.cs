@@ -17,7 +17,7 @@ namespace MOD_YtxSQ1.UI
         }
         private InputField itemSearch, itemLibrarySearch, itemAmount;
         private ScrollRect itemResultsScroll, itemBagScroll, itemLibraryScroll;
-        private Text itemBagTitle, itemBagCapacity, itemLibraryCount;
+        private Text itemBagTitle, itemBagCapacity, itemLibraryCount, itemDialogStatus;
         private GameObject itemLibrary, itemDialog;
         private List<ItemEntry> itemCatalog = new List<ItemEntry>();
         private readonly List<ItemEntry> itemResults = new List<ItemEntry>(), itemLibraryResults = new List<ItemEntry>();
@@ -91,6 +91,7 @@ namespace MOD_YtxSQ1.UI
             var entries = library ? itemLibraryResults : itemResults;
             var scroll = library ? itemLibraryScroll : itemResultsScroll;
             if (scroll == null) return;
+            HideFateTips();
             var query = field == null ? "" : field.text.Trim(); entries.Clear();
             if ((library || query.Length > 0 || itemPicks.Count > 0) && LoadItemCatalog())
                 foreach (var entry in itemCatalog)
@@ -119,9 +120,9 @@ namespace MOD_YtxSQ1.UI
                 row.Label.resizeTextForBestFit = true; row.Label.resizeTextMinSize = 12; row.Label.resizeTextMaxSize = 16;
                 BindFateHover(row.Button.gameObject, () =>
                 {
-                    if (row.Entry != null) ShowFateTip(row.Button.GetComponent<RectTransform>(), new CharacterFate(row.Entry.Id, 0, row.Entry.Name,
-                        row.Entry.Description + "\n编号：" + row.Entry.Id + (row.Entry.Stackable ? " · 可叠加" : " · 不可叠加")));
-                }, () => { fateTipCloseAt = Time.unscaledTime + .12f; });
+                    if (row.Entry != null && row.Button.gameObject.activeInHierarchy && (!library || itemLibrary != null)) ShowFateTip(row.Button.GetComponent<RectTransform>(), new CharacterFate(row.Entry.Id, 0, row.Entry.Name,
+                        row.Entry.Description + "\n编号：" + row.Entry.Id + (row.Entry.Stackable ? " · 可叠加" : " · 不可叠加")), library ? itemLibrary.GetComponent<RectTransform>() : content, false, true, scroll);
+                }, () => { if (fateTipOwner == row.Button.GetComponent<RectTransform>()) HideFateTips(); });
                 rows.Add(row);
             }
         }
@@ -149,7 +150,7 @@ namespace MOD_YtxSQ1.UI
                 var items = ItemInventory.Read(selectedUnitId);
                 int used, total; ItemInventory.ReadCapacity(selectedUnitId, out used, out total);
                 var free = Math.Max(0, total - used);
-                var signature = ItemInventory.Fingerprint(items) + "|capacity:" + used + ":" + total;
+                var signature = ItemInventory.Fingerprint(items, true) + "|capacity:" + used + ":" + total;
                 var owner = contextKey + ":" + selectedUnitId;
                 itemBagTitle.text = characterName.text + "的背包 · " + items.Count + "项";
                 itemBagCapacity.text = "占用 " + used + " / " + total + " 格 · " + (free == 0 ? "已满" : "剩余 " + free + " 格");
@@ -160,10 +161,13 @@ namespace MOD_YtxSQ1.UI
                 bagOwner = owner; bagFingerprint = signature; bagItems = items; bagFreeSlots = free;
                 itemBagScroll.content.sizeDelta = new Vector2(itemBagScroll.content.sizeDelta.x,
                     Mathf.Max(itemBagScroll.viewport.sizeDelta.y, (float)Math.Ceiling(((double)items.Count + bagFreeSlots) / bagColumns) * BagPitch));
+                var position = itemBagScroll.content.anchoredPosition;
+                itemBagScroll.content.anchoredPosition = new Vector2(0, Mathf.Clamp(position.y, 0, itemBagScroll.content.sizeDelta.y - itemBagScroll.viewport.sizeDelta.y));
                 RenderBagSlots();
             }
             catch (Exception ex)
             {
+                CloseItemMenu(); HideFateTips();
                 bagItems.Clear(); bagFreeSlots = 0; bagOwner = null; bagFingerprint = null; itemBagCapacity.text = ""; RenderBagSlots();
                 itemBagTitle.text = "背包读取失败"; SetEditStatus(ex.Message, true);
             }
@@ -178,7 +182,7 @@ namespace MOD_YtxSQ1.UI
                 var slot = bagSlots[i]; var index = first + i;
                 slot.gameObject.SetActive(index < (long)bagItems.Count + bagFreeSlots && unit != null);
                 slot.anchoredPosition = new Vector2(index % bagColumns * BagPitch, -(index / bagColumns) * BagPitch);
-                var key = index < bagItems.Count ? bagOwner + ":" + bagItems[index].SoleId + ":" + bagItems[index].Count : bagOwner + ":empty:" + index;
+                var key = index < bagItems.Count ? bagOwner + ":" + bagItems[index].SoleId + ":" + bagItems[index].DataSignature : bagOwner + ":empty:" + index;
                 key += slot.gameObject.activeSelf ? ":on" : ":off";
                 if (slot.gameObject.name == key) continue;
                 slot.gameObject.name = key;
@@ -190,6 +194,7 @@ namespace MOD_YtxSQ1.UI
                 Fill(slot, "格上沿", 0, 0, 78, 1, edge); Fill(slot, "格下沿", 0, 77, 78, 1, edge);
                 Fill(slot, "格左沿", 0, 0, 1, 78, edge); Fill(slot, "格右沿", 77, 0, 1, 78, edge);
                 if (empty) continue;
+                var backgroundCount = slot.childCount;
                 try
                 {
                     var props = unit.data.unitData.propData.GetProps(bagItems[index].SoleId);
@@ -206,6 +211,7 @@ namespace MOD_YtxSQ1.UI
                 }
                 catch
                 {
+                    ClearBagSlot(slot, backgroundCount);
                     var fallback = Label(slot, bagItems[index].Name + "\n×" + bagItems[index].Count, 0, 0, 72, 72, 13, Ink, TextAnchor.MiddleCenter);
                     fallback.raycastTarget = true;
                     BindBagHoverListener(fallback.gameObject.AddComponent<UIEventListener>(), slot, bagItems[index]);
@@ -261,21 +267,31 @@ namespace MOD_YtxSQ1.UI
             itemTipScroll.verticalNormalizedPosition = Mathf.Clamp(itemTipScroll.verticalNormalizedPosition
                 + delta * itemTipScroll.scrollSensitivity / overflow, 0, 1);
         }
-        private void RunItemOperation(Func<string> operation)
+        private void SetItemStatus(string message, bool error = false)
         {
-            if (!FinishInlineEdit(false)) return;
-            if (edits.Count > 0) { SetEditStatus("请先保存属性修改，再操作背包", true); return; }
-            HideFateTips();
-            try { var message = operation(); RefreshCharacter(true); SetEditStatus(message); }
-            catch (Exception ex) { RefreshCharacter(true); SetEditStatus(ex.Message, true); }
+            SetEditStatus(message, error);
+            if (itemDialogStatus != null) { itemDialogStatus.text = message; itemDialogStatus.color = error ? Cinnabar : Muted; }
         }
-        private void ClearBagSlot(RectTransform slot)
+        private bool RunItemOperation(Func<string> operation)
         {
-            for (int j = slot.childCount - 1; j >= 0; j--)
+            if (!FinishInlineEdit(false)) return false;
+            if (edits.Count > 0) { SetItemStatus("请先保存属性修改，再操作背包", true); return false; }
+            HideFateTips(); var pending = CharacterSave.Pending;
+            try { var message = operation(); RefreshCharacter(true); SetItemStatus(message); return true; }
+            catch (Exception ex)
+            {
+                RefreshCharacter(true); SetItemStatus(ex.Message, true);
+                // 原生回调可能在异常前完成部分修改；关闭确认框，避免重复提交。
+                return CharacterSave.Pending != pending;
+            }
+        }
+        private void ClearBagSlot(RectTransform slot, int keepChildren = 0)
+        {
+            for (int j = slot.childCount - 1; j >= keepChildren; j--)
             {
                 var child = slot.GetChild(j).gameObject;
                 var icon = child.GetComponent<UIIconItemBase>();
-                if (icon != null) icon.CloseIconInfo();
+                if (icon != null) try { icon.CloseIconInfo(); } catch (Exception ex) { Debug.LogWarning("[八荒秘录] 图标提示清理失败：" + ex.Message); }
                 child.SetActive(false); UnityEngine.Object.Destroy(child);
             }
         }
@@ -290,6 +306,8 @@ namespace MOD_YtxSQ1.UI
             Fill(panel, "操作纸底", 1, 1, width - 2, 228, Paper, true); Border(panel, width, 230);
             Label(panel, title, 16, 12, width - 32, 34, 23, Ink);
             MakeButton(panel, "取消物品操作", primaryLeft ? width - 116 : 16, 176, 100, 36, "取消", CloseItemDialog);
+            itemDialogStatus = Label(panel, "", 16, 138, width - 32, 32, 13, Muted);
+            itemDialogStatus.resizeTextForBestFit = true; itemDialogStatus.resizeTextMinSize = 10; itemDialogStatus.resizeTextMaxSize = 13;
             return panel;
         }
         private void ConfirmGiveItem(ItemEntry entry)
@@ -302,9 +320,9 @@ namespace MOD_YtxSQ1.UI
             {
                 if (!string.IsNullOrEmpty(Input.compositionString)) return;
                 int amount;
-                if (!int.TryParse(itemAmount.text, out amount)) { SetEditStatus("请输入整数数量", true); return; }
+                if (!int.TryParse(itemAmount.text, out amount)) { SetItemStatus("请输入整数数量", true); return; }
                 if (id != selectedUnitId || context != contextKey) { CloseItemDialog(); SetEditStatus("人物已变化，请重新操作", true); return; }
-                RunItemOperation(() => ItemInventory.Give(context, id, entry.Id, amount)); CloseItemDialog();
+                if (RunItemOperation(() => ItemInventory.Give(context, id, entry.Id, amount))) CloseItemDialog();
             });
         }
         private void ConfirmClearBag()
@@ -317,7 +335,7 @@ namespace MOD_YtxSQ1.UI
                 MakeButton(panel, "确认清空背包", panel.sizeDelta.x - 136, 176, 120, 36, "确认清空", () =>
                 {
                     if (id != selectedUnitId || context != contextKey) { CloseItemDialog(); SetEditStatus("人物已变化，请重新操作", true); return; }
-                    RunItemOperation(() => ItemInventory.Clear(context, id, signature)); CloseItemDialog();
+                    if (RunItemOperation(() => ItemInventory.Clear(context, id, signature))) CloseItemDialog();
                 });
             }
             catch (Exception ex) { SetEditStatus(ex.Message, true); }
@@ -356,7 +374,7 @@ namespace MOD_YtxSQ1.UI
         private void CloseItemDialog()
         {
             CloseItemMenu();
-            if (itemAmount != null) WindowInputScope.Unregister(itemAmount); itemAmount = null;
+            if (itemAmount != null) WindowInputScope.Unregister(itemAmount); itemAmount = null; itemDialogStatus = null;
             var old = itemDialog; itemDialog = null; if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
         }
         private void ClearItemsView()
@@ -364,7 +382,7 @@ namespace MOD_YtxSQ1.UI
             CloseItemDialog(); CloseItemLibrary();
             if (itemSearch != null) WindowInputScope.Unregister(itemSearch);
             foreach (var slot in bagSlots) ClearBagSlot(slot);
-            itemSearch = null; itemResultsScroll = null; itemBagScroll = null; itemBagTitle = null;
+            itemSearch = null; itemResultsScroll = null; itemBagScroll = null; itemBagTitle = itemBagCapacity = null; bagFreeSlots = 0;
             itemRows.Clear(); bagSlots.Clear(); itemResults.Clear(); bagItems.Clear(); bagOwner = null; bagFingerprint = null;
         }
     }

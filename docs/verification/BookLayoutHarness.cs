@@ -257,7 +257,7 @@ public sealed class LayoutUI
     public T OpenUI<T>(UIType type) where T:class { Editor=new UIModTableInputStringLong();return Editor as T; }
 }
 public static class SpriteTool { public static UnityEngine.Object GetLuckBG(ConfRoleCreateFeatureItem item) { return new UnityEngine.Object(); } }
-public class UIIconItemBase : UnityEngine.Component { public UIEventListener uiEvent; public void CloseIconInfo(){} }
+public class UIIconItemBase : UnityEngine.Component { public UIEventListener uiEvent; public bool FailClose; public void CloseIconInfo(){if(FailClose)throw new Exception("close failed");} }
 public static class UIPropInfo { public static string GetDesc(WorldUnitBase unit,DataProps.PropsData props){return props.propsItem.desc;} }
 public class BattleSkillValueData { public DataProps.MartialData Martial; public BattleSkillValueData(DataProps.MartialData martial){Martial=martial;} }
 public static class UIMartialInfoTool
@@ -269,13 +269,14 @@ public static class UIMartialInfoTool
 }
 public static partial class UIIconTool
 {
+    public static bool FailAfterCreate;
     public static UIIconItemBase CreatePropsIcon(WorldUnitBase unit,DataProps.PropsData props,UnityEngine.Transform parent,float size,bool destroy,bool operation,bool equip)
     {
         if(operation || equip)throw new Exception("unexpected native operations");
         var go=new UnityEngine.GameObject("native item icon");go.transform.SetParent(parent,false);go.transform.sizeDelta=new UnityEngine.Vector2(72,72);
         var image=go.AddComponent<UnityEngine.UI.Image>();image.color=new UnityEngine.Color(.8f,.77f,.67f,1);
         var label=go.AddComponent<UnityEngine.UI.Text>();label.color=new UnityEngine.Color(.2f,.2f,.17f,1);label.font=new UnityEngine.Font();label.fontSize=14;label.text=ConfLocalText.GetText(props.propsInfoBase.name)+"\n"+props.propsCount;
-        var icon=go.AddComponent<UIIconItemBase>();icon.uiEvent=go.AddComponent<UIEventListener>();icon.uiEvent.onMouseEnterCall=new object();return icon;
+        var icon=go.AddComponent<UIIconItemBase>();icon.uiEvent=go.AddComponent<UIEventListener>();icon.uiEvent.onMouseEnterCall=new object();if(FailAfterCreate)throw new Exception("factory failed after creating child");return icon;
     }
 }
 public sealed class UIModTableInputStringLong
@@ -505,15 +506,31 @@ internal static class BookLayoutHarness
         Check(Walk(book).Count(t=>t.gameObject.name=="BHML_物品条目" && t.gameObject.activeInHierarchy)==1,"item name search returns matching result");
         using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
         { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-layout-"+size+".png"),ImageFormat.Png); }
+        var searchRow=Walk(book).First(t=>t.gameObject.name=="BHML_物品条目" && t.gameObject.activeInHierarchy);
+        var searchScroll=searchRow.parent.parent.GetComponent<UnityEngine.UI.ScrollRect>();
+        var catalogEntry=(List<ItemEntry>)typeof(BookView).GetField("itemResults",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view);
+        catalogEntry[0].Description=new string('长',1000);searchRow.GetComponent<UIEventListener>().OnPointerEnter(null);
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍") && searchScroll.scrollSensitivity==0,"search hover uses item page and suppresses its own long-tip scroll source");
+        searchRow.GetComponent<UIEventListener>().OnPointerExit(null);
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍") && searchScroll.scrollSensitivity==42,"search exit immediately destroys tip and restores result scrolling");
+        searchRow.GetComponent<UIEventListener>().OnPointerEnter(null);field.text="凝灵";
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍"),"search filtering releases old tip before row reuse");field.text="回春";
         ClickNamed(book,"物品条目");
         Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩"),"item result opens quantity dialog");
         view.FocusTarget("player");
         Check(Selected(view)=="player" && !Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩") && bag.AddCalls==0,"target switch cancels NPC dialog without writing player");
         view.FocusTarget(id);ClickNamed(book,"物品列表");
         Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品图鉴"),"item catalog opens with pooled rows");
-        var row=Walk(book).First(t=>t.gameObject.name=="BHML_物品条目" && t.GetComponentInChildren<UnityEngine.UI.Text>().text=="回春丹" && t.parent.gameObject.name=="BHML_物品列表视口长页");row.GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+        var row=Walk(book).First(t=>t.gameObject.name=="BHML_物品条目" && t.GetComponentInChildren<UnityEngine.UI.Text>().text=="回春丹" && t.parent.gameObject.name=="BHML_物品列表视口长页");row.GetComponent<UIEventListener>().OnPointerEnter(null);
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品介绍" && t.IsChildOf(row.parent.parent.parent.parent)),"catalog description belongs to visible library overlay");
+        row.GetComponent<UIEventListener>().OnPointerExit(null);row.GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
         ClickNamed(book,"确认物品选择");
         Check(field.text=="" && Walk(book).Count(t=>t.gameObject.name=="BHML_物品条目" && t.gameObject.activeInHierarchy)==1,"catalog confirmation returns picked candidates without granting");
+        ClickNamed(book,"物品条目");
+        var rejectedAmount=Walk(book).First(t=>t.gameObject.name=="BHML_发放数量").GetComponentInChildren<UnityEngine.UI.InputField>();
+        rejectedAmount.text="0";var rejectedAdds=bag.AddCalls;ClickNamed(book,"确认添加道具");
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩") && rejectedAmount.text=="0" && bag.AddCalls==rejectedAdds,"no-write grant rejection preserves modal and typed amount");
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("请输入1–9999")),"grant rejection is readable inside modal");ClickNamed(book,"取消物品操作");
         var beforePlayer=player.data.unitData.propData.GetPropsNum(hp.id);var before=bag.GetPropsNum(hp.id);
         ClickNamed(book,"物品条目");Walk(book).First(t=>t.gameObject.name=="BHML_发放数量").GetComponentInChildren<UnityEngine.UI.InputField>().text="3";ClickNamed(book,"确认添加道具");
         Check(bag.GetPropsNum(hp.id)==before+3 && player.data.unitData.propData.GetPropsNum(hp.id)==beforePlayer,"grant dialog changes selected NPC only");
@@ -536,7 +553,29 @@ internal static class BookLayoutHarness
         var fresh=new ConfItemPropsItem{id=998877,name="新材料",isOverlay=1};g.conf.itemProps._allConfList.Add(fresh);capacityAdds=bag.AddCalls;
         Check(Rejected(()=>ItemInventory.Give(context,id,fresh.id,9999)) && bag.AddCalls==capacityAdds && bag.GetPropsNum(fresh.id)==0,"full bag rejects first stackable grant without partial write");
         bag.gridMaxNum=120;g.conf.itemProps._allConfList.Remove(fresh);
-        var firstItem=ItemInventory.Read(id).First();var storedItem=bag.GetProps(firstItem.SoleId);storedItem.ExtraData="keep-quality-and-affixes";
+        var auditSaved=bag.allProps.ToList();var auditMax=bag.gridMaxNum;
+        bag.allProps.Clear();bag.gridMaxNum=1;var auditAdds=bag.AddCalls;var auditPending=CharacterSave.Pending;
+        Check(Rejected(()=>ItemInventory.Supply(context,id)) && bag.AddCalls==auditAdds && bag.allProps.Count==0 && CharacterSave.Pending==auditPending,"two new medicine stacks require two slots before any write");
+        bag.gridMaxNum=2;ItemInventory.Supply(context,id);Check(bag.allProps.Count==2,"two-slot supply passes combined capacity preflight");
+        bag.allProps.Clear();bag.gridMaxNum=0;auditAdds=bag.AddCalls;
+        Check(Rejected(()=>ItemInventory.Supply(context,id)) && bag.AddCalls==auditAdds,"zero capacity supply rejects before any native write");
+        bag.gridMaxNum=1;g.conf.itemPill._allConfList.First(p=>p.id==hp.id).Effects["mp"]=400;
+        ItemInventory.Supply(context,id);Check(bag.allProps.Count==1 && bag.GetPropsNum(hp.id)==40,"same dual-resource medicine needs one record and grants forty total");
+        bag.allProps[0].propsCount=int.MaxValue-30;auditAdds=bag.AddCalls;auditPending=CharacterSave.Pending;
+        Check(Rejected(()=>ItemInventory.Supply(context,id)) && bag.AddCalls==auditAdds && CharacterSave.Pending==auditPending,"dual-resource medicine combined forty overflow rejects before first twenty");
+        g.conf.itemPill._allConfList.First(p=>p.id==hp.id).Effects.Remove("mp");
+        bag.allProps.Clear();bag.gridMaxNum=10;
+        var callbackFirst=new DataProps.PropsData{soleID="audit-first",propsID=hp.id,propsItem=hp,propsCount=1};
+        var callbackSecond=new DataProps.PropsData{soleID="audit-second",propsID=mp.id,propsItem=mp,propsCount=1};bag.allProps.AddRange(new[]{callbackFirst,callbackSecond});
+        var auditSnapshot=ItemInventory.Read(id);callbackSecond.ExtraData="changed-affix";var auditDeletes=bag.DeleteCalls;
+        Check(Rejected(()=>ItemInventory.Remove(context,id,auditSnapshot[1])) && bag.DeleteCalls==auditDeletes,"same count with changed affix rejects stale single-item snapshot");
+        Check(Rejected(()=>ItemInventory.Clear(context,id,ItemInventory.Fingerprint(auditSnapshot))) && bag.DeleteCalls==auditDeletes,"changed affix invalidates bulk confirmation before deleting anything");
+        auditSnapshot=ItemInventory.Read(id);bag.AfterDelete=()=>callbackSecond.Equipped=true;
+        Check(Rejected(()=>ItemInventory.Clear(context,id,ItemInventory.Fingerprint(auditSnapshot))) && bag.DeleteCalls==auditDeletes+1 && bag.IsHasProps(callbackSecond.soleID),"native deletion callback equipping next item stops batch before deleting equipped record");bag.AfterDelete=null;
+        bag.allProps.Clear();bag.AfterAdd=()=>DataMgr.isSaveData=true;auditAdds=bag.AddCalls;
+        Check(Rejected(()=>ItemInventory.Supply(context,id)) && bag.AddCalls==auditAdds+1,"native first-add callback starting save prevents second supply write");bag.AfterAdd=null;DataMgr.isSaveData=false;
+        bag.allProps.Clear();bag.allProps.AddRange(auditSaved);bag.gridMaxNum=auditMax;view.RefreshCharacter(true);
+        var firstItem=ItemInventory.Read(id).First();var storedItem=bag.GetProps(firstItem.SoleId);storedItem.ExtraData="keep-quality-and-affixes";firstItem=ItemInventory.Read(id).First(p=>p.SoleId==storedItem.soleID);
         var otherStack=bag.allProps.First(p=>p.propsID==hp.id && p.soleID!=firstItem.SoleId);var otherCount=otherStack.propsCount;
         var allBefore=bag.allProps.Count;var addsBefore=bag.AddCalls;var deletesBefore=bag.DeleteCalls;
         ItemInventory.SetCount(context,id,firstItem,7);
@@ -610,12 +649,22 @@ internal static class BookLayoutHarness
         Check(capacityText.text.Contains("已满") && !capacityText.text.Contains("剩余 -"),"over-capacity backpack keeps existing items and never invents negative free cells");
         using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
         { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-capacity-full-layout-"+size+".png"),ImageFormat.Png); }
-        bag.allProps.RemoveAll(p=>extraBag.Contains(p));bag.gridMaxNum=120;bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.verticalNormalizedPosition=1;view.RefreshCharacter(true);
+        bag.allProps.RemoveAll(p=>extraBag.Contains(p));bag.gridMaxNum=120;refreshBag.Invoke(view,new object[]{false});
+        Check(bagWheel.content.anchoredPosition.y<=bagWheel.content.sizeDelta.y-bagWheel.viewport.sizeDelta.y && Walk(book).Any(t=>t.gameObject.name=="native item icon" && t.gameObject.activeInHierarchy),"inventory shrinking at bottom clamps scroll immediately and retains visible icons");bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.verticalNormalizedPosition=1;view.RefreshCharacter(true);
         bag.gridMaxNum=bag.GetGridCurNum(true)+7;refreshBag.Invoke(view,new object[]{false});
         bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,bagWheel.content.sizeDelta.y-bagWheel.viewport.sizeDelta.y);bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
         using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
         { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-capacity-free-layout-"+size+".png"),ImageFormat.Png); }
         bag.gridMaxNum=120;bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.verticalNormalizedPosition=1;view.RefreshCharacter(true);
+        var faultIcon=Walk(book).First(t=>t.gameObject.name=="native item icon").GetComponent<UIIconItemBase>();faultIcon.FailClose=true;
+        var auditSlots=(List<UnityEngine.RectTransform>)typeof(BookView).GetField("bagSlots",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view);foreach(var auditSlot in auditSlots)auditSlot.gameObject.name="invalidate";
+        UIIconTool.FailAfterCreate=true;refreshBag.Invoke(view,new object[]{true});
+        Check(!Walk(book).Any(t=>t.gameObject.name=="native item icon") && Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("×")),"throwing icon cleanup and partially created factory child leave only usable fallback");
+        UIIconTool.FailAfterCreate=false;foreach(var auditSlot in auditSlots)auditSlot.gameObject.name="invalidate";refreshBag.Invoke(view,new object[]{true});
+        var beforeAffixIcon=Walk(book).First(t=>t.gameObject.name=="native item icon").GetComponent<UIIconItemBase>();bag.GetProps(ItemInventory.Read(id).First().SoleId).ExtraData+="-redraw";refreshBag.Invoke(view,new object[]{false});
+        Check(!Walk(book).Any(t=>t.GetComponent<UIIconItemBase>()==beforeAffixIcon),"affix-only native change rebuilds cached icon");
+        var beforeOrder=ItemInventory.Read(id);bag.allProps.Reverse();refreshBag.Invoke(view,new object[]{false});
+        Check(ItemInventory.Fingerprint(beforeOrder)==ItemInventory.Fingerprint(ItemInventory.Read(id)) && ItemInventory.Fingerprint(beforeOrder,true)!=ItemInventory.Fingerprint(ItemInventory.Read(id),true),"display order refresh is distinct from order-independent clear confirmation");bag.allProps.Reverse();view.RefreshCharacter(true);
         pressFirst(true);ClickNamed(book,"背包菜单外部");Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"outside click dismisses context menu");
         pressFirst(true);Walk(book).First(t=>t.gameObject.name=="BHML_背包网格").GetComponent<UnityEngine.UI.ScrollRect>().onValueChanged.Invoke(new UnityEngine.Vector2());
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_背包菜单"),"scrolling closes menu before pooled item slots can be rebound");

@@ -33,7 +33,8 @@ namespace MOD_YtxSQ1.UI
             if (CharacterSave.Busy || DataMgr.isSaveData || !FinishInlineEdit(false)) return;
             CloseItemDialog(); CloseItemLibrary(); CloseDropdown(); HideFateTips();
             if (selectedIndex != 1 || slot == null || !slot.gameObject.activeInHierarchy) return;
-            foreach (var nativeIcon in slot.GetComponentsInChildren<UIIconItemBase>(true)) nativeIcon.CloseIconInfo();
+            foreach (var nativeIcon in slot.GetComponentsInChildren<UIIconItemBase>(true))
+                try { nativeIcon.CloseIconInfo(); } catch (Exception ex) { Debug.LogWarning("[八荒秘录] 图标提示清理失败：" + ex.Message); }
             var id = selectedUnitId; var context = contextKey;
             var width = Mathf.Min(242, contentWidth - 16); const float height = 204;
             var bounds = FateTipBounds(FateRowBounds(slot, content), width, height, content.sizeDelta);
@@ -68,14 +69,14 @@ namespace MOD_YtxSQ1.UI
             Label(panel, item.Name + " · 当前 " + item.Count, 16, 54, panel.sizeDelta.x - 32, 30, 18, Ink);
             itemAmount = CreateSearchInput(panel, "背包数量", 16, 98, panel.sizeDelta.x - 32, 36, "1–9999", _ => { });
             itemAmount.SetTextWithoutNotify(increase ? "1" : item.Count.ToString());
-            Label(panel, increase ? "输入追加数量 · 最多增加" + (9999 - item.Count) : "输入修改后的总数量", 16, 138, panel.sizeDelta.x - 32, 24, 14, Muted);
+            itemDialogStatus.text = increase ? "输入追加数量 · 最多增加" + (9999 - item.Count) : "输入修改后的总数量";
             MakeButton(panel, "确认修改背包数量", panel.sizeDelta.x - 136, 176, 120, 36, "确定", () =>
             {
                 if (!string.IsNullOrEmpty(Input.compositionString) || !ItemTargetMatches(id, context)) return;
                 int count;
                 if (!int.TryParse(itemAmount.text, out count) || count < 1 || (increase ? count > 9999 - item.Count : count > 9999 && count != item.Count))
-                { SetEditStatus(increase ? "追加后的总数量不能超过9999" : "请输入1–9999的整数数量", true); return; }
-                RunItemOperation(() => increase ? ItemInventory.IncreaseCount(context, id, item, count) : ItemInventory.SetCount(context, id, item, count)); CloseItemDialog();
+                { SetItemStatus(increase ? "追加后的总数量不能超过9999" : "请输入1–9999的整数数量", true); return; }
+                if (RunItemOperation(() => increase ? ItemInventory.IncreaseCount(context, id, item, count) : ItemInventory.SetCount(context, id, item, count))) CloseItemDialog();
             });
         }
         private void ConfirmRemoveItem(InventoryItem item, string id, string context)
@@ -87,7 +88,7 @@ namespace MOD_YtxSQ1.UI
             MakeButton(panel, "确认移除背包单项", panel.sizeDelta.x - 136, 176, 120, 36, "确认移除", () =>
             {
                 if (!ItemTargetMatches(id, context)) return;
-                RunItemOperation(() => ItemInventory.Remove(context, id, item)); CloseItemDialog();
+                if (RunItemOperation(() => ItemInventory.Remove(context, id, item))) CloseItemDialog();
             });
         }
         private void CloseItemMenu()
