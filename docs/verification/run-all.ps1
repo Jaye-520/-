@@ -21,6 +21,38 @@ foreach ($script in $maintained) {
 }
 if ($hygieneFailures -eq 0) { Write-Host ("  OK    {0} 个脚本均有 BOM 且可解析" -f $maintained.Count) }
 
+# 工程一致性：手册要求“新增源码必须登记 csproj 并在代码导航表登记职责”，这里替它守门。
+Write-Host ''
+Write-Host '== 工程一致性（csproj ↔ 源码 ↔ 代码导航表）=='
+$consistencyFailures = 0
+$codeDirectory = Join-Path $projectDirectory 'ModProject\ModCode\ModMain'
+try {
+    $projectXml = [xml](Get-Content -LiteralPath (Join-Path $codeDirectory 'ModMain.csproj') -Raw)
+    $ns = [Xml.XmlNamespaceManager]::new($projectXml.NameTable)
+    $ns.AddNamespace('m', 'http://schemas.microsoft.com/developer/msbuild/2003')
+    $declared = @($projectXml.SelectNodes('//m:Compile', $ns) | ForEach-Object { $_.Include -replace '\\', '/' })
+    $onDisk = @(Get-ChildItem -LiteralPath $codeDirectory -Recurse -Filter '*.cs' -File |
+        Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } |
+        ForEach-Object { $_.FullName.Substring($codeDirectory.Length + 1) -replace '\\', '/' })
+    $documented = @(Select-String -LiteralPath (Join-Path $projectDirectory 'docs\ENGINEERING.md') `
+        -Pattern '^\|\s*([A-Za-z][\w./]*\.cs)\s*\|' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+    if ($documented.Count -eq 0) { $consistencyFailures++; Write-Host '  FAIL  代码导航表未解析到任何源码条目' }
+    foreach ($item in (Compare-Object $declared $onDisk | Where-Object { $_.SideIndicator -eq '<=' })) {
+        $consistencyFailures++; Write-Host ("  FAIL  csproj 登记但磁盘不存在：{0}" -f $item.InputObject) }
+    foreach ($item in (Compare-Object $declared $onDisk | Where-Object { $_.SideIndicator -eq '=>' })) {
+        $consistencyFailures++; Write-Host ("  FAIL  磁盘源码未登记 csproj：{0}" -f $item.InputObject) }
+    foreach ($file in $onDisk) {
+        if (-not ($documented | Where-Object { $file -like "*$_" })) {
+            $consistencyFailures++; Write-Host ("  FAIL  未在手册代码导航表登记：{0}" -f $file) } }
+    foreach ($name in $documented) {
+        if (-not ($onDisk | Where-Object { $_ -like "*$name" })) {
+            $consistencyFailures++; Write-Host ("  FAIL  手册登记但源码不存在：{0}" -f $name) } }
+    if ($consistencyFailures -eq 0) { Write-Host ("  OK    {0} 个源码文件在 csproj 与手册中一致" -f $onDisk.Count) }
+} catch {
+    $consistencyFailures++
+    Write-Host ("  FAIL  一致性检查无法执行：{0}" -f $_.Exception.Message)
+}
+
 $buildFailure = $null
 if ($Build) {
     Write-Host ''
@@ -70,10 +102,10 @@ $brokenExit = @($results | Where-Object { $_.Exit -ne 0 }).Count
 Write-Host ''
 Write-Host '== 汇总 =='
 $results | Format-Table -AutoSize | Out-String | Write-Host
-Write-Host ("检查脚本 {0} 个；通过 {1} 项；失败 {2} 项；非零退出 {3} 个；脚本卫生问题 {4} 个；耗时 {5:N1} 秒" -f `
-    $results.Count, $totalPassed, $totalFailed, $brokenExit, $hygieneFailures, ((Get-Date) - $started).TotalSeconds)
+Write-Host ("检查脚本 {0} 个；通过 {1} 项；失败 {2} 项；非零退出 {3} 个；脚本卫生问题 {4} 个；一致性问题 {5} 个；耗时 {6:N1} 秒" -f `
+    $results.Count, $totalPassed, $totalFailed, $brokenExit, $hygieneFailures, $consistencyFailures, ((Get-Date) - $started).TotalSeconds)
 
-$problems = $totalFailed + $brokenExit + $hygieneFailures
+$problems = $totalFailed + $brokenExit + $hygieneFailures + $consistencyFailures
 if ($buildFailure) { $problems++ }
 if ($problems -gt 0) { Write-Host 'RESULT: FAIL'; exit 1 }
 Write-Host 'RESULT: PASS'

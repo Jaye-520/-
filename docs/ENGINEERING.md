@@ -40,7 +40,7 @@
 
 ## 代码风格与结构约定
 
-- 文件与命名：一个文件一个职责；`partial`只用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）。新增源码必须登记csproj并在上文“代码导航”表登记职责。
+- 文件与命名：一个文件一个职责；`partial`只用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）。新增源码必须登记csproj并在上文“代码导航”表登记职责——`run-all.ps1`会自检“csproj ↔ 磁盘源码 ↔ 代码导航表”三者一致，任何一处漏登记都直接门禁失败。
 - 方法规模以≤50行为准，超长分派方法按操作拆分。2026-10-03把`CharacterActions.Execute`（133行、四层分支）拆为RestoreStatus/FillCultivation/FillMaterials/AddIntimacy/Move，最长方法降到38行，546项检查全绿。拆分必须**保持分支顺序与报错语义**：未知操作在原实现里会先校验NPC目标再报“未知快捷操作”，拆完仍要先校验。
 - 注释解释“为什么”，不复述代码：原生包装的坑（`Il2CppStructArray`不写回、`Single..ctor(IntPtr)`）、回退顺序与幂等理由必须留在代码旁；纯语言直译的注释不加。
 - 写操作失败一律`throw`，由调用处统一转成用户可见消息并记日志；日志统一`[八荒秘录]`前缀、重复失败去重，不用日志代替返回值表达状态。
@@ -220,7 +220,7 @@ WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView�
 
 脚本在`docs/verification/`，使用前核对当前源码适配性。托管替身不覆盖Unity事件顺序、IL2CPP及Windows IME；run-book-layout.ps1会写screenshots模拟预览，必须与实测截图区分。
 
-**统一验证入口（2026-10-03新增）**：`./docs/verification/run-all.ps1` 一条命令跑完全部托管检查，并先做脚本卫生自检（每个受维护`.ps1`必须有UTF-8 BOM且能被解析）。它逐项打印通过数与退出码，汇总通过/失败/卫生问题/耗时，任一问题即输出`RESULT: FAIL`并返回退出码1；加`-Build`会先执行`build.ps1`。新增或修改harness后直接跑它，不要再用临时循环统计——本机曾因临时正则写成`^PASS:`而漏掉使用`PASS `写法的三个harness，把15/19/11项误报为0。报告检查数一律以该脚本的汇总行为准，每个harness在独立进程中运行、以退出码为唯一权威判据。
+**统一验证入口（2026-10-03新增）**：`./docs/verification/run-all.ps1` 一条命令跑完全部托管检查，并先做两项自检——脚本卫生（每个受维护`.ps1`必须有UTF-8 BOM且能被解析）与工程一致性（csproj登记的源码、磁盘源码、手册“代码导航”表三者必须相同）。它逐项打印通过数与退出码，汇总通过/失败/卫生问题/一致性问题/耗时，任一问题即输出`RESULT: FAIL`并返回退出码1；加`-Build`会先执行`build.ps1`（含部署）。新增或修改harness后直接跑它，不要再用临时循环统计——本机曾因临时正则写成`^PASS:`而漏掉使用`PASS `写法的三个harness，把15/19/11项误报为0。报告检查数一律以该脚本的汇总行为准，每个harness在独立进程中运行、以退出码为唯一权威判据。
 
 托管检查项按当轮计，报告时说明轮次与累计口径，不与历史项相加。验收结论与未验收边界只在[项目记忆](../PROJECT_MEMORY.md)维护，逐版证据只在[变更记录](CHANGELOG.md)；全部数字字段与单位、IME全流程、多分辨率、跨场景/存档和地图输入隔离尚未全量验收。编译、托管检查、磁盘同步、编辑器加载和游戏结果分别记录。
 
