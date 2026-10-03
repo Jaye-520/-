@@ -21,6 +21,12 @@ namespace MOD_YtxSQ1.UI
                 Close();
                 return;
             }
+            Open(null);
+        }
+
+        public void Open(string unitId)
+        {
+            if (IsOpen) return;
             ReleaseView();
             ownedWindow = null;
             var openTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -39,10 +45,10 @@ namespace MOD_YtxSQ1.UI
                 MOD_YtxSQ1.Services.CharacterEditSession.Shared.Clear();
                 ownedWindow.InitData("八荒秘录", "正在读取人物信息…", "合上秘录");
                 view = new BookView();
-                view.Build(ownedWindow, Close);
+                view.Build(ownedWindow, Close, unitId);
                 var viewMs = openTimer.ElapsedMilliseconds;
                 WindowInputScope.Attach(ownedWindow, view.SearchInput);
-                Debug.Log("[八荒秘录] 07.38打开总计=" + openTimer.ElapsedMilliseconds + "ms；原生窗口=" + nativeMs + "ms；视图初始化=" + (viewMs - nativeMs) + "ms；输入补丁=" + (openTimer.ElapsedMilliseconds - viewMs) + "ms");
+                Debug.Log("[八荒秘录] 07.39打开总计=" + openTimer.ElapsedMilliseconds + "ms；原生窗口=" + nativeMs + "ms；视图初始化=" + (viewMs - nativeMs) + "ms；输入补丁=" + (openTimer.ElapsedMilliseconds - viewMs) + "ms");
             }
             catch (Exception ex)
             {

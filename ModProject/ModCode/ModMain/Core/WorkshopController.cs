@@ -12,6 +12,15 @@ namespace MOD_YtxSQ1.Core
         private readonly WorkshopWindow window = new WorkshopWindow();
         private float nextIdleCheck;
 
+        internal void OpenFromEntrance(string unitId)
+        {
+            if (g.isDestroy || g.ui == null || g.world == null || g.world.isDestroy || !g.world.isIntoWorld) return;
+            var map = g.ui.GetUI(UIType.MapMain);
+            if (map == null || !map.gameObject.activeInHierarchy) return;
+            window.RefreshOwnership();
+            window.Open(unitId);
+        }
+
         public void Update()
         {
             CharacterSave.Poll();

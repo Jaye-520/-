@@ -1,6 +1,6 @@
 # 工程手册
 
-更新：2026-10-03（07.38阶段收尾）。仅维护实际结构、可执行流程和关键经验；当前状态见[项目记忆](../PROJECT_MEMORY.md)，历史证据见[变更记录](CHANGELOG.md)。
+更新：2026-10-03（07.39双入口）。仅维护实际结构、可执行流程和关键经验；当前状态见[项目记忆](../PROJECT_MEMORY.md)，历史证据见[变更记录](CHANGELOG.md)。
 
 ## 代码导航
 
@@ -10,6 +10,7 @@
 | --- | --- |
 | ModMain.cs | 初始化、帧计时器、重复释放和异常熔断 |
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
+| UI/WorkshopEntrances.cs | 原生主界面/NPC玉简挂载、定位、点击上下文核对、独立于内容熔断的资源生命周期 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
 | UI/BookView.cs | 七项导航布局、普通搜索、名单、角色属性、立绘和固定署名 |
 | UI/WindowInputScope.cs | 本视图登记输入的焦点保护、Text到Caret坐标转换、有限诊断与补丁释放 |
@@ -119,6 +120,14 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 PaperSkin.Acquire在主线程懒创建唯一四纹理缓存（纸、刷、山水、标题）；BookView只借用，Dispose不销毁共享纹理。ModMain.Destroy先释放控制器/窗口，再ClearCache；不放人物/世界对象、不开后台Unity线程。生成逐像素数学用System.Math，避免Mathf原生包装重复往返。`run-paper-skin.ps1`编译真实实现、嵌入实际PNG，验证固定数量、重复获取、释放/重建、部分失败及重试；图像解码是替身，不测GPU或Unity原生泄漏。窗口/人物重建规则保持，现有逐阶段日志用来验证冷/热打开收益。
 
+### 07.39入口约定
+
+- 定位依据为本机UIMapMain.uiPlayerInfo.textSPValue右边中点+40单位、UINPCInfo.uiUnitInfo.imgHeresyBg下边中点-40单位，图标56单位；使用reference.lossyScale/root.lossyScale同步大小及间距。GetWorldCorners后InverseTransformPoint，不用IL2CPP Bounds跨包装路径。原生面板首次可见最多半秒挂载，入口异常3秒重试；不逐帧遍历UI树。
+- 两入口挂在各自UIBase根下，不改原生按钮回调/导航或关闭NPC。NPC点击实时读unitID，仅将托管ID送入WorkshopWindow.Open→BookView.Build(initialUnitId)，第一次ReloadRoster先同步context，防止RefreshCharacter把目标重置为玩家。Build完成后名单滚至选中行。
+- 入口每半秒禁用被覆盖面板；点击再次核对topUI、窗口所有权、world与context。目标已死/找不到时拒绝，不将空ID传为玩家。单窗口已开不新建或切换对象，不清掉正在编辑的草稿。
+- WorkshopEntrances由ModMain持有，与WorkshopController解耦。内容熔断释放控制器/纸墨，保留玉简点击及纹理；点击重建后只打开，不重放修改。显式Destroy解绑入口并停止timer，分别释放控制器/纸墨。入口解绑、隐藏、Destroy各自隔离异常。
+- Art/EntranceJade-v1.png生成原图为1254平方，透明PNG，嵌入逻辑名MOD_YtxSQ1.Art.EntranceJade.png；ImageConversion.LoadImage只读上传，失败释放临时纹理。共用一张入口纹理，不为每面板重复解码。图标不在ModAssets。
+- run-entrances.ps1编译真实入口类；15项仅测托管窗口/矩形模型及点击门禁，不证明IL2CPP或CanvasScaler。结合run-lifecycle、run-controller-idle及run-book-layout核对跨层调用。实际位置错误先收集reference/root角点与缩放，不按截图分辨率硬编码。
 ### 07.35异常释放
 
 原生窗口创建/初始化须与视图/补丁安装共同在局部异常边界内，恢复前确认共享UI所有权，回退失败只关闭自己窗口。清理先拆持有引用，各原生步骤单独捕获；一个输入/立绘失败不能跳过纹理及原控件恢复。输入endingEditor由finally复位。生命周期托管检查含30次重复开关与OpenUI/null/InitData/回退/Attach故障；布局检查对四画布真实BookView注入输入停用错误，观察注销、Destroy和后续资源释放。替身Destroy从父Children移除但不清parent，断言遵守替身模型，不以它证明Unity销毁时序或内存无泄漏。

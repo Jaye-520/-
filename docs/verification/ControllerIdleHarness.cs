@@ -39,6 +39,8 @@ namespace MOD_YtxSQ1.UI {
         internal void RefreshOwnership() { Checks++; }
         internal void RefreshCharacter() { Refreshes++; }
         internal void Toggle() { Toggles++; IsOpen = !IsOpen; }
+        internal string OpenId;
+        internal void Open(string id) { OpenId = id; IsOpen = true; }
         internal void Close() { Closes++; IsOpen = false; }
     }
 }
@@ -72,6 +74,11 @@ internal static class ControllerIdleHarness {
         Check(CharacterSave.Polls-polls == 4*60*60*60, "four simulated hours retain save completion polling");
         UnityEngine.Input.Pressed = true; controller.Update(); UnityEngine.Input.Pressed = false;
         Check(window.IsOpen && window.Toggles == 1, "F8 opens immediately after four simulated hours idle");
+        controller.Dispose();
+        g.ui.Top = new object(); controller = new WorkshopController(); window = WorkshopWindow.Last;
+        controller.OpenFromEntrance("npc-panel"); Check(window.IsOpen && window.OpenId == "npc-panel", "authorized NPC entrance opens above underlying NPC panel");
+        window.Close(); g.world.isIntoWorld = false; controller.OpenFromEntrance("npc-panel"); Check(!window.IsOpen, "entrance rejects exited world");
+        g.world.isIntoWorld = true; g.ui.Map.gameObject.activeInHierarchy = false; controller.OpenFromEntrance(null); Check(!window.IsOpen, "entrance rejects unsupported scene");
         controller.Dispose();
         Console.WriteLine("TOTAL: " + passed);
     }

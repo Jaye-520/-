@@ -763,6 +763,14 @@ internal static class BookLayoutHarness
             Check(!faultEditor.transform.parent.Children.Contains(faultEditor.transform) && WindowInputScope.Registered.Count==0 && !(bool)typeof(BookView).GetField("endingEditor",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(bookView),"failed input deactivation still destroys editor and releases registration at "+sizes[s][0]);
             bookView.Dispose();Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍") && original.enabled && ModelRenderTexture.Active==0 && UnityEngine.Texture2D.LiveProcedural==0 && originalButton.gameObject.activeSelf && originalButton.interactable && !inactiveButton.gameObject.activeSelf,"dispose restores native controls, releases portrait and close texture, and is repeatable");
         }
+        var directWindow = new UITextInfoLong(); var directView = new BookView();
+        directView.Build(directWindow, () => {}, "npc299");
+        var directTexts = directWindow.GetComponentsInChildren<UnityEngine.UI.Text>(true);
+        Check(directTexts.Any(t => t.text == "修士299") && directTexts.Any(t => t.text == "599"), "NPC entrance initial build reads requested NPC name and attack");
+        Check((string)typeof(BookView).GetField("selectedUnitId", System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(directView) == "npc299", "NPC initial selection is preserved through first context sync");
+        var directBook = Walk(directWindow.transform).First(t => t.gameObject.name == "BHML_秘录外框");
+        Check(Walk(directBook).Any(t => t.gameObject.name.StartsWith("BHML_修士行") && t.GetComponentInChildren<UnityEngine.UI.Text>() != null && t.GetComponentInChildren<UnityEngine.UI.Text>().text == "修士299"), "initial NPC selection scrolls selected row into view");
+        directView.Dispose();
         Console.WriteLine("BookView geometry, page binding and GDI previews complete. Not a game screenshot.");
     }
 }

@@ -67,9 +67,20 @@ namespace MOD_YtxSQ1.UI
         public static bool ThrowBuild;
         public static bool ThrowDispose;
         public static int Disposals;
-        public void Build(UITextInfoLong window, Action close) { if (ThrowBuild) throw new Exception("build failure"); }
+        public static string InitialId;
+        public void Build(UITextInfoLong window, Action close, string initialUnitId = null) { InitialId = initialUnitId; if (ThrowBuild) throw new Exception("build failure"); }
         public void RefreshCharacter(bool force = false) { }
         public void Dispose() { Disposals++; if (ThrowDispose) throw new Exception("dispose failure"); }
+    }
+    internal sealed class WorkshopEntrances : IDisposable
+    {
+        internal static WorkshopEntrances Last;
+        internal Action<string> Open;
+        internal int Updates;
+        internal bool Disposed;
+        internal WorkshopEntrances(Action<string> open) { Last = this; Open = open; }
+        internal void Update() { Updates++; }
+        public void Dispose() { Disposed = true; }
     }
 }
 namespace MOD_YtxSQ1.Services { internal class CharacterEditSession { internal static CharacterEditSession Shared=new CharacterEditSession(); internal int Count; internal void Clear(){Count=0;} } }
@@ -80,6 +91,8 @@ namespace MOD_YtxSQ1.Core
         public static bool ThrowUpdate;
         public static bool ThrowDispose;
         public static int Disposals;
+        public static string OpenId;
+        public void OpenFromEntrance(string id) { OpenId = id; }
         public void Update() { if (ThrowUpdate) throw new Exception("update failure"); }
         public void Dispose() { Disposals++; if (ThrowDispose) throw new Exception("controller dispose failure"); }
     }
@@ -106,6 +119,8 @@ internal static class LifecycleHarness
     public static void Main()
     {
         Reset(); var cycles = new WorkshopWindow();
+        cycles.Open("npc-current"); Check(BookView.InitialId == "npc-current", "NPC ID reaches initial view build without player fallback");
+        cycles.Open("other"); Check(BookView.InitialId == "npc-current", "second click does not replace an already open session"); cycles.Close(); Reset();
         for (int i = 0; i < 30; i++) { cycles.Toggle(); if (!cycles.IsOpen || !WindowInputScope.Active) throw new Exception("open cycle " + i); cycles.Close(); if (cycles.IsOpen || WindowInputScope.Active) throw new Exception("close cycle " + i); }
         Check(g.ui.Closes == 30 && BookView.Disposals == 30, "30 open-close cycles release each view and input patch");
 
@@ -166,6 +181,12 @@ internal static class LifecycleHarness
         MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = false; UnityEngine.Input.Pressed = true; g.timer.Callback(); UnityEngine.Input.Pressed = false;
         Check(!(bool)typeof(ModMain).GetField("updateFailed", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(mod), "F8 recovers after a transient update error");
         mod.Destroy(); Check(g.timer.Stops == 1 && MOD_YtxSQ1.Core.WorkshopController.Disposals == 2, "recovered controller and retained timer release on unload");
+        Reset(); mod = new ModMain(); mod.Init(); MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = true; g.timer.Callback();
+        var retainedEntrance = WorkshopEntrances.Last; g.timer.Callback();
+        Check(!retainedEntrance.Disposed && retainedEntrance.Updates == 2, "entrances survive content controller fault");
+        MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = false; retainedEntrance.Open("npc-retry");
+        Check(MOD_YtxSQ1.Core.WorkshopController.OpenId == "npc-retry" && !(bool)typeof(ModMain).GetField("updateFailed", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(mod), "NPC entrance recovers faulted content with selected ID");
+        mod.Destroy(); Check(retainedEntrance.Disposed, "unload releases retained entrances");
         Console.WriteLine("TOTAL: " + passes);
     }
 }

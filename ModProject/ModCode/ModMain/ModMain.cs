@@ -9,16 +9,18 @@ namespace MOD_YtxSQ1
         private TimerCoroutine updateTimer;
         private WorkshopController controller;
         private bool updateFailed;
+        private MOD_YtxSQ1.UI.WorkshopEntrances entrances;
 
         public void Init()
         {
             Destroy();
             updateFailed = false;
             controller = new WorkshopController();
+            entrances = new MOD_YtxSQ1.UI.WorkshopEntrances(OpenFromEntrance);
             try
             {
                 updateTimer = g.timer.Frame(new Action(OnUpdate), 1, true);
-                Debug.Log("[八荒秘录] 界面样板已初始化；大地图按 F8 打开秘录。");
+                Debug.Log("[八荒秘录] 07.39已初始化；点击主界面或NPC面板玉简打开秘录，F8备用。");
             }
             catch { Destroy(); throw; }
         }
@@ -26,6 +28,10 @@ namespace MOD_YtxSQ1
         public void Destroy()
         {
             updateFailed = false;
+            var oldEntrances = entrances; entrances = null;
+            if (oldEntrances != null)
+                try { oldEntrances.Dispose(); }
+                catch (Exception ex) { Debug.LogWarning("[八荒秘录] 释放入口失败：" + ex.Message); }
             if (updateTimer != null)
             {
                 try { g.timer.Stop(updateTimer); }
@@ -44,6 +50,7 @@ namespace MOD_YtxSQ1
 
         private void OnUpdate()
         {
+            if (entrances != null) entrances.Update();
             if (updateFailed && !Input.GetKeyDown(KeyCode.F8)) return;
             if (controller == null && !updateFailed) return;
             try
@@ -67,6 +74,17 @@ namespace MOD_YtxSQ1
                     catch (Exception disposeError) { Debug.LogWarning("[八荒秘录] 异常控制器释放失败：" + disposeError.Message); }
                 MOD_YtxSQ1.UI.PaperSkin.ClearCache();
             }
+        }
+
+        private void OpenFromEntrance(string unitId)
+        {
+            if (controller == null)
+            {
+                controller = new WorkshopController();
+                updateFailed = false;
+                Debug.Log("[八荒秘录] 玉简入口重建控制器；不会重放人物修改。");
+            }
+            controller.OpenFromEntrance(unitId);
         }
     }
 }
