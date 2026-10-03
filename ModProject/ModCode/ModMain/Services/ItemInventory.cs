@@ -31,7 +31,7 @@ namespace MOD_YtxSQ1.Services
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                if (item == null || item.id <= 0 || item.hide == 1 || !seen.Add(item.id)) continue;
+                if (item == null || item.id <= 0 || (item.hide == 1 && item.id != 10001) || !seen.Add(item.id)) continue;
                 result.Add(new ItemEntry { Id = item.id, Name = LocalText(item.name, "道具 #" + item.id),
                     Description = LocalText(item.desc, "暂无介绍"), Stackable = item.isOverlay == 1 });
             }
@@ -82,9 +82,9 @@ namespace MOD_YtxSQ1.Services
         {
             var unit = RequireTarget(context, unitId);
             var conf = g.conf.itemProps.GetItem(id);
-            if (conf == null || conf.hide == 1) throw new InvalidOperationException("道具配置不可发放");
-            if (amount < 1 || amount > 9999 || (conf.isOverlay != 1 && amount != 1))
-                throw new InvalidOperationException(conf.isOverlay == 1 ? "请输入1–9999的数量" : "不可叠加道具每次发放1个");
+            if (conf == null || (conf.hide == 1 && id != 10001)) throw new InvalidOperationException("道具配置不可发放");
+            if (amount < 1 || (conf.isOverlay != 1 && amount != 1))
+                throw new InvalidOperationException(conf.isOverlay == 1 ? "请输入正整数数量（最大2147483647）" : "不可叠加道具每次发放1个");
             Add(unit, id, amount);
             return LocalText(conf.name, "道具 #" + id) + "已增加" + amount + "个；请点击保存";
         }
@@ -96,7 +96,9 @@ namespace MOD_YtxSQ1.Services
             if (conf != null && conf.hide == 0 && (conf.isOverlay != 1 || bag.GetProps(id).Count == 0)
                 && bag.GetGridCurNum(true) >= bag.GetGridMaxNum())
                 throw new InvalidOperationException("背包已满，无法新增这一项；请先腾出格子");
-            var expected = checked(bag.GetPropsNum(id) + amount);
+            var current = bag.GetPropsNum(id);
+            if (current < 0 || amount > int.MaxValue - current) throw new InvalidOperationException("增加后的总数量超过游戏整数范围（2147483647），未添加");
+            var expected = current + amount;
             // 新建唯一ID、叠加、原生子类回调均由工厂维护；失败不假装复杂回调可回滚。
             CharacterSave.Sync(CharacterReader.ContextKey());
             try
@@ -133,8 +135,8 @@ namespace MOD_YtxSQ1.Services
         }
         internal static string IncreaseCount(string context, string unitId, InventoryItem expected, int amount)
         {
-            if (expected == null || amount < 1 || amount > 9999 || expected.Count < 1 || expected.Count > 9999 - amount)
-                throw new InvalidOperationException("追加后的总数量必须在1–9999之间");
+            if (expected == null || amount < 1 || expected.Count < 1 || expected.Count > int.MaxValue - amount)
+                throw new InvalidOperationException("追加后的总数量必须在1–2147483647之间");
             // 同一唯一ID累加，仍通过SetCount检查人物、存档上下文和数量快照。
             return SetCount(context, unitId, expected, expected.Count + amount);
         }
@@ -143,8 +145,11 @@ namespace MOD_YtxSQ1.Services
             var unit = RequireTarget(context, unitId); var item = RequireItem(unit, expected);
             if (item.propsItem == null || item.propsItem.isOverlay != 1) throw new InvalidOperationException("不可叠加物品不能修改数量");
             if (count == item.propsCount) return "数量未改变";
-            if (count < 1 || count > 9999) throw new InvalidOperationException("请输入1–9999的数量；清除物品请使用移除操作");
-            var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
+            if (count < 1) throw new InvalidOperationException("请输入正整数数量；清除物品请使用移除操作");
+            var bag = unit.data.unitData.propData;
+            var total = (long)bag.GetPropsNum(item.propsID) - item.propsCount + count;
+            if (total < 1 || total > int.MaxValue) throw new InvalidOperationException("同类物品总数量超过游戏整数范围（2147483647），未修改");
+            CharacterSave.Sync(context);
             try
             {
                 // 原生AddProps/DelProps也使用此setter更新values[2]并失效哈希缓存。

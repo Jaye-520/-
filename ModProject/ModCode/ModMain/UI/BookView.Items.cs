@@ -317,6 +317,8 @@ namespace MOD_YtxSQ1.UI
             Label(panel, entry.Name, 16, 54, panel.sizeDelta.x - 32, 30, 19, Ink);
             itemAmount = CreateSearchInput(panel, "发放数量", 16, 98, panel.sizeDelta.x - 32, 36, "发放数量", _ => { });
             itemAmount.SetTextWithoutNotify("1"); itemAmount.readOnly = !entry.Stackable;
+            itemDialogStatus.text = entry.Id == 10001 ? "输入新增灵石数量 · 最大总量2147483647"
+                : entry.Stackable ? "输入新增数量 · 最大总量2147483647" : "不可叠加物品每次添加1个";
             MakeButton(panel, "确认添加道具", 16, 176, 120, 36, "添加", () =>
             {
                 if (!string.IsNullOrEmpty(Input.compositionString)) return;

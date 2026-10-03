@@ -587,7 +587,8 @@ internal static class BookLayoutHarness
         var future=new ConfItemPropsItem{id=90003,isOverlay=1,level=6,name="越阶药"};
         var unique=new ConfItemPropsItem{id=90004,name="任务信物"};
         var hidden=new ConfItemPropsItem{id=10001,isOverlay=1,hide=1,name="灵石"};
-        g.conf.itemProps._allConfList.Clear();g.conf.itemProps._allConfList.AddRange(new[]{hp,mp,future,unique,hidden});
+        var otherHidden=new ConfItemPropsItem{id=10002,isOverlay=1,hide=1,name="其他隐藏资源"};
+        g.conf.itemProps._allConfList.Clear();g.conf.itemProps._allConfList.AddRange(new[]{hp,mp,future,unique,hidden,otherHidden});
         g.conf.itemPill._allConfList.Clear();
         g.conf.itemPill._allConfList.Add(new ConfItemPillItem{id=hp.id,grade=1,Effects=new Dictionary<string,int>{{"hp",300}}});
         g.conf.itemPill._allConfList.Add(new ConfItemPillItem{id=mp.id,grade=2,Effects=new Dictionary<string,int>{{"mp",200}}});
@@ -597,7 +598,12 @@ internal static class BookLayoutHarness
         bag.allProps.Add(new DataProps.PropsData{propsID=hidden.id,propsItem=hidden,soleID="npc-money",propsCount=800});
         bag.allProps.Add(new DataProps.PropsData{propsID=unique.id,propsItem=unique,soleID="npc-equipped",propsCount=1,Equipped=true});
         view.RefreshCharacter(true);
-        Check(ItemInventory.Read(id).Count==110 && ItemInventory.Catalog().Count==4,"native visible inventory and catalog exclude hidden resources");
+        Check(ItemInventory.Read(id).Count==110 && ItemInventory.Catalog().Count==5 && ItemInventory.Catalog().Any(x=>x.Id==10001),"native visible inventory preserves hidden resources while catalog exposes spirit stones only");
+        ItemInventory.Give(CharacterReader.ContextKey(),id,hidden.id,10000000);
+        Check(bag.GetPropsNum(hidden.id)==10000800 && ItemInventory.Read(id).Count==110,"large spirit stone grant uses native hidden resource without consuming visible slot");
+        var moneyAdds=bag.AddCalls;
+        Check(Rejected(()=>ItemInventory.Give(CharacterReader.ContextKey(),id,hidden.id,int.MaxValue)) && bag.AddCalls==moneyAdds && bag.GetPropsNum(hidden.id)==10000800,"spirit stone overflow rejected before native write");
+        bag.GetProps("npc-money").propsCount=800;bag.AddCalls=0;
         Check(Walk(book).Count(t=>t.gameObject.name=="native item icon")<110,"inventory creates only visible native icon pool");
         var shared=Walk(book).First(t=>t.gameObject.name=="BHML_对象栏");
         foreach(var tab in new[]{2,3,0,1}) { ClickNamed(book,"卷目"+tab);Check(Selected(view)==id && Walk(book).First(t=>t.gameObject.name=="BHML_对象栏")==shared,"tab "+tab+" retains shared NPC target and panel"); }
@@ -630,10 +636,10 @@ internal static class BookLayoutHarness
         var rejectedAmount=Walk(book).First(t=>t.gameObject.name=="BHML_发放数量").GetComponentInChildren<UnityEngine.UI.InputField>();
         rejectedAmount.text="0";var rejectedAdds=bag.AddCalls;ClickNamed(book,"确认添加道具");
         Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩") && rejectedAmount.text=="0" && bag.AddCalls==rejectedAdds,"no-write grant rejection preserves modal and typed amount");
-        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("请输入1–9999")),"grant rejection is readable inside modal");ClickNamed(book,"取消物品操作");
+        Check(Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text.Contains("请输入正整数")),"grant rejection is readable inside modal");ClickNamed(book,"取消物品操作");
         var beforePlayer=player.data.unitData.propData.GetPropsNum(hp.id);var before=bag.GetPropsNum(hp.id);
-        ClickNamed(book,"物品条目");Walk(book).First(t=>t.gameObject.name=="BHML_发放数量").GetComponentInChildren<UnityEngine.UI.InputField>().text="3";ClickNamed(book,"确认添加道具");
-        Check(bag.GetPropsNum(hp.id)==before+3 && player.data.unitData.propData.GetPropsNum(hp.id)==beforePlayer,"grant dialog changes selected NPC only");
+        ClickNamed(book,"物品条目");Walk(book).First(t=>t.gameObject.name=="BHML_发放数量").GetComponentInChildren<UnityEngine.UI.InputField>().text="100000";ClickNamed(book,"确认添加道具");
+        Check(bag.GetPropsNum(hp.id)==before+100000 && player.data.unitData.propData.GetPropsNum(hp.id)==beforePlayer,"large grant dialog changes selected NPC only");
         Check(ItemInventory.BestMedicine(npc,"hp")==hp.id && ItemInventory.BestMedicine(npc,"mp")==mp.id,"supply ranks actual effects and excludes higher realm medicine");
         before=bag.GetPropsNum(hp.id);var beforeMp=bag.GetPropsNum(mp.id);ClickNamed(book,"补给");
         Check(bag.GetPropsNum(hp.id)==before+20 && bag.GetPropsNum(mp.id)==beforeMp+20,"supply adds exactly twenty of each medicine to NPC");
@@ -642,8 +648,8 @@ internal static class BookLayoutHarness
         var granted=bag.allProps.Last(p=>p.propsID==unique.id);
         Check(!string.IsNullOrEmpty(granted.soleID) && granted.soleID!="npc-equipped","nonstackable grant generates its own identity without changing equipped item");
         Check(Rejected(()=>ItemInventory.Give(context,"missing-npc",hp.id,1)) && Rejected(()=>ItemInventory.Give("old-world",id,hp.id,1)),"missing target and stale context reject without fallback");
-        Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,0)) && Rejected(()=>ItemInventory.Give(context,id,hp.id,10000)) && Rejected(()=>ItemInventory.Give(context,id,unique.id,2)),"invalid counts and nonstackable bulk grant reject before writing");
-        Check(Rejected(()=>ItemInventory.Give(context,id,hidden.id,1)),"hidden resources cannot be granted through catalog");
+        Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,0)) && Rejected(()=>ItemInventory.Give(context,id,hp.id,-1)) && Rejected(()=>ItemInventory.Give(context,id,unique.id,2)),"invalid counts and nonstackable bulk grant reject before writing");
+        Check(Rejected(()=>ItemInventory.Give(context,id,otherHidden.id,1)) && !ItemInventory.Catalog().Any(x=>x.Id==otherHidden.id),"other hidden resources remain excluded from catalog and grant");
         var capacityAdds=bag.AddCalls; var pendingBeforeFull=CharacterSave.Pending;
         bag.gridMaxNum=bag.GetGridCurNum(true);
         string capacityMessage="";try{ItemInventory.Give(context,id,unique.id,1);}catch(Exception ex){capacityMessage=ex.Message;}
@@ -682,8 +688,19 @@ internal static class BookLayoutHarness
         Check(storedItem.propsCount==7 && storedItem.ExtraData=="keep-quality-and-affixes" && otherStack.propsCount==otherCount && bag.allProps.Count==allBefore && bag.AddCalls==addsBefore && bag.DeleteCalls==deletesBefore,"quantity edit retains identity, extra values, other stacks and indexes without cloning or granting");
         Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,8)) && Rejected(()=>ItemInventory.Remove(context,id,firstItem)),"stale quantity snapshot rejects editing and deletion");
         firstItem=ItemInventory.Read(id).First();
-        Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,0)) && Rejected(()=>ItemInventory.SetCount(context,id,firstItem,10000)) && storedItem.propsCount==7,"quantity edit rejects zero and excessive counts without implicit deletion");
+        Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,0)) && Rejected(()=>ItemInventory.SetCount(context,id,firstItem,-1)) && storedItem.propsCount==7,"quantity edit rejects zero and negative counts without implicit deletion");
         Check(ItemInventory.SetCount(context,id,firstItem,7)=="数量未改变" && storedItem.propsCount==7,"unchanged quantity is a no-op");
+        ItemInventory.SetCount(context,id,firstItem,1000000);
+        firstItem=ItemInventory.Read(id).First(p=>p.SoleId==storedItem.soleID);
+        ItemInventory.IncreaseCount(context,id,firstItem,1000000);
+        Check(storedItem.propsCount==2000000 && storedItem.ExtraData=="keep-quality-and-affixes" && otherStack.propsCount==otherCount,"custom set and increase exceed 9999 while preserving independent stack identity");
+        firstItem=ItemInventory.Read(id).First(p=>p.SoleId==storedItem.soleID);
+        Check(Rejected(()=>ItemInventory.SetCount(context,id,firstItem,int.MaxValue)) && storedItem.propsCount==2000000,"editing one stack cannot overflow aggregate count of same item");
+        var availableMaximum=int.MaxValue-(bag.GetPropsNum(firstItem.Id)-storedItem.propsCount);
+        ItemInventory.SetCount(context,id,firstItem,availableMaximum);
+        firstItem=ItemInventory.Read(id).First(p=>p.SoleId==storedItem.soleID);
+        Check(Rejected(()=>ItemInventory.IncreaseCount(context,id,firstItem,1)) && storedItem.propsCount==availableMaximum,"maximum aggregate native integer can be set but cannot overflow when increasing");
+        ItemInventory.SetCount(context,id,firstItem,7);firstItem=ItemInventory.Read(id).First(p=>p.SoleId==storedItem.soleID);
         var uniqueItem=ItemInventory.Read(id).First(p=>p.Id==unique.id);
         Check(Rejected(()=>ItemInventory.SetCount(context,id,uniqueItem,2)) && bag.GetProps(uniqueItem.SoleId).propsCount==1,"nonstackable item refuses quantity modification");
         Check(Rejected(()=>ItemInventory.Remove(context,id,new InventoryItem{SoleId="npc-money",Id=hidden.id,Count=800})) && Rejected(()=>ItemInventory.Remove(context,id,new InventoryItem{SoleId="npc-equipped",Id=unique.id,Count=1})),"single-item operations reject hidden resources and equipped records");

@@ -52,7 +52,7 @@ namespace MOD_YtxSQ1.UI
                 stackable ? "修改数量" : "不可叠加 · 数量固定", () => ConfirmItemCount(item, id, context));
             edit.interactable = stackable;
             var increase = MakeButton(panel, "增加背包数量", 12, 112, width - 24, 34, "增加数量", () => ConfirmItemCount(item, id, context, true));
-            increase.interactable = stackable && item.Count < 9999;
+            increase.interactable = stackable && item.Count < int.MaxValue;
             var remove = MakeButton(panel, "移除背包单项", 12, 154, width - 24, 34, "移除这一项", () => ConfirmRemoveItem(item, id, context));
             remove.GetComponentInChildren<Text>().color = new Color(.62f, .22f, .16f, 1);
         }
@@ -67,15 +67,15 @@ namespace MOD_YtxSQ1.UI
             string unusedId, unusedContext;
             var panel = ItemDialog((increase ? "增加" : "修改") + characterName.text + "的物品数量", out unusedId, out unusedContext);
             Label(panel, item.Name + " · 当前 " + item.Count, 16, 54, panel.sizeDelta.x - 32, 30, 18, Ink);
-            itemAmount = CreateSearchInput(panel, "背包数量", 16, 98, panel.sizeDelta.x - 32, 36, "1–9999", _ => { });
+            itemAmount = CreateSearchInput(panel, "背包数量", 16, 98, panel.sizeDelta.x - 32, 36, "正整数数量", _ => { });
             itemAmount.SetTextWithoutNotify(increase ? "1" : item.Count.ToString());
-            itemDialogStatus.text = increase ? "输入追加数量 · 最多增加" + (9999 - item.Count) : "输入修改后的总数量";
+            itemDialogStatus.text = increase ? "输入追加数量 · 最多增加" + (int.MaxValue - item.Count) : "输入修改后的总数量 · 最大2147483647";
             MakeButton(panel, "确认修改背包数量", panel.sizeDelta.x - 136, 176, 120, 36, "确定", () =>
             {
                 if (!string.IsNullOrEmpty(Input.compositionString) || !ItemTargetMatches(id, context)) return;
                 int count;
-                if (!int.TryParse(itemAmount.text, out count) || count < 1 || (increase ? count > 9999 - item.Count : count > 9999 && count != item.Count))
-                { SetItemStatus(increase ? "追加后的总数量不能超过9999" : "请输入1–9999的整数数量", true); return; }
+                if (!int.TryParse(itemAmount.text, out count) || count < 1 || (increase && count > int.MaxValue - item.Count))
+                { SetItemStatus(increase ? "追加后的总数量不能超过2147483647" : "请输入1–2147483647的整数数量", true); return; }
                 if (RunItemOperation(() => increase ? ItemInventory.IncreaseCount(context, id, item, count) : ItemInventory.SetCount(context, id, item, count))) CloseItemDialog();
             });
         }
