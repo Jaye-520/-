@@ -187,7 +187,7 @@ namespace MOD_YtxSQ1.UI
                 var slot = bagSlots[i]; var index = first + i;
                 slot.gameObject.SetActive(index < (long)bagItems.Count + bagFreeSlots && unit != null);
                 slot.anchoredPosition = new Vector2(index % bagColumns * BagPitch, -(index / bagColumns) * BagPitch);
-                var key = index < bagItems.Count ? bagOwner + ":" + bagItems[index].SoleId + ":" + bagItems[index].DataSignature : bagOwner + ":empty:" + index;
+                var key = index < bagItems.Count ? bagOwner + ":" + bagItems[index].SoleId + ":" + bagItems[index].DataSignature + ":hidden:" + bagItems[index].Hidden : bagOwner + ":empty:" + index;
                 key += slot.gameObject.activeSelf ? ":on" : ":off";
                 if (slot.gameObject.name == key) continue;
                 slot.gameObject.name = key;

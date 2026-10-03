@@ -608,6 +608,21 @@ internal static class BookLayoutHarness
         Check(firstResource.parent.gameObject.name.Contains("npc-money") && firstResource.parent.Children.Any(c=>c.gameObject.name=="BHML_隐藏资源格底"),"hidden resource sorts before normal native records on red resource cell");
         int resourceUsed,resourceTotal;ItemInventory.ReadCapacity(id,out resourceUsed,out resourceTotal);
         Check(resourceUsed==111 && resourceTotal==120 && ItemInventory.Read(id,false).Count==110,"resource display leaves native normal capacity and visible item collection unchanged");
+        var flagSaved=bag.allProps.ToArray();var flagResource=bag.GetProps("npc-money");
+        bag.allProps.Clear();bag.allProps.Add(flagResource);view.RefreshCharacter(true);
+        var flagBefore=ItemInventory.Fingerprint(ItemInventory.Read(id));
+        hidden.hide=0;bag.ShowOverride=new List<DataProps.PropsData>{flagResource};
+        typeof(BookView).GetMethod("RefreshBag",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(view,new object[]{false});
+        Check(flagBefore!=ItemInventory.Fingerprint(ItemInventory.Read(id)) && !Walk(book).Any(t=>t.gameObject.name=="BHML_隐藏资源格底"),"hidden-flag-only change invalidates fingerprint and resource cell cache");
+        hidden.hide=1;
+        Check(ItemInventory.Read(id,false).Count==0 && ItemInventory.Read(id).Single().Hidden,"stale native visible cache cannot leak newly hidden resource into clear snapshot");
+        typeof(BookView).GetMethod("RefreshBag",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(view,new object[]{false});
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_隐藏资源格底"),"flag restoration repaints red cell without quantity or identity change");
+        hidden.isOverlay=0;var flagSnapshot=ItemInventory.Read(id).Single();
+        var flagSlot=Walk(book).First(t=>t.gameObject.name=="native item icon").parent.GetComponent<UnityEngine.RectTransform>();
+        typeof(BookView).GetMethod("OpenItemMenu",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(view,new object[]{flagSlot,flagSnapshot});
+        Check(!Walk(book).First(t=>t.gameObject.name=="BHML_修改背包数量").GetComponent<UnityEngine.UI.Button>().interactable && Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="隐藏物品 · 数量固定"),"nonstackable hidden item does not claim editable quantity");
+        ClickNamed(book,"背包菜单外部");hidden.isOverlay=1;bag.ShowOverride=null;bag.allProps.Clear();bag.allProps.AddRange(flagSaved);view.RefreshCharacter(true);
         Check(Walk(book).Count(t=>t.gameObject.name=="native item icon")<110,"inventory creates only visible native icon pool");
         var shared=Walk(book).First(t=>t.gameObject.name=="BHML_对象栏");
         foreach(var tab in new[]{2,3,0,1}) { ClickNamed(book,"卷目"+tab);Check(Selected(view)==id && Walk(book).First(t=>t.gameObject.name=="BHML_对象栏")==shared,"tab "+tab+" retains shared NPC target and panel"); }

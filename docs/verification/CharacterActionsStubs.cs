@@ -17,7 +17,8 @@ public class DataWorld
 public partial class DataProps
 {
     public List<PropsData> allProps = new List<PropsData>();
-    public List<PropsData> _allShowProps { get { return allProps.Where(p=>p.propsCount>0 && (p.propsItem==null || p.propsItem.hide!=1) && !p.Equipped).ToList(); } }
+    public List<PropsData> ShowOverride;
+    public List<PropsData> _allShowProps { get { return ShowOverride ?? allProps.Where(p=>p.propsCount>0 && (p.propsItem==null || p.propsItem.hide!=1) && !p.Equipped).ToList(); } }
     public int gridMaxNum = 120;
     public int GetGridMaxNum() { return gridMaxNum; }
     public int GetGridCurNum(bool ignore) { return allProps.Count(p=>p.propsCount>0 && p.propsItem!=null && p.propsItem.hide==0); }

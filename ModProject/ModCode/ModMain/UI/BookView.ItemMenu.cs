@@ -54,7 +54,7 @@ namespace MOD_YtxSQ1.UI
             var increase = MakeButton(panel, "增加背包数量", 12, 112, width - 24, 34, "增加数量", () => ConfirmItemCount(item, id, context, true));
             increase.interactable = stackable && item.Count < int.MaxValue;
             var remove = MakeButton(panel, "移除背包单项", 12, 154, width - 24, 34, "移除这一项", () => ConfirmRemoveItem(item, id, context));
-            if (item.Hidden) { remove.interactable = false; remove.GetComponentInChildren<Text>().text = "隐藏资源 · 可改数量"; }
+            if (item.Hidden) { remove.interactable = false; remove.GetComponentInChildren<Text>().text = stackable ? "隐藏资源 · 可改数量" : "隐藏物品 · 数量固定"; }
             remove.GetComponentInChildren<Text>().color = new Color(.62f, .22f, .16f, 1);
         }
         private bool ItemTargetMatches(string id, string context)

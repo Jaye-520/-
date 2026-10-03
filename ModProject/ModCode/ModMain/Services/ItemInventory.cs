@@ -49,8 +49,10 @@ namespace MOD_YtxSQ1.Services
             {
                 var item = items[i];
                 if (item == null || item.propsCount <= 0) continue;
+                var hidden = item.propsItem != null && item.propsItem.hide == 1;
+                if (hidden && !includeHidden) continue;
                 var info = item.propsInfoBase;
-                result.Add(new InventoryItem { SoleId = item.soleID, Id = item.propsID, Count = item.propsCount,
+                result.Add(new InventoryItem { SoleId = item.soleID, Id = item.propsID, Count = item.propsCount, Hidden = hidden,
                     DataSignature = item.soleIDHashData, Name = info == null ? "道具 #" + item.propsID : info.name });
             }
             if (includeHidden)
@@ -75,7 +77,7 @@ namespace MOD_YtxSQ1.Services
         {
             var sorted = new List<InventoryItem>(items); if (!ordered) sorted.Sort((a, b) => string.CompareOrdinal(a.SoleId, b.SoleId));
             var text = new StringBuilder();
-            foreach (var item in sorted) text.Append(item.SoleId.Length).Append(':').Append(item.SoleId).Append(':').Append(item.Id).Append(':').Append(item.Count).Append(':').Append((item.DataSignature ?? "").Length).Append(':').Append(item.DataSignature).Append(';');
+            foreach (var item in sorted) text.Append(item.SoleId.Length).Append(':').Append(item.SoleId).Append(':').Append(item.Id).Append(':').Append(item.Count).Append(':').Append((item.DataSignature ?? "").Length).Append(':').Append(item.DataSignature).Append(':').Append(item.Hidden).Append(';');
             return text.ToString();
         }
         internal static WorldUnitBase RequireTarget(string context, string unitId)
@@ -135,7 +137,7 @@ namespace MOD_YtxSQ1.Services
             var bag = unit.data.unitData.propData; var item = bag.GetProps(expected.SoleId);
             if (item == null || item.soleID != expected.SoleId || item.propsID != expected.Id || item.propsCount != expected.Count || string.IsNullOrEmpty(expected.DataSignature) || item.soleIDHashData != expected.DataSignature)
                 throw new InvalidOperationException("这项物品已经变化，请重新选择");
-            // 不允许菜单写入已装备、隐藏或不再显示的记录，即使持有旧快照。
+            // 数量修改允许持有的隐藏资源；删除限定原生可见记录，仍排除装备和失效快照。
             bool found = Read(unit.data.unitData.unitID, includeHidden).Exists(value => value.SoleId == expected.SoleId);
             if (!found) throw new InvalidOperationException("这项物品已离开可见背包，请重新选择");
             return item;

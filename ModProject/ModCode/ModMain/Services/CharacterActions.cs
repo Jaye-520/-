@@ -107,6 +107,17 @@ namespace MOD_YtxSQ1.Services
                 if (item != null && item.propsItem != null && item.propsItem.isOverlay == 1 && item.propsCount > 0 && item.propsCount < 9999) changes.Add(item);
             }
             var old = new List<int>(); foreach (var item in changes) old.Add(item.propsCount);
+            // 自定义数量可超过9999；补小堆之前核对同类总量，避免原生整数统计溢出。
+            var changedIds = new HashSet<int>(); foreach (var item in changes) changedIds.Add(item.propsID);
+            var totals = new Dictionary<int, long>();
+            foreach (var item in bag.allProps)
+            {
+                if (item == null || item.propsCount <= 0 || !changedIds.Contains(item.propsID)) continue;
+                long total; totals.TryGetValue(item.propsID, out total);
+                totals[item.propsID] = total + (item.propsItem != null && item.propsItem.isOverlay == 1 && item.propsCount < 9999 ? 9999 : item.propsCount);
+            }
+            foreach (var total in totals.Values)
+                if (total > int.MaxValue) throw new InvalidOperationException("补满后同类物品总数量超过2147483647，未修改；请先调低已有大数量");
             int applied = 0;
             try
             {

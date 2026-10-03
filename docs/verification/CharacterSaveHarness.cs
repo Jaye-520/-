@@ -84,6 +84,15 @@ internal static class CharacterSaveHarness
         bag.allProps.Add(new DataProps.PropsData{propsCount=1,propsItem=new ConfItemPropsItem{isOverlay=0}});
         bag.allProps.Add(new DataProps.PropsData{propsCount=20000,propsItem=new ConfItemPropsItem{isOverlay=1}});
         Check(CharacterActions.Execute("player","满材料",null,out result)&&bag.allProps[0].propsCount==9999&&bag.allProps[1].propsCount==1&&bag.allProps[2].propsCount==20000,"full bag tops up stackable counts, preserving unique and larger existing stacks");
+        var materialSaved=bag.allProps.ToArray();bag.allProps.Clear();
+        bag.allProps.Add(new DataProps.PropsData{propsID=11,propsCount=int.MaxValue-1,propsItem=new ConfItemPropsItem{isOverlay=1}});
+        bag.allProps.Add(new DataProps.PropsData{propsID=11,propsCount=1,propsItem=new ConfItemPropsItem{isOverlay=1}});
+        bag.allProps.Add(new DataProps.PropsData{propsID=12,propsCount=2,propsItem=new ConfItemPropsItem{isOverlay=1}});
+        var materialPending=CharacterSave.Pending;
+        Check(!CharacterActions.Execute("player","满材料",null,out result) && bag.allProps[0].propsCount==int.MaxValue-1 && bag.allProps[1].propsCount==1 && bag.allProps[2].propsCount==2 && CharacterSave.Pending==materialPending,"full materials rejects aggregate overflow before changing any stack or dirty marker");
+        bag.allProps[0].propsCount=int.MaxValue-9999;
+        Check(CharacterActions.Execute("player","满材料",null,out result) && bag.allProps[0].propsCount==int.MaxValue-9999 && bag.allProps[1].propsCount==9999 && bag.allProps[2].propsCount==9999,"full materials accepts exact aggregate integer boundary and preserves larger quantity");
+        bag.allProps.Clear();bag.allProps.AddRange(materialSaved);
         var npc=new WorldUnitBase();npc.data.unitData.unitID="npc";npc.data.unitData.Point=new UnityEngine.Vector2Int(20,30);g.world.unit.Npcs.Add(npc);
         SceneType.map=new SceneMap();
         g.world.playerUnit.data.unitData.Point=new UnityEngine.Vector2Int(1,2);
