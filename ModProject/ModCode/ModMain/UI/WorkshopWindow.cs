@@ -26,7 +26,7 @@ namespace MOD_YtxSQ1.UI
 
         public void Open(string unitId)
         {
-            if (IsOpen) return;
+            if (IsOpen) { if (view != null) view.FocusTarget(unitId); return; }
             ReleaseView();
             ownedWindow = null;
             var openTimer = System.Diagnostics.Stopwatch.StartNew();

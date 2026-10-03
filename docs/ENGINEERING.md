@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.48 ｜ **最后更新**：2026-10-03
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.49 ｜ **最后更新**：2026-10-03
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -27,7 +27,7 @@
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
 | UI/WorkshopEntrances.cs | 原生双入口挂载、单值坐标转换、出厂位置常量、点击核对、独立于内容熔断的生命周期 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
-| UI/BookView.cs | 七项导航布局、普通搜索、名单、角色属性、立绘和固定署名 |
+| UI/BookView.cs | 七项导航、四页共享人物与对象栏、名单/搜索/立绘及属性布局 |
 | UI/WindowInputScope.cs | 本视图登记输入的焦点保护、Text到Caret坐标转换、有限诊断与补丁释放 |
 | UI/PaperSkin.cs | 宣纸、墨刷和山水纹理加载与释放 |
 | Services/CharacterRoster.cs | 名单查询、存活有效过滤、ID去重 |
@@ -40,7 +40,9 @@
 | Services/CharacterSave.cs | 全批写入预检、可回退字段适配、原生保存和主线程回调收取 |
 | UI/BookView.FateLibrary.cs | 全库检索、多选与可见按钮池；三处气运共用自绘品阶样式 |
 | UI/BookView.Actions.cs | 七个快捷按钮、六个叠加帮助菱形和满状态金框 |
-| Services/CharacterActions.cs | 六资源恢复、满修为、现有叠加物品补量、NPC传送及双向好感度 |
+| Services/CharacterActions.cs | 六资源恢复、满修为、当前人物现有叠加物品补量、NPC传送及双向好感度 |
+| Services/ItemInventory.cs | 道具配置、背包快照、原生发放/逐件删除、境界药效补给与人物上下文预检 |
+| UI/BookView.Items.cs | 道具三栏、物品图鉴、可见列表与背包网格、绑定人物的添加/清空弹窗 |
 | Services/CharacterRealmChange.cs | 境界配置成长差额、品质/经验/瓶颈及降阶截断记录 |
 | UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
 | Services/CharacterPortrait.cs | 原生身份解析与ConfDramaNpc.CreateTexture分流，普通修士保持原路径 |
@@ -128,6 +130,15 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 **教程未覆盖、须靠模板与本机核实**：各目录职责与两个cache字段、`Init`/`Destroy`签名、DLL在MOD内的确切落位与加载时机、日志位置、soleID概念、导出与创意工坊上传流程、`g.*`接口清单（见`Example/Example.cs`）。编辑器UI类型可在本机`MelonLoader/Managed/Assembly-CSharp.dll`核对，如`UIModMain`/`UIModMainProject`/`UIModCode`/`UIModExcel`/`UIModRes`/`UIModDress`/`UIModAllTable`与`ModMgr`/`ModExcelTool`/`ModExportTool`/`ModData*`。
 
 ## 必须保留的实现与失败经验
+
+### 07.49共享人物、道具与输入克隆
+
+- `selectedUnitId`是四个人物页唯一选择源，对象栏不随切页重建。写入按世界上下文与明确人物ID解析，失效不回退玩家；弹窗切人/切页关闭，清空还核对唯一ID/配置ID/数量组成的排序指纹。世界切换关闭窗口，下一次由入口明确目标。
+- 道具发放走 `UnitDataProps.AddProps(id,count,null)`，数量回读；删除走 `DelProps(soleID)`保留原生装备生命周期。`ClearAllProps`直接清列表与索引，不能代替逐件删除。原生 `_allShowProps`排除隐藏资源和已装备记录；UI快照仅保留托管值，原生图标对象关闭时调用 `CloseIconInfo`并销毁。原生写入失败不宣称事务回滚，Pending留作保存重试。
+- 普通恢复药限定 `effectType=101`、可用、可叠加、非隐藏、不高于目标境界；使用 `GetPillAddValue(unit,id,false)`比较hp/mp实际药效，同效果按品质优先。两种药各增加20，先预检两项溢出再发放，第二项失败说明第一项已增加。
+- 克隆活跃输入框不能仅看 `caretRectTrans`：非序列化引用可能指向源框，而克隆层级已有独立“ Input Caret”子对象。只删除克隆内生成子对象，置空克隆的renderer/cache/mesh/cursorVerts，不销毁源网格或源Caret。
+- Text字形网格按首顶点 `PixelAdjustPoint`取整，InputField光标按原点取整；不能混用偏移。依据：[Unity InputField](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)、[Unity Text](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/Text.cs)，本机原生 `GenerateCaret`反汇编另留 `.tools/items-native.txt`。具体根因尚无运行时诊断证明，修正不能当成游戏验收。
+
 
 | 主题 | 已确认事实与开发规则 |
 | --- | --- |

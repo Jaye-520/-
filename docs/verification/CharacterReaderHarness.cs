@@ -42,6 +42,7 @@ public sealed class UnitData { public DataObjectData objData=new DataObjectData(
 public sealed class DynamicData
 { public DynInt abilityPoint=new DynInt(); public int GetCurUseAbilityPoint(){return 0;} public FakeValues GetValues(string key){var f=GetType().GetField(key);var r=new FakeValues();if(f!=null)r.Add((DynInt)f.GetValue(this));return r;}
     public DynInt gradeID = new DynInt { Stored = 103 };
+    public int GetGrade(){return g.conf.roleGrade.GetItem(gradeID.value).grade;}
     public DynInt hp = new DynInt { Stored = 123 }, hpMax = new DynInt { Stored = 456 };
     public DynInt mp = new DynInt { Stored = 12 }, mpMax = new DynInt { Stored = 34 };
     public DynInt sp = new DynInt { Stored = 5 }, spMax = new DynInt { Stored = 6 };
@@ -117,7 +118,7 @@ public sealed partial class ConfDramaNpc
     public int GetFiveFlowerDramaNpcID(WorldUnitBase unit) { int id; return Ids.TryGetValue(unit.data.unitData.unitID,out id) ? id : 0; }
     public PortraitModelData GetPortraitModelData(int id) { throw new NullReferenceException("independent avatar has no assembled model data"); }
 }
-public sealed class Config { public HobbyConfig roleCreateHobby = new HobbyConfig(); public FateConfig roleCreateFeature = new FateConfig(); public GradeConfig roleGrade = new GradeConfig(); public ConfDramaNpc dramaNpc = new ConfDramaNpc(); public TraitConfig roleCreateCharacter = new TraitConfig(); public ConfLocalText localText = new ConfLocalText(); }
+public sealed class Config { public ItemPropsConfig itemProps=new ItemPropsConfig(); public ItemPillConfig itemPill=new ItemPillConfig(); public HobbyConfig roleCreateHobby = new HobbyConfig(); public FateConfig roleCreateFeature = new FateConfig(); public GradeConfig roleGrade = new GradeConfig(); public ConfDramaNpc dramaNpc = new ConfDramaNpc(); public TraitConfig roleCreateCharacter = new TraitConfig(); public ConfLocalText localText = new ConfLocalText(); }
 public static partial class g { public static bool isDestroy; public static World world = new World(); public static Config conf = new Config(); public static DataMgr data=new DataMgr(); }
 
 public sealed class DataMgr { public DataWorld.World world=new DataWorld.World();public static bool isSaveData;public int Calls;public Il2CppSystem.Action<bool> Callback;public void SaveData(Il2CppSystem.Action<bool> callback){Calls++;Callback=callback;}public void Complete(bool success){var c=Callback;Callback=null;c.Invoke(success);} }

@@ -148,7 +148,9 @@ namespace MOD_YtxSQ1.UI
             var caretBottom = vertex.position.y;
             __0.PopulateUIVertex(ref vertex, 2);
             var caretTop = vertex.position.y;
-            var centerY = (bottom + top) * .5f + __1.y;
+            // Text的字形网格按首顶点PixelAdjustPoint取整；InputField的roundingOffset
+            // 则按原点取整。两者不是同一个偏移，不能给Text字形再叠加后者。
+            var centerY = (bottom + top) * .5f;
             if (caretRect != null)
                 centerY = caretRect.InverseTransformPoint(visual.rectTransform.TransformPoint(new Vector3(0, centerY, 0))).y;
             var shift = centerY - (caretBottom + caretTop) * .5f;
@@ -176,12 +178,19 @@ namespace MOD_YtxSQ1.UI
             var generator = visual.cachedTextGenerator;
             var vertices = generator.verts;
             var units = 1f / visual.pixelsPerUnit;
+            var pixelOffset = 0f;
+            if (generator.vertexCount > 0)
+            {
+                var first = vertices[0].position;
+                var point = new Vector2(first.x * units, first.y * units);
+                pixelOffset = visual.PixelAdjustPoint(point).y - point.y;
+            }
             for (int i = 0; i + 3 < generator.vertexCount; i += 4)
             {
                 float low = float.MaxValue, high = float.MinValue;
                 for (int j = 0; j < 4; j++)
                 {
-                    var y = vertices[i + j].position.y * units;
+                    var y = vertices[i + j].position.y * units + pixelOffset;
                     low = Math.Min(low, y); high = Math.Max(high, y);
                 }
                 if (high - low < .01f) continue;

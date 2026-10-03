@@ -290,6 +290,8 @@ namespace MOD_YtxSQ1.UI
                 escapeHandledFrame = Time.frameCount;
                 if (inlineInput != null) FinishInlineEdit(true);
                 else if (dropdownLayer != null) CloseDropdown();
+                else if (itemDialog != null) CloseItemDialog();
+                else if (itemLibrary != null) CloseItemLibrary();
                 else if (fateLibrary != null) CloseFateLibrary();
                 else if (requestClose != null) requestClose();
             }
@@ -299,6 +301,7 @@ namespace MOD_YtxSQ1.UI
             Cleanup(() => FinishInlineEdit(true), "取消输入");
             Cleanup(CloseDropdown, "关闭下拉");
             Cleanup(ClearFateLibraryView, "气运图鉴");
+            Cleanup(ClearItemsView, "道具视图");
             Cleanup(ClearActions, "快捷说明");
             editBindings.Clear();
         }

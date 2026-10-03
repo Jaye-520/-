@@ -26,7 +26,7 @@ namespace MOD_YtxSQ1.Services
                 var player = Player();
                 if (action == "满状态") message = RestoreStatus(id);
                 else if (action == "满修为") message = FillCultivation(id);
-                else if (action == "满材料") message = FillMaterials(player);
+                else if (action == "满材料") message = FillMaterials(CharacterReader.Resolve(id));
                 else
                 {
                     // 其余操作都要求选中有效且非玩家自身的NPC；未知操作也先做该校验，保持原有报错顺序。
@@ -95,10 +95,11 @@ namespace MOD_YtxSQ1.Services
             return "修为已满，可按游戏流程突破；请点击保存";
         }
 
-        // 满材料：只补玩家现有可叠加物品，不新增记录、也不降低已有更大数量。
-        private static string FillMaterials(WorldUnitBase player)
+        // 满材料：只补当前人物现有可叠加物品，不新增记录、也不降低已有更大数量。
+        private static string FillMaterials(WorldUnitBase unit)
         {
-            var bag = player.data.unitData.propData;
+            if (unit == null) throw new InvalidOperationException("人物已失效");
+            var bag = unit.data.unitData.propData;
             var changes = new List<DataProps.PropsData>();
             for (int i = 0; i < bag.allProps.Count; i++)
             {

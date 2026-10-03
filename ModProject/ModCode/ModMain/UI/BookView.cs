@@ -100,7 +100,7 @@ namespace MOD_YtxSQ1.UI
             openingCheckpoint = 0;
             openingStages = "";
             requestClose = close;
-            selectedUnitId = initialUnitId;
+            selectedUnitId = string.IsNullOrEmpty(initialUnitId) ? CharacterReader.Resolve(null)?.data.unitData.unitID : initialUnitId;
             ResolveFonts(window);
             try { skin = PaperSkin.Acquire(); }
             catch (Exception ex) { Debug.LogWarning("[八荒秘录] 纸墨材质回退为纯色：" + ex.Message); }
@@ -254,16 +254,16 @@ namespace MOD_YtxSQ1.UI
             if (index == selectedIndex) return;
             if (!FinishInlineEdit(false)) return;
             ClearEditingView();
-            ReleasePortrait();
             attributeTexts.Clear();
             HideFateTips();
             fateColumns.Clear();
             fateUnitId = null;
             fates = new CharacterFate[0];
             fateReason = null;
-            targetPanel.gameObject.SetActive(index == 0);
-            contentWidth = index == 0 ? bookWidth - targetWidth - 76 : bookWidth - 48;
-            content.anchoredPosition = new Vector2(index == 0 ? targetWidth + 52 : 24, -BodyTop);
+            var hasTarget = index <= 3;
+            targetPanel.gameObject.SetActive(hasTarget);
+            contentWidth = hasTarget ? bookWidth - targetWidth - 76 : bookWidth - 48;
+            content.anchoredPosition = new Vector2(hasTarget ? targetWidth + 52 : 24, -BodyTop);
             content.sizeDelta = new Vector2(contentWidth, contentHeight);
             for (int i = content.childCount - 1; i >= 0; i--)
             {
@@ -285,9 +285,19 @@ namespace MOD_YtxSQ1.UI
                 var overview = Fill(content, "总览气运底框", 0, 0, panelWidth, panelHeight, new Color(.92f, .91f, .87f, .35f)).rectTransform;
                 Border(overview, panelWidth, panelHeight);
             }
+            else if (hasTarget)
+            {
+                var heading = Fill(content, "模块题栏底框", 0, 0, contentWidth, 64, new Color(.92f, .91f, .87f, .35f)).rectTransform;
+                Border(heading, contentWidth, 64);
+            }
             Label(content, index == 0 ? "属性总览" : Modules[index], index == 0 ? 12 : 0, 4, contentWidth - 132, 30, 25, Ink);
             editStatus = Label(content, index == 0 ? "点击数值修改；选择字段可下拉，修改待保存" : "功能尚未开放", index == 0 ? 12 : 0, 34, contentWidth - 132, 24, 16, Muted);
             selectedIndex = index;
+            if (index == 1)
+            {
+                editStatus.text = "检索或选择道具，添加给当前人物；操作后点击保存";
+                BuildItems(); RefreshCharacter(true); return;
+            }
             if (index != 0)
             {
                 var blank = Card(content, "待编纂", 0, 76, contentWidth, contentHeight - 76);
@@ -296,7 +306,7 @@ namespace MOD_YtxSQ1.UI
                 RefreshCharacter(true);
                 return;
             }
-            ReloadRoster();
+            if (roster.Count == 0) ReloadRoster();
             RecordOpeningStage("人物名单/排序/筛选");
             BuildAttributeOverview();
             RecordOpeningStage("属性/气运控件");
@@ -489,10 +499,17 @@ namespace MOD_YtxSQ1.UI
         private void SelectTarget(int slot)
         {
             if (rowIds[slot] == null || !FinishInlineEdit(false)) return;
-            CloseDropdown(); HideFateTips();
-            selectedUnitId = rowIds[slot];
+            FocusTarget(rowIds[slot]);
+        }
+
+        public void FocusTarget(string unitId)
+        {
+            if (string.IsNullOrEmpty(unitId) || !FinishInlineEdit(false)) return;
+            CloseDropdown(); HideFateTips(); CloseItemDialog(); CloseItemLibrary(); CloseFateLibrary();
+            selectedUnitId = unitId;
             ReleasePortrait();
             RefreshCharacter(true);
+            ScrollToInitialUnit(unitId);
         }
 
         private void UpdatePortrait()
@@ -760,8 +777,9 @@ namespace MOD_YtxSQ1.UI
             if (root == null) return;
             TickAppearance();
             TickEditing();
+            if (root == null) return;
             if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
-            if (root == null || selectedIndex != 0 || characterName == null) return;
+            if (root == null || characterName == null) return;
             var now = Time.unscaledTime;
             if (!force && now < nextCharacterRefresh) return;
             nextCharacterRefresh = now + 1f;
@@ -769,12 +787,14 @@ namespace MOD_YtxSQ1.UI
             if (currentContext != contextKey)
             {
                 FinishInlineEdit(true); CloseDropdown(); edits.Sync(currentContext);
-                CloseFateLibrary(); pickedFates.Clear(); fateCatalog.Clear(); catalogContext = null;
+                CloseFateLibrary(); CloseItemDialog(); CloseItemLibrary();
+                pickedFates.Clear(); fateCatalog.Clear(); catalogContext = null;
+                itemPicks.Clear(); itemCatalog.Clear(); itemCatalogContext = null;
+                if (itemSearch != null) { itemSearch.SetTextWithoutNotify(""); FilterItems(false); }
                 if (fateSearch != null) fateSearch.SetTextWithoutNotify("");
-                selectedUnitId = null;
-                contextKey = currentContext;
-                ReleasePortrait();
-                ReloadRoster();
+                // 换世界时不静默改为玩家；关闭窗口，入口下一次重新指定目标。
+                if (requestClose != null) requestClose(); else Dispose();
+                return;
             }
             RenderRosterRows();
             CharacterSnapshot snapshot;
@@ -787,6 +807,7 @@ namespace MOD_YtxSQ1.UI
                 foreach (var group in attributeTexts) foreach (var value in group) value.text = "—";
                 FinishInlineEdit(true); CloseDropdown(); RefreshEditors();
                 UpdateFates(new CharacterFate[0], reason);
+                if (selectedIndex == 1) RefreshBag(true);
                 var failure = CharacterReader.LastFailure;
                 if (failure != null && failure != lastReadFailure)
                     Debug.LogWarning("[八荒秘录] 角色读取失败：" + failure);
@@ -801,6 +822,11 @@ namespace MOD_YtxSQ1.UI
             RecordOpeningStage("人物快照/编辑绑定");
             UpdatePortrait();
             RecordOpeningStage("人物立绘");
+            if (selectedIndex != 0)
+            {
+                if (selectedIndex == 1) RefreshBag(force);
+                return;
+            }
             for (int group = 0; group < attributeTexts.Count; group++)
                 for (int i = 0; i < attributeTexts[group].Length; i++) attributeTexts[group][i].text = snapshot.Groups[group][i];
             CharacterFate[] entries;

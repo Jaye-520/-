@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using MOD_YtxSQ1.UI;
 namespace UnityEngine
 {
-    public struct Vector2 { public float x,y; }
+    public struct Vector2 { public float x,y; public Vector2(float a,float b){x=a;y=b;} }
     public struct Vector3 { public float x,y,z; public Vector3(float a,float b,float c) { x=a;y=b;z=c; } }
     public struct UIVertex { public Vector3 position; }
     public class TextGenerator { public List<UIVertex> verts=new List<UIVertex>();public int vertexCount { get { return verts.Count; } } }
@@ -37,7 +37,7 @@ namespace UnityEngine.EventSystems
 namespace UnityEngine.UI
 {
     public class Graphic { public T TryCast<T>() where T:class { return this as T; } }
-    public class Text : Graphic { public int fontSize=17;public float pixelsPerUnit=1;public UnityEngine.TextGenerator cachedTextGenerator=new UnityEngine.TextGenerator();public UnityEngine.RectTransform rectTransform=new UnityEngine.RectTransform(); }
+    public class Text : Graphic { public int fontSize=17;public float pixelsPerUnit=1;public UnityEngine.Vector2 PixelOffset;public UnityEngine.Vector2 PixelAdjustPoint(UnityEngine.Vector2 p){return new UnityEngine.Vector2(p.x+PixelOffset.x,p.y+PixelOffset.y);}public UnityEngine.TextGenerator cachedTextGenerator=new UnityEngine.TextGenerator();public UnityEngine.RectTransform rectTransform=new UnityEngine.RectTransform(); }
     public class VertexHelper
     {
         public List<UnityEngine.UIVertex> Vertices=new List<UnityEngine.UIVertex>();public int currentVertCount { get { return Vertices.Count; } }
@@ -114,6 +114,10 @@ internal static class WindowInputScopeHarness
         for(int i=0;i<4;i++)field.textComponent.cachedTextGenerator.verts.Add(new UnityEngine.UIVertex { position=new UnityEngine.Vector3 { y=i<2 ? -4 : 4 } });
         Call("AlignCaret",field,caret,new UnityEngine.Vector2());
         Check(caret.Vertices[0].position.y==-12 && caret.Vertices[2].position.y==12 && caret.Vertices[1].position.x==1,"moves low caret up to glyph center without changing height or horizontal position");
+        field.textComponent.PixelOffset=new UnityEngine.Vector2(0,.25f);
+        Call("AlignCaret",field,caret,new UnityEngine.Vector2(0,5));
+        Check(caret.Vertices[0].position.y==-11.75f && caret.Vertices[2].position.y==12.25f,"caret uses rendered text pixel rounding instead of input origin offset");
+        field.textComponent.PixelOffset=new UnityEngine.Vector2();Call("AlignCaret",field,caret,new UnityEngine.Vector2());
         Call("AlignCaret",new UnityEngine.UI.InputField(),caret,new UnityEngine.Vector2 { y=30 });
         Check(caret.Vertices[0].position.y==-12,"leaves all other input field caret geometry unchanged");
         field.textComponent.rectTransform.localPosition=new UnityEngine.Vector3(0,6,0);

@@ -90,10 +90,13 @@ namespace MOD_YtxSQ1.UI
         private static void ResetClonedInput(InputField field, float padding = 8)
         {
             // Instantiate会复制模板编辑时生成的Caret引用和矩形缓存，让新框重建。
-            var caret = field.caretRectTrans;
-            if (caret != null && caret.IsChildOf(field.transform))
-            { caret.gameObject.SetActive(false); UnityEngine.Object.Destroy(caret.gameObject); }
+            // 运行时复制正在编辑的框会连同生成的Caret子对象一起复制。
+            // 非序列化caretRectTrans可能仍指向源框，仅清它无法移除克隆里的孤立光标。
+            foreach (var child in field.GetComponentsInChildren<RectTransform>(true))
+                if (child != field.transform && child.gameObject.name.EndsWith(" Input Caret", StringComparison.Ordinal))
+                { child.gameObject.SetActive(false); UnityEngine.Object.Destroy(child.gameObject); }
             field.caretRectTrans = null; field.m_CachedInputRenderer = null; field.m_InputTextCache = null;
+            field.m_Mesh = null; field.m_CursorVerts = null;
             var text = field.textComponent;
             text.rectTransform.anchorMin = Vector2.zero; text.rectTransform.anchorMax = Vector2.one;
             text.rectTransform.pivot = new Vector2(.5f, .5f); text.rectTransform.localScale = Vector3.one;
@@ -110,7 +113,7 @@ namespace MOD_YtxSQ1.UI
             }
         }
 
-        private InputField CreateFateSearch(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed)
+        private InputField CreateSearchInput(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed)
         {
             var host = Box(name, parent, x, y, width, height);
             var clone = UnityEngine.Object.Instantiate(targetSearch.gameObject, host, false);
@@ -119,10 +122,14 @@ namespace MOD_YtxSQ1.UI
             rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
             var field = clone.GetComponent<InputField>();
             ResetClonedInput(field);
+            rect.localScale = Vector3.one;
             foreach (var trigger in clone.GetComponentsInChildren<UnityEngine.EventSystems.EventTrigger>(true))
             { trigger.enabled = false; UnityEngine.Object.Destroy(trigger); }
             field.onValueChanged = new InputField.OnChangeEvent(); field.onEndEdit = new InputField.SubmitEvent();
             field.onValidateInput = null; field.characterLimit = 64;
+            field.shouldActivateOnSelect = true; field.readOnly = false; field.interactable = true;
+            field.contentType = InputField.ContentType.Standard; field.lineType = InputField.LineType.SingleLine;
+            field.characterValidation = InputField.CharacterValidation.None;
             field.textComponent.fontSize = 16;
             var placeholder = field.placeholder == null ? null : field.placeholder.TryCast<Text>();
             if (placeholder != null) { placeholder.text = hint; placeholder.fontSize = 15; }
@@ -135,7 +142,7 @@ namespace MOD_YtxSQ1.UI
         }
         private void BuildFateSearch(RectTransform heading, float width)
         {
-            fateSearch = CreateFateSearch(heading, "气运检索", 4, 1, width, 26, "检索气运（名称/ID）", _ => FilterCandidates());
+            fateSearch = CreateSearchInput(heading, "气运检索", 4, 1, width, 26, "检索气运（名称/ID）", _ => FilterCandidates());
         }
         private bool LoadFateCatalog()
         {
@@ -234,7 +241,7 @@ namespace MOD_YtxSQ1.UI
             Fill(panel, "图鉴纸底", 1, 1, width - 2, height - 2, new Color(.90f, .89f, .85f, 1), true);
             Label(panel, "气运列表", 12, 8, width - 100, 30, 24, Ink);
             MakeButton(panel, "关闭图鉴", width - 48, 8, 36, 28, "×", CloseFateLibrary);
-            librarySearch = CreateFateSearch(panel, "图鉴检索", 12, 44, width - 24, 32, "检索全部可见气运（名称/ID）", _ => FilterLibrary());
+            librarySearch = CreateSearchInput(panel, "图鉴检索", 12, 44, width - 24, 32, "检索全部可见气运（名称/ID）", _ => FilterLibrary());
             libraryCount = Label(panel, "", 12, height - 46, width - 150, 30, 15, Muted);
             MakeButton(panel, "确认气运选择", width - 132, height - 46, 120, 32, "确定", () =>
             {

@@ -17,10 +17,27 @@ public class DataWorld
 public class DataProps
 {
     public List<PropsData> allProps = new List<PropsData>();
+    public List<PropsData> _allShowProps { get { return allProps.Where(p=>p.propsCount>0 && (p.propsItem==null || p.propsItem.hide!=1) && !p.Equipped).ToList(); } }
+    public int AddCalls, DeleteCalls; public bool FailAdd, FailDelete;
+    public List<PropsData> AddProps(int id,int count,string sole)
+    {
+        AddCalls++; if(FailAdd)throw new InvalidOperationException("add failed");
+        var item=allProps.FirstOrDefault(p=>p.propsID==id && p.propsItem.isOverlay==1);
+        if(item==null){item=new PropsData{propsID=id,soleID=sole??Guid.NewGuid().ToString(),propsItem=g.conf.itemProps.GetItem(id)};allProps.Add(item);}
+        item.propsCount+=count;return new List<PropsData>{item};
+    }
+    public PropsData DelProps(string sole){DeleteCalls++;if(FailDelete)throw new InvalidOperationException("delete failed");var item=GetProps(sole);allProps.Remove(item);return item;}
+    public bool IsHasProps(string sole){return GetProps(sole)!=null;}
+    public PropsData GetProps(string sole){return allProps.FirstOrDefault(p=>p.soleID==sole);}
+    public int GetPropsNum(int id){return allProps.Where(p=>p.propsID==id).Sum(p=>p.propsCount);}
     public void UpdateAllShowProps() { }
-    public class PropsData { public ConfItemPropsItem propsItem; public int propsCount; }
+    public class PropsData { public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item"; public bool Equipped; public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
 }
-public class ConfItemPropsItem { public int isOverlay; }
+public class ConfItemPropsItem { public int isOverlay,id,hide,level;public string name,desc; }
+public class ItemPropsConfig { public List<ConfItemPropsItem> _allConfList=new List<ConfItemPropsItem>();public ConfItemPropsItem GetItem(int id){return _allConfList.FirstOrDefault(p=>p.id==id);} }
+public class ConfItemPillItem { public int id,effectType=101,grade,operUse=1,battleUIHide;public Dictionary<string,int> Effects=new Dictionary<string,int>(); }
+public class ItemPillConfig { public List<ConfItemPillItem> _allConfList=new List<ConfItemPillItem>(); public Dictionary<string,int> GetPillAddValue(WorldUnitBase unit,int id,bool ignore){return _allConfList.First(p=>p.id==id).Effects;} }
+public static partial class UIIconTool { public class PropsInfoDataBase { public string name; } }
 public class DataObjectData
 {
     private Dictionary<string,string> data=new Dictionary<string,string>();

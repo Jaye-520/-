@@ -25,6 +25,10 @@ namespace UnityEngine
         {
             var clone=FakeRes.MakeField();clone.transform.SetParent(parent,false);
             clone.GetComponent<UnityEngine.UI.InputField>().onValueChanged=source.GetComponent<UnityEngine.UI.InputField>().onValueChanged;
+            var field=clone.GetComponent<UnityEngine.UI.InputField>();var original=source.GetComponent<UnityEngine.UI.InputField>();
+            field.textComponent.color=original.textComponent.color;field.textComponent.font=original.textComponent.font;field.textComponent.alignment=original.textComponent.alignment;
+            var hint=(UnityEngine.UI.Text)field.placeholder;var originalHint=(UnityEngine.UI.Text)original.placeholder;
+            hint.color=originalHint.color;hint.font=originalHint.font;hint.alignment=originalHint.alignment;
             return clone;
         }
         public static void Destroy(Object obj)
@@ -184,7 +188,7 @@ namespace UnityEngine.UI
         public void AddListener(UnityEngine.Events.UnityAction<T> value) { listeners.Add(value); }
         public void Invoke(T value) { foreach(var listener in listeners) listener.Callback(value); }
     }
-    public class InputField : Component { public RectTransform caretRectTrans;public object m_CachedInputRenderer,m_InputTextCache;
+    public class InputField : Component { public RectTransform caretRectTrans;public object m_CachedInputRenderer,m_InputTextCache,m_Mesh,m_CursorVerts;
         public class OnChangeEvent : ValueEvent<string> { }
         public class SubmitEvent : ValueEvent<string> { }
         public bool shouldActivateOnSelect;public object onValidateInput;public Navigation navigation;
@@ -251,6 +255,18 @@ public sealed class LayoutUI
     public T OpenUI<T>(UIType type) where T:class { Editor=new UIModTableInputStringLong();return Editor as T; }
 }
 public static class SpriteTool { public static UnityEngine.Object GetLuckBG(ConfRoleCreateFeatureItem item) { return new UnityEngine.Object(); } }
+public class UIIconItemBase : UnityEngine.Component { public void CloseIconInfo(){} }
+public static partial class UIIconTool
+{
+    public static UIIconItemBase CreatePropsIcon(WorldUnitBase unit,DataProps.PropsData props,UnityEngine.Transform parent,float size,bool destroy,bool operation,bool equip)
+    {
+        if(operation || equip)throw new Exception("unexpected native operations");
+        var go=new UnityEngine.GameObject("native item icon");go.transform.SetParent(parent,false);go.transform.sizeDelta=new UnityEngine.Vector2(72,72);
+        var image=go.AddComponent<UnityEngine.UI.Image>();image.color=new UnityEngine.Color(.8f,.77f,.67f,1);
+        var label=go.AddComponent<UnityEngine.UI.Text>();label.color=new UnityEngine.Color(.2f,.2f,.17f,1);label.font=new UnityEngine.Font();label.fontSize=14;label.text=ConfLocalText.GetText(props.propsInfoBase.name)+"\n"+props.propsCount;
+        return go.AddComponent<UIIconItemBase>();
+    }
+}
 public sealed class UIModTableInputStringLong
 {
     public string Value;public int Limit;private Il2CppSystem.Action<string> callback;
@@ -367,11 +383,23 @@ internal static class BookLayoutHarness
         foreach(var child in node.Children) foreach(var descendant in Walk(child)) yield return descendant;
     }
     private static System.Drawing.Color Color(UnityEngine.Color c) { return System.Drawing.Color.FromArgb((int)(c.a*255),(int)(c.r*255),(int)(c.g*255),(int)(c.b*255)); }
+    private static UnityEngine.Vector2 PreviewSize(UnityEngine.RectTransform node)
+    {
+        var size=node.sizeDelta;
+        if(node.parent==null)return size;
+        var parent=PreviewSize((UnityEngine.RectTransform)node.parent);
+        if(node.anchorMax.x>node.anchorMin.x)size.x=parent.x*(node.anchorMax.x-node.anchorMin.x)+node.offsetMax.x-node.offsetMin.x;
+        if(node.anchorMax.y>node.anchorMin.y)size.y=parent.y*(node.anchorMax.y-node.anchorMin.y)+node.offsetMax.y-node.offsetMin.y;
+        return size;
+    }
     private static void Paint(Graphics graphics,UnityEngine.RectTransform node,float x,float y,bool root)
     {
         if (!node.gameObject.activeInHierarchy) return;
         if (!root) { x+=node.anchoredPosition.x; y-=node.anchoredPosition.y; }
-        var rect=new RectangleF(x,y,node.sizeDelta.x,node.sizeDelta.y);
+        var size=PreviewSize(node);
+        if(node.anchorMax.x>node.anchorMin.x)x+=node.offsetMin.x;
+        if(node.anchorMax.y>node.anchorMin.y)y-=node.offsetMax.y;
+        var rect=new RectangleF(x,y,size.x,size.y);
         foreach(var graphic in node.gameObject.Components.OfType<UnityEngine.UI.Graphic>())
         {
             if (!graphic.enabled) continue;
@@ -435,6 +463,74 @@ internal static class BookLayoutHarness
         graphics.Restore(previous);
     }
     private static void Check(bool value,string description) { if(!value) throw new Exception("FAIL: "+description); Console.WriteLine("PASS: "+description); }
+    private static string Selected(BookView view) { return (string)typeof(BookView).GetField("selectedUnitId",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view); }
+    private static void ClickNamed(UnityEngine.Transform book,string name) { Walk(book).First(t=>t.gameObject.name=="BHML_"+name).GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); }
+    private static bool Rejected(Action action) { try { action();return false; } catch(InvalidOperationException){return true;} catch(OverflowException){return true;} }
+    private static void VerifyItems(BookView view,UnityEngine.RectTransform book,string[] args,int size)
+    {
+        var id=Selected(view);var npc=CharacterReader.Resolve(id);var player=g.world.playerUnit;var context=CharacterReader.ContextKey();
+        ConfLocalText.Texts["medicine-hp"]="回春丹";ConfLocalText.Texts["medicine-mp"]="凝灵丹";
+        var hp=new ConfItemPropsItem{id=90001,isOverlay=1,level=6,name="medicine-hp",desc="恢复体力"};
+        var mp=new ConfItemPropsItem{id=90002,isOverlay=1,level=6,name="medicine-mp",desc="恢复灵力"};
+        var future=new ConfItemPropsItem{id=90003,isOverlay=1,level=6,name="越阶药"};
+        var unique=new ConfItemPropsItem{id=90004,name="任务信物"};
+        var hidden=new ConfItemPropsItem{id=10001,isOverlay=1,hide=1,name="灵石"};
+        g.conf.itemProps._allConfList.Clear();g.conf.itemProps._allConfList.AddRange(new[]{hp,mp,future,unique,hidden});
+        g.conf.itemPill._allConfList.Clear();
+        g.conf.itemPill._allConfList.Add(new ConfItemPillItem{id=hp.id,grade=1,Effects=new Dictionary<string,int>{{"hp",300}}});
+        g.conf.itemPill._allConfList.Add(new ConfItemPillItem{id=mp.id,grade=2,Effects=new Dictionary<string,int>{{"mp",200}}});
+        g.conf.itemPill._allConfList.Add(new ConfItemPillItem{id=future.id,grade=3,Effects=new Dictionary<string,int>{{"hp",999999}}});
+        var bag=npc.data.unitData.propData;bag.allProps.Clear();bag.AddCalls=0;bag.DeleteCalls=0;
+        for(int i=0;i<110;i++)bag.allProps.Add(new DataProps.PropsData{propsID=hp.id,propsItem=hp,soleID="npc-item-"+i,propsCount=i+1});
+        bag.allProps.Add(new DataProps.PropsData{propsID=hidden.id,propsItem=hidden,soleID="npc-money",propsCount=800});
+        bag.allProps.Add(new DataProps.PropsData{propsID=unique.id,propsItem=unique,soleID="npc-equipped",propsCount=1,Equipped=true});
+        view.RefreshCharacter(true);
+        Check(ItemInventory.Read(id).Count==110 && ItemInventory.Catalog().Count==4,"native visible inventory and catalog exclude hidden resources");
+        Check(Walk(book).Count(t=>t.gameObject.name=="native item icon")<110,"inventory creates only visible native icon pool");
+        var shared=Walk(book).First(t=>t.gameObject.name=="BHML_对象栏");
+        foreach(var tab in new[]{2,3,0,1}) { ClickNamed(book,"卷目"+tab);Check(Selected(view)==id && Walk(book).First(t=>t.gameObject.name=="BHML_对象栏")==shared,"tab "+tab+" retains shared NPC target and panel"); }
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品条目" && t.gameObject.activeInHierarchy),"empty item search does not enumerate catalog");
+        var field=Walk(book).First(t=>t.gameObject.name=="BHML_物品检索").GetComponentInChildren<UnityEngine.UI.InputField>();field.text="回春";
+        Check(Walk(book).Count(t=>t.gameObject.name=="BHML_物品条目" && t.gameObject.activeInHierarchy)==1,"item name search returns matching result");
+        using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+        { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"items-layout-"+size+".png"),ImageFormat.Png); }
+        ClickNamed(book,"物品条目");
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩"),"item result opens quantity dialog");
+        view.FocusTarget("player");
+        Check(Selected(view)=="player" && !Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩") && bag.AddCalls==0,"target switch cancels NPC dialog without writing player");
+        view.FocusTarget(id);ClickNamed(book,"物品列表");
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_物品图鉴"),"item catalog opens with pooled rows");
+        var row=Walk(book).First(t=>t.gameObject.name=="BHML_物品条目" && t.GetComponentInChildren<UnityEngine.UI.Text>().text=="回春丹" && t.parent.gameObject.name=="BHML_物品列表视口长页");row.GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+        ClickNamed(book,"确认物品选择");
+        Check(field.text=="" && Walk(book).Count(t=>t.gameObject.name=="BHML_物品条目" && t.gameObject.activeInHierarchy)==1,"catalog confirmation returns picked candidates without granting");
+        var beforePlayer=player.data.unitData.propData.GetPropsNum(hp.id);var before=bag.GetPropsNum(hp.id);
+        ClickNamed(book,"物品条目");Walk(book).First(t=>t.gameObject.name=="BHML_发放数量").GetComponentInChildren<UnityEngine.UI.InputField>().text="3";ClickNamed(book,"确认添加道具");
+        Check(bag.GetPropsNum(hp.id)==before+3 && player.data.unitData.propData.GetPropsNum(hp.id)==beforePlayer,"grant dialog changes selected NPC only");
+        Check(ItemInventory.BestMedicine(npc,"hp")==hp.id && ItemInventory.BestMedicine(npc,"mp")==mp.id,"supply ranks actual effects and excludes higher realm medicine");
+        before=bag.GetPropsNum(hp.id);var beforeMp=bag.GetPropsNum(mp.id);ClickNamed(book,"补给");
+        Check(bag.GetPropsNum(hp.id)==before+20 && bag.GetPropsNum(mp.id)==beforeMp+20,"supply adds exactly twenty of each medicine to NPC");
+        Check(Rejected(()=>ItemInventory.Give(context,"missing-npc",hp.id,1)) && Rejected(()=>ItemInventory.Give("old-world",id,hp.id,1)),"missing target and stale context reject without fallback");
+        Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,0)) && Rejected(()=>ItemInventory.Give(context,id,hp.id,10000)) && Rejected(()=>ItemInventory.Give(context,id,unique.id,2)),"invalid counts and nonstackable bulk grant reject before writing");
+        Check(Rejected(()=>ItemInventory.Give(context,id,hidden.id,1)),"hidden resources cannot be granted through catalog");
+        string materialMessage;var playerCounts=ItemInventory.Fingerprint(ItemInventory.Read("player"));
+        Check(CharacterActions.Execute(id,"满材料",null,out materialMessage) && bag.allProps[0].propsCount==9999 && ItemInventory.Fingerprint(ItemInventory.Read("player"))==playerCounts,"full materials follows shared NPC target rather than writing player backpack");
+        ClickNamed(book,"一键清空");bag.allProps[0].propsCount++;
+        var deletes=bag.DeleteCalls;ClickNamed(book,"确认清空背包");
+        Check(bag.DeleteCalls==deletes && ItemInventory.Read(id).Count>0,"changed backpack conflicts with captured clear confirmation");
+        ClickNamed(book,"一键清空");view.FocusTarget("player");
+        Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_物品操作遮罩") && bag.DeleteCalls==deletes,"switching person cancels destructive dialog");
+        view.FocusTarget(id);ClickNamed(book,"一键清空");ClickNamed(book,"确认清空背包");
+        Check(ItemInventory.Read(id).Count==0 && bag.IsHasProps("npc-money") && bag.IsHasProps("npc-equipped"),"clear uses native per-item delete while preserving hidden resources and equipment");
+        Check(ItemInventory.Fingerprint(new List<InventoryItem>{new InventoryItem{SoleId="b",Id=2,Count=1},new InventoryItem{SoleId="a",Id=1,Count=2}})==ItemInventory.Fingerprint(new List<InventoryItem>{new InventoryItem{SoleId="a",Id=1,Count=2},new InventoryItem{SoleId="b",Id=2,Count=1}}),"clear fingerprint ignores ordering while tracking exact identity and counts");
+        view.FocusTarget("missing-npc");Check(Selected(view)=="missing-npc" && !Walk(book).Any(t=>t.gameObject.name=="native item icon"),"invalid target clears stale bag and keeps explicit target identity");
+        view.FocusTarget(id);
+        DataMgr.isSaveData=true;var calls=bag.AddCalls;
+        Check(Rejected(()=>ItemInventory.Give(context,id,hp.id,1)) && bag.AddCalls==calls,"native save in progress rejects item write");DataMgr.isSaveData=false;
+        ClickNamed(book,"卷目6");g.data.Complete(false);CharacterSave.Poll();
+        Check(CharacterSave.Pending>0 && !CharacterSave.Busy,"item save failure retains dirty state for retry");
+        ClickNamed(book,"卷目6");g.data.Complete(true);CharacterSave.Poll();
+        Check(CharacterSave.Pending==0 && !CharacterSave.Busy,"item save retry clears pending only on success callback");
+    }
     public static void Main(string[] args)
     {
         try { Run(args); }
@@ -691,8 +787,9 @@ internal static class BookLayoutHarness
             }
             var itemButton=Walk(book).First(t=>t.gameObject.name=="BHML_卷目1").GetComponent<UnityEngine.UI.Button>();
             itemButton.onClick.Invoke();
-            Check(!Walk(book).First(t=>t.gameObject.name=="BHML_对象栏").gameObject.activeInHierarchy && ModelRenderTexture.Active==0,"other module hides target panel and releases portrait");
-            Check(book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="功能尚未开放") && !book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="寿命"),"module switch removes old attribute page");
+            Check(Walk(book).First(t=>t.gameObject.name=="BHML_对象栏").gameObject.activeInHierarchy && ModelRenderTexture.Active==1,"items page shares target panel and existing portrait");
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_人物背包") && !book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="寿命"),"module switch replaces attributes with item page");
+            VerifyItems(bookView,book,args,(int)sizes[s][0]);
             Walk(book).First(t=>t.gameObject.name=="BHML_卷目0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             search.text="";
             Check(rows[0].GetComponentInChildren<UnityEngine.UI.Text>().text=="自己 · 示例修士","clearing inline text immediately restores full roster");
@@ -753,8 +850,11 @@ internal static class BookLayoutHarness
             search.text="示例修士";rows[0].GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             hover=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UIEventListener>();hover.OnPointerEnter(null);
             g.world.isIntoWorld=false;bookView.RefreshCharacter(true);
-            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍" || t.gameObject.name.StartsWith("BHML_气运行_")),"unavailable world clears tip and rows");
-            Check(!book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="222"),"unavailable world clears old values");g.world.isIntoWorld=true;
+            Check(closeRequested,"unavailable world closes shared-target view rather than retargeting player");
+            bookView.Dispose();
+            Check(ModelRenderTexture.Active==0,"closed context releases portrait");g.world.isIntoWorld=true;
+            bookView=new BookView();bookView.Build(window,()=>{closeRequested=true;});
+            book=(UnityEngine.RectTransform)Walk(window.transform).First(t=>t.gameObject.name=="BHML_秘录外框");
             bookView.RefreshCharacter(true);
             var shortEntry=g.conf.roleCreateFeature.Items[1000];ConfLocalText.Texts[shortEntry.tips]="移动速度+20，脚力+100，身法熟练提升速度+50%";bookView.RefreshCharacter(true);
             hover=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_2_0").GetComponent<UIEventListener>();hover.OnPointerEnter(null);
@@ -782,6 +882,12 @@ internal static class BookLayoutHarness
         var directBook = Walk(directWindow.transform).First(t => t.gameObject.name == "BHML_秘录外框");
         Check(Walk(directBook).Any(t => t.gameObject.name.StartsWith("BHML_修士行") && t.GetComponentInChildren<UnityEngine.UI.Text>() != null && t.GetComponentInChildren<UnityEngine.UI.Text>().text == "修士299"), "initial NPC selection scrolls selected row into view");
         directView.Dispose();
+        var resetHost=FakeRes.MakeField();var resetField=resetHost.GetComponent<UnityEngine.UI.InputField>();
+        var originalCaret=new UnityEngine.GameObject("source Input Caret");
+        var orphan=new UnityEngine.GameObject("source Input Caret");orphan.transform.SetParent(resetHost.transform,false);
+        resetField.caretRectTrans=originalCaret.transform;resetField.m_Mesh=new object();resetField.m_CursorVerts=new object();
+        typeof(BookView).GetMethod("ResetClonedInput",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).Invoke(null,new object[]{resetField,8f});
+        Check(!Walk(resetHost.transform).Any(t=>t.gameObject.name.EndsWith(" Input Caret")) && originalCaret.activeInHierarchy && resetField.m_Mesh==null && resetField.m_CursorVerts==null,"cloned input removes orphan caret and shared mesh without destroying source caret");
         Console.WriteLine("BookView geometry, page binding and GDI previews complete. Not a game screenshot.");
     }
 }

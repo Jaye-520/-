@@ -43,6 +43,8 @@
     <Compile Include="Services\CharacterFateOperations.cs" />
     <Compile Include="Services\CharacterSave.cs" />
     <Compile Include="Services\CharacterActions.cs" />
+    <Compile Include="Services\ItemInventory.cs" />
+    <Compile Include="UI\BookView.Items.cs" />
     <Compile Include="Services\CharacterRealmChange.cs" />
     <Compile Include="Services\CharacterEditSession.cs" />
     <Compile Include="Services\CharacterEditData.cs" />

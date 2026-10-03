@@ -70,6 +70,7 @@ namespace MOD_YtxSQ1.UI
         public static string InitialId;
         public void Build(UITextInfoLong window, Action close, string initialUnitId = null) { InitialId = initialUnitId; if (ThrowBuild) throw new Exception("build failure"); }
         public void RefreshCharacter(bool force = false) { }
+        public void FocusTarget(string id) { InitialId = id; }
         public void Dispose() { Disposals++; if (ThrowDispose) throw new Exception("dispose failure"); }
     }
     internal sealed class WorkshopEntrances : IDisposable
@@ -120,7 +121,7 @@ internal static class LifecycleHarness
     {
         Reset(); var cycles = new WorkshopWindow();
         cycles.Open("npc-current"); Check(BookView.InitialId == "npc-current", "NPC ID reaches initial view build without player fallback");
-        cycles.Open("other"); Check(BookView.InitialId == "npc-current", "second click does not replace an already open session"); cycles.Close(); Reset();
+        cycles.Open("other"); Check(BookView.InitialId == "other", "NPC entrance retargets existing shared session without creating a second view"); cycles.Close(); Reset();
         for (int i = 0; i < 30; i++) { cycles.Toggle(); if (!cycles.IsOpen || !WindowInputScope.Active) throw new Exception("open cycle " + i); cycles.Close(); if (cycles.IsOpen || WindowInputScope.Active) throw new Exception("close cycle " + i); }
         Check(g.ui.Closes == 30 && BookView.Disposals == 30, "30 open-close cycles release each view and input patch");
 

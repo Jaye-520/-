@@ -16,7 +16,7 @@ namespace MOD_YtxSQ1.UI
             {
                 var w = (width - 26) / 2;
                 ActionButton(panel, "满修为", 10, top, w, "补满选中人物下一阶段所需修为，保留游戏正常瓶颈和突破流程。", false);
-                ActionButton(panel, "满材料", 16 + w, top, w, "将玩家背包内可叠加物品补至9999，不可叠加物品保持原样。", false);
+                ActionButton(panel, "满材料", 16 + w, top, w, "将当前选中人物背包内可叠加物品补至9999，不可叠加物品保持原样。", false);
             }
             else if (group == 3)
             {
@@ -28,7 +28,7 @@ namespace MOD_YtxSQ1.UI
             else
             {
                 var w = width - 82;
-                affectionInput = CreateFateSearch(panel, "双向好感度", 10, top, w, 32, "双向好感度增量", _ => { });
+                affectionInput = CreateSearchInput(panel, "双向好感度", 10, top, w, 32, "双向好感度增量", _ => { });
                 ActionButton(panel, "执行", 16 + w, top, 56, "输入增量，再点击执行；玩家与所选NPC对彼此的好感度各增加此值。", true, "好感度");
             }
         }
