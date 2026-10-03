@@ -1,6 +1,8 @@
 # 工程手册
 
-更新：2026-10-03（07.39双入口）。仅维护实际结构、可执行流程和关键经验；当前状态见[项目记忆](../PROJECT_MEMORY.md)，历史证据见[变更记录](CHANGELOG.md)。
+更新：2026-10-03（07.40入口校准；按主题重组，去掉逐版标题）。仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
+
+结构：代码导航 → 构建和调试 → 官方资料 → 必须保留的实现与失败经验（写入与境界、入口坐标、生命周期与释放、打开过渡与固定纹理、视觉约定、原生调用防错等主题规则）→ 常驻与释放审查范围 → 按变更验证 → 小步迭代与文档维护。
 
 ## 代码导航
 
@@ -10,7 +12,8 @@
 | --- | --- |
 | ModMain.cs | 初始化、帧计时器、重复释放和异常熔断 |
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
-| UI/WorkshopEntrances.cs | 原生主界面/NPC玉简挂载、定位、点击上下文核对、独立于内容熔断的资源生命周期 |
+| UI/WorkshopEntrances.cs | 原生双入口挂载、单值坐标转换、F9拖动/缩放、点击核对、独立于内容熔断的生命周期 |
+| UI/EntranceLayout.cs | 独立map/npc归一化位置/尺寸、配置校验、文件读写及原子更新；不访问存档 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
 | UI/BookView.cs | 七项导航布局、普通搜索、名单、角色属性、立绘和固定署名 |
 | UI/WindowInputScope.cs | 本视图登记输入的焦点保护、Text到Caret坐标转换、有限诊断与补丁释放 |
@@ -63,9 +66,33 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 游戏根在工程上两级；具体环境见项目记忆。
 
-- `Mod/modFQA/代码编写教程/代码编写教程.docx`、`Mod/modFQA/资源修改教程/资源修改教程.docx`及工程Example.cs。
-- `docs/api-reference/`是官方CHM解包缓存；调用签名须核对本机`MelonLoader/Managed/`程序集，不能直接套网上新版接口。
+- `Mod/modFQA/`：`代码编写教程/`（含官方`ModMain`模板工程与`GGBH_API.chm`）、`资源修改教程/`、`配置修改教程/`、`鬼谷八荒MOD使用指南基础版 1.0/`、`MOD模板例子/`（DLC配置、静/动态立绘、技能配置、替换UI四个示例工程），以及工程`Example/Example.cs`。
+- `docs/api-reference/`是官方CHM解包缓存（约110034个htm，未纳入Git）；调用签名须核对本机`MelonLoader/Managed/`程序集，不能直接套网上新版接口。
 - 正式自定义UI路线涉及Unity2020.3.9、UIBase、预制体与组件注册，当前迁移未完成。原始教程研究细节保存在历史归档。
+
+### 官方MOD工程结构与新建流程（2026-10-03只读核实）
+
+教程正文很薄（代码教程53段、资源教程约60段、配置教程约50段），操作细节主要靠截图，本机未逐张核对截图。下列结构以官方模板工程、本机程序集和`Player.log`实测为准，不以教程叙述代替。
+
+**新建流程（编辑器口径）**：游戏内`MOD`页面→`模组开发`→`更改目录`指定自建MOD文件夹→`新建项目`→模组编辑页（创建气运/NPC/宗门/道具/奇遇/副本等）→`保存项目`→右下角`进入游戏调试`。首次点击`编写代码`会生成VS工程与主类；主类名必须为`ModMain`，命名空间默认`MOD_<模组ID>`，改命名空间须同步程序集名与编辑器内设置。教程硬性要求：VS2022、net472、新增引用一律`Private=False`（否则Release会多出DLL导致MOD失效）、`bin/Release`只留本模组DLL、Harmony补丁在`Init`中手动`PatchAll`。
+
+| 目录/文件 | 职责（模板工程与本机实测） |
+| --- | --- |
+| ModProject.cache | 模组身份JSON：soleID、name/author/desc/ver、exportVer、tags、excelEncrypt等；官方soleID为YtxSQ1 |
+| ModData.cache | 各配置表的模组自有行(groupName/items)、excelMID及modNamespace；实测`modNamespace = "MOD_" + soleID`，excelMID是`MID&`的偏移基准 |
+| ModCode/ModMain | C#工程；AssemblyName=MOD_YtxSQ1、net472；产物`bin/Release/MOD_YtxSQ1.dll` |
+| ModAssets | 随MOD一起导出的资产；`g.mod.GetModPathRoot("<soleID>")`取模组根目录 |
+| ModExcel | 配置表xlsx/json；文件名须与表名一致，json与xlsx不能同名 |
+| ModRes/ResBuildABProject | Unity 2020.3.9f1c1工程，菜单`游戏工具/更新/AB`输出`Assets/AssetBundle`；`Assets/Resources`下资源全部打AB |
+| debug/Mod_<soleID> | 编辑器调试导出实例：ModAssets、ModCode/dll/*.dll、ModRes/AssetBundle、ModExportData.cache |
+
+**入口契约（官方模板`代码编写教程/ModMain/ModMain.cs`）**：`public class ModMain`提供`public void Init()`与`public void Destroy()`，用`g.timer.Frame(new Action(OnUpdate), 1, true)`做逐帧；Harmony须在`Init`中`new HarmonyLib.Harmony("<命名空间>")`后`PatchAll(Assembly.GetExecutingAssembly())`。教程只强制类名、未给签名，签名以模板工程为准。
+
+**加载证据**：`Player.log`记录`加载模组：<游戏根>\MODS_INIT\ModProject_<soleID>/debug/Mod_<soleID>/ModExportData.cache`，调用栈为`DLCConfMgr:Init`←`ConfMgr:Init`←`ModMgr:Init`内的`ModMgr:LoadAllMod`/`LoadMod`。模组工程根目录即`<游戏根>\MODS_INIT\`；磁盘DLL与debug目录同步只证明文件一致，不证明运行中的游戏已重载该版本——以日志和界面核对。
+
+**配置表头来源**：本机在`Mod/modFQA/配置修改教程/配置表头`（761个xlsx）；`配置（只读）`128个中文名xlsx与`配置（只读）Json格式`761个json仅供查表，不放入模组；`配置对照/配置对照表.xlsx`与`效果配置对照表.xlsx`是条件/命令/效果对照。教程所称`StreamingAssets\modFQA\...`在本机不存在（该目录仅有`assets`），以本机实际路径为准。新增配置ID在xlsx里写`MID&XXXX`（json不支持），实际ID=excelMID+该值。
+
+**教程未覆盖、须靠模板与本机核实**：各目录职责与两个cache字段、`Init`/`Destroy`签名、DLL在MOD内的确切落位与加载时机、日志位置、soleID概念、导出与创意工坊上传流程、`g.*`接口清单（见`Example/Example.cs`）。编辑器UI类型可在本机`MelonLoader/Managed/Assembly-CSharp.dll`核对，如`UIModMain`/`UIModMainProject`/`UIModCode`/`UIModExcel`/`UIModRes`/`UIModDress`/`UIModAllTable`与`ModMgr`/`ModExcelTool`/`ModExportTool`/`ModData*`。
 
 ## 必须保留的实现与失败经验
 
@@ -87,7 +114,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 同一症状连续两次修复失败，先补真实事件证据；区分安装、分支命中和行为改变。不要把禁用控件状态、托管测试或模拟预览当成原生游戏验证。
 
-### 07.30反馈修复与快捷操作依据
+### 写入、动作与境界依据
 
 - 数值输入在OnValueChanged回调中先设置textComponent.text，再读preferredWidth；Unity回调发生在UpdateLabel之前，不能用旧字符串的宽度。克隆InputField清理继承的caretRectTrans/m_CachedInputRenderer/m_InputTextCache，销毁属于克隆的Caret，规范文字/占位矩形并AssignPositioningIfNeeded/UpdateLabel；不销毁原搜索框Caret，保留已认可GenerateCaret平移补丁。真实光标仍需游戏核对。
 - 气运07.32以统一自绘纯色底、细线和品阶文字绘制，sprite=null，不再使用原生气运贴图。取消修改器自加的同组、lockLuck/globalMax限制，不改配置或成就全局状态；重复、隐藏、无运行类和壶妖类型仍保护。UnitActionLuckAdd.IsCreate原生检查并不使用成就/全局名额条件，不能把随机角色生成条件套入主动修改。
@@ -97,9 +124,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 - RoleGrade.lockFeature配置120等对应RoleEffect1201=limitGradeExp_1_1；旧瓶颈不注销会继续限制新境界经验。直接改境界通过LuckDel注销这些实际拥有记录，回退通过原LuckData/CreateLuck/NewCreateLuck恢复。满修为只走PropertyData.AddExp，其原生路径处理锁定效果、瓶颈及经验事件，不直接赋exp，也不改境界。
 - 降阶的体力/寿命/道点下限及截断差额存人物objData的BHML.realm.debt:*键，下一次升阶补偿截断，避免反复升降加值；失败回退恢复原字段/经验/品质/扩展记录。复杂原生回调仍可能产生不能简单撤销的事件，托管回退不等于游戏事务。数字草稿和境界不能混批保存。
 - WorkshopWindow成功取得承载后、Build之前Clear未应用草稿；切页/切人物仍保留当次草稿。真正磁盘保存失败的已应用内存Pending继续保留，原生保存成功回调才清零。预检错误包含具体人物和字段，范围以原生DynInt为准，不为消除报错而盲目扩大寿命/资源范围。
-## 按变更验证
-
-### 07.38常驻审查与验收边界
+### 常驻与释放审查范围
 
 | 范围 | 已核对的机制 | 仍需游戏证据 |
 | --- | --- | --- |
@@ -112,43 +137,46 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 资源关闭后允许有界常驻四张自身纹理、帧计时器及少量托管状态；不要求总内存回到同一值，不以一次进程内存/工作集判断泄漏。长期趋势必须考虑地图/战斗/游戏资产缓存。正常存档不代做写入试验；保持独立备份，保存与重载专项在测试存档进行。实测重点为2–4小时正常游玩不使用秘录后F8、名单刷新、搜索/切人物、关闭、日志；不需要为闲置测试改数值。
 
-### 07.37开启过渡
+### 打开过渡
 
 书页遮罩CanvasGroup只由BookView持有，构建后开始0.16秒未缩放时间Smoothstep透明度变化，无缩放/布局变化。过渡期间interactable=false、blocksRaycasts=true，完成才恢复操作；TickAppearance放在属性刷新节流前，每帧执行。关闭无需等淡入完成，Dispose清状态及引用。检查初态/中途/完成，GDI替身不渲染动画。同步打开日志不含过渡时间，不能将淡入称为消除构建卡帧。
 
-### 07.36固定美术纹理生命周期
+### 固定美术纹理生命周期
 
 PaperSkin.Acquire在主线程懒创建唯一四纹理缓存（纸、刷、山水、标题）；BookView只借用，Dispose不销毁共享纹理。ModMain.Destroy先释放控制器/窗口，再ClearCache；不放人物/世界对象、不开后台Unity线程。生成逐像素数学用System.Math，避免Mathf原生包装重复往返。`run-paper-skin.ps1`编译真实实现、嵌入实际PNG，验证固定数量、重复获取、释放/重建、部分失败及重试；图像解码是替身，不测GPU或Unity原生泄漏。窗口/人物重建规则保持，现有逐阶段日志用来验证冷/热打开收益。
 
-### 07.39入口约定
+### 入口定位与坐标
 
-- 定位依据为本机UIMapMain.uiPlayerInfo.textSPValue右边中点+40单位、UINPCInfo.uiUnitInfo.imgHeresyBg下边中点-40单位，图标56单位；使用reference.lossyScale/root.lossyScale同步大小及间距。GetWorldCorners后InverseTransformPoint，不用IL2CPP Bounds跨包装路径。原生面板首次可见最多半秒挂载，入口异常3秒重试；不逐帧遍历UI树。
-- 两入口挂在各自UIBase根下，不改原生按钮回调/导航或关闭NPC。NPC点击实时读unitID，仅将托管ID送入WorkshopWindow.Open→BookView.Build(initialUnitId)，第一次ReloadRoster先同步context，防止RefreshCharacter把目标重置为玩家。Build完成后名单滚至选中行。
-- 入口每半秒禁用被覆盖面板；点击再次核对topUI、窗口所有权、world与context。目标已死/找不到时拒绝，不将空ID传为玩家。单窗口已开不新建或切换对象，不清掉正在编辑的草稿。
-- WorkshopEntrances由ModMain持有，与WorkshopController解耦。内容熔断释放控制器/纸墨，保留玉简点击及纹理；点击重建后只打开，不重放修改。显式Destroy解绑入口并停止timer，分别释放控制器/纸墨。入口解绑、隐藏、Destroy各自隔离异常。
-- Art/EntranceJade-v1.png生成原图为1254平方，透明PNG，嵌入逻辑名MOD_YtxSQ1.Art.EntranceJade.png；ImageConversion.LoadImage只读上传，失败释放临时纹理。共用一张入口纹理，不为每面板重复解码。图标不在ModAssets。
-- run-entrances.ps1编译真实入口类；15项仅测托管窗口/矩形模型及点击门禁，不证明IL2CPP或CanvasScaler。结合run-lifecycle、run-controller-idle及run-book-layout核对跨层调用。实际位置错误先收集reference/root角点与缩放，不按截图分辨率硬编码。
-### 07.35异常释放
+- 07.39错误：GetWorldCorners实际签名为Il2CppStructArray<Vector3>，普通Vector3[]隐式转换只复制输入到新数组；读取原数组仍是零。不能把本机原生包装API当普通Unity托管方法。处理输出数组须读原生包装索引或改用单值返回；当前使用reference.rect→TransformPoint→root.InverseTransformPoint。禁止恢复原代码，托管数组替身通过不能证明原生写回。
+- 默认map=textSPValue右边中点+40单位；npc=btnAppellationAttack右边中点+22单位，与按钮同高，按07.40新红框调整。根矩形/缩放未就绪拒绝，半秒挂载核对，错误3秒重试。保持原UI层，不使用截图像素硬编码原生坐标。
+- F9仅无文本编辑且有效入口在层顶时切换；调整期间入口点击不打开内容。鼠标按下命中图标后保留抓取偏移，ScreenPointToLocalPointInRectangle使用所属UI canvas.worldCamera；松手记录并短时抑制Click。滚轮仅悬停修改本入口size40–100。提示显示局部坐标，靠边自动向内/上下面板。
+- EntranceLayout独立map/npc，Custom位置是相对各自UI根矩形的x/y归一化中心，尺寸是参照控件单位；保存后常规Sync使用Custom，不能把拖动结果每半秒覆写。存放Application.persistentDataPath/BHML/entrance-layout.ini，Player.log记录路径、两组值和画面尺寸。纯布局文件不关联人物/世界存档；换档保留布局，清理入口和调整状态。
+- 写入UTF8、InvariantCulture、同目录.tmp+File.Replace+bak；校验范围、NaN/Infinity及文件大小，非法条目忽略，读失败保留默认。写失败保留dirty并提示，可F9再次锁定重试。不得提前编造最终用户坐标；用户说调整好后读本机ini和日志再固化默认值。
+- 入口由ModMain独立持有，内容熔断后点击重建控制器，不重放修改；关闭/离图/换世界/卸载清理回调及原生对象。正常模式只检测F9，不逐帧查原生世界/UI；调整模式才逐帧处理鼠标。
+- 图标v2减少细碎纹饰；mipmap=true+Trilinear处理1254原图缩小采样。原图高清不能自证56单位下清晰；必须按真实游戏截图评估。只共用一张纹理，卸载释放。
+- run-entrances.ps1编译真实入口及真实布局文件服务；26项涵盖独立拖动/保存/恢复/大小、松手抑制、非法值与原子写入，仍不模拟IL2CPP、CanvasScaler或真实指针时序。原生方法签名/隐式转换IL已用本机Cecil核对；同类byref/数组输出必须再查包装语义。
+
+### 视图异常释放
 
 原生窗口创建/初始化须与视图/补丁安装共同在局部异常边界内，恢复前确认共享UI所有权，回退失败只关闭自己窗口。清理先拆持有引用，各原生步骤单独捕获；一个输入/立绘失败不能跳过纹理及原控件恢复。输入endingEditor由finally复位。生命周期托管检查含30次重复开关与OpenUI/null/InitData/回退/Attach故障；布局检查对四画布真实BookView注入输入停用错误，观察注销、Destroy和后续资源释放。替身Destroy从父Children移除但不清parent，断言遵守替身模型，不以它证明Unity销毁时序或内存无泄漏。
 
-### 07.34常驻与打开诊断
+### 常驻节流与打开计时
 
 关闭时WorkshopController不逐帧查询地图UI，半秒复核世界失效及窗口所有权；保存回调Poll与F8逐帧，按键不受节流限制。`run-controller-idle.ps1`编译真实控制器核对节流、F8、保存结果收取、离图、退出世界及输入/顶层UI保护。不会以托管计数证明游戏CPU收益。
 
 WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView阶段日志拆字体/纸墨、骨架/搜索模板、名单/排序、属性控件、快照/编辑、立绘及气运。总计是同步调用耗时，不包含下一帧渲染/GPU呈现；首次与重复打开需分别记录。诊断只在打开构建期间，Dispose清除失败计时状态。名单局部getter复用不保留跨帧原生引用。性能优化须据真实日志，不做后台预读游戏对象或过期名单缓存。
 
-### 07.33视觉约定
+### 视觉与布局约定
 
 - 微小帮助标记叠加在按钮角上，不通过标题缩进或缩宽给它占位；满状态没有说明。命中区独立，保留父按钮中心线。布局增加正文高度时同步页脚边界，宽版共底、小画布滚动及Box越界检查不能失效。
 - 三项天级天赋有明确配置编号2804/2805/2806，原level=6并不意味着所有6都为神；显示快照特判这三项，不改配置、不靠本地化名称识别。天级雕饰随行池绑定启闭，回用普通条目必须关掉，不能遗留金框。
 
-### 07.32显示修正约定
+### 帮助标记与气运绘制
 
 - 除满状态无介绍外，按钮介绍只绑角落帮助标记，不绑父按钮；点有独立点击接收器，防止把看介绍变成执行操作。提示与对象栏/正文共同使用书页坐标，按按钮下方/上方定位，不能将左栏提示强行约束到正文区域。
 - 气运贴图的等比与拉伸均已被用户否定；按当前需求统一自绘色底，不再恢复SpriteTool.GetLuckBG。level在读取快照时保存；滚动池只更新颜色和文字，不加载贴图或重建装饰。名称保留固定品阶栏、删除空间和单行BestFit，检查拥有/检索/图鉴三个入口。
 
-### 07.31防止重复错误
+### 原生调用与数据换算防错
 
 - 本机Unhollower生成的`Dictionary<TKey,TValue>.TryGetValue`对byref值使用引用包装构造，`float`会报`Single..ctor(IntPtr)`。用Mono.Cecil核对Il2Cppmscorlib的IL后，采用ContainsKey+索引getter的PointerToValueGeneric解箱。新增涉及原生泛型byref基本类型时先核实生成IL，普通托管字典替身不会暴露此问题。
 - UnitActionSetPoint成功和坐标回读不代表地图人数已经刷新。后续走MapWorldMgr.UpdateGridUI/UpdateGridUICmd及UIMapMain.uiGridUnit.UpdateUI(curSelectPoint)，不通过重建单位或直接改人数掩盖显示错误；游戏回归覆盖来、重复来、返和去。
@@ -158,7 +186,7 @@ WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView�
 - 光标连续反馈失败后不能再用托管测试自证：07.31记录每输入框空/非空的真实字形范围、原光标范围、转换位移和两矩形位置。按Unity原生AssignPositioningIfNeeded同步矩形，并将Text字形坐标转换到Caret局部坐标；诊断命中及游戏画面对照仍待取得。参考[Unity InputField源码](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)，具体接口以本机包装程序集为准。
 - 性能结论必须测量：空气运检索不加载全配置，介绍按悬停查询，已失败字体创建不重复执行，去掉逐次悬停日志；界面构建Stopwatch日志供新版实测。保留每次打开重读名单，不用过期世界缓存换取打开速度。
 
-### 07.29写入与配置依据（原生游戏结果待验证）
+### 持久写入与配置依据
 
 - 用户明确唯一存档是开发测试存档，授权本轮接入真实写入；不终止游戏。使用本机Managed程序集、官方CHM的WorldUnitBase.CreateAction/DataMgr.SaveData和官方RoleCreateFeature/RoleGrade表头及JSON核实接口。新增引用保持Private=False。
 - DynInt.value只读。baseValue setter负责钳制及原生变化回调；加法效果保留，目标显示值换算基础差值，年份保存时保留月余数。倍率/固定效果、缺持久setter、范围异常目前拒绝，不通过试写猜系数。全批先准备，应用顺序资源上限优先；异常逆序回退可回退字段并读回原值。不声称游戏原生复杂动作可事务回退。
@@ -168,6 +196,8 @@ WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView�
 - 后天/逆天用UnitActionLuckAdd，删除用UnitActionLuckDel注销运行回调和addLuck；先天添加保留bornLuck记录并CreateLuck/NewCreateLuck，删除补齐原动作不负责的bornLuck。当前保护重复、隐藏/缺失配置、无运行类及壶妖修士差异；07.30已移除随机生成的同组、成就和全局名额限制，不恢复这些主动赋予门槛。气运动作即时影响内存，记录待保存；复杂原生调用可能部分执行，错误后强制重读，不谎称无变化。
 - DataMgr.isSaveData为静态并发标志，调用g.data.SaveData(Il2CppSystem.Action<bool>)。保留托管/IL2CPP委托，回调只发布托管结果，WorkshopController.Update主线程Poll刷新；成功才清待保存，失败仍可保存内存而不重放草稿；上下文切换的旧回调不清新世界状态。不能承诺游戏不会自动保存。
 - Native反汇编依据存于忽略的.tools（writes/apply/npcinfo/binding及fate-style-native等研究输出）；自动符号共享地址有误标，结论须结合字段偏移/配置/实际调用。诊断文件是研究缓存，不进入ModAssets或发布包。
+
+## 按变更验证
 
 | 改动 | 相关检查 | 游戏重点 |
 | --- | --- | --- |
@@ -180,7 +210,7 @@ WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView�
 
 脚本在`docs/verification/`，使用前核对当前源码适配性。托管替身不覆盖Unity事件顺序、IL2CPP及Windows IME；run-book-layout.ps1会写screenshots模拟预览，必须与实测截图区分。
 
-已有验收摘要仅在项目记忆维护；全部数字字段与单位、IME全流程、多分辨率、跨场景/存档和地图输入隔离尚未全量验收。编译、托管检查、磁盘同步、加载和游戏结果分别记录。
+托管检查项按当轮计，报告时说明轮次与累计口径，不与历史项相加。验收结论与未验收边界只在[项目记忆](../PROJECT_MEMORY.md)维护，逐版证据只在[变更记录](CHANGELOG.md)；全部数字字段与单位、IME全流程、多分辨率、跨场景/存档和地图输入隔离尚未全量验收。编译、托管检查、磁盘同步、编辑器加载和游戏结果分别记录。
 
 ## 小步迭代与文档维护
 
