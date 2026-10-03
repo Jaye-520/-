@@ -131,6 +131,25 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 
 ## 必须保留的实现与失败经验
 
+### 07.50故障复盘与后续排查顺序
+
+2026-10-03用户确认“修复都成功了”，本轮发放、补给、光标与题栏留白修复成为保留基线。原生接口和对象身份的具体依据见下节；本节记录排查方法，避免再次只修改表象。
+
+| 故障 | 之前遗漏 | 后续规则与回归覆盖 |
+| --- | --- | --- |
+| 发放与补给同时失败，清空正常 | 只核对接口签名，误将null当作默认值；替身又把null自动转成编号，检查通过却掩盖原生错误 | 先查两个失败操作共用的Add路径，核实字符串哨兵值及新建编号分支；区分首次创建与已有物品叠加。替身按原生约定处理空字符串，检查新叠加药和非叠加物品的唯一编号 |
+| 对象搜索框正常，其他输入框光标仍下沉 | 反复检查偏移、坐标及克隆缓存，未先确认补丁命中；替身只使用同一个托管引用 | 把正常框与异常框的登记、Owns、回调、注销逐项比较，先查日志和身份判断，再查几何。模拟两个包装指向同一Unity对象，检查识别、去重、光标回调及注销 |
+| 各页题栏文字贴左边 | 标题与状态的起点按页面分支分别设置，造成留白不一致 | 在公共题栏统一左留白20，并同步减少文字宽度；保留对象栏、正文和右侧按钮位置 |
+
+出现类似问题时，按以下顺序处理：
+
+1. 保留用户反馈和故障截图，明确哪些操作失败、哪些仍正常，用正常路径缩小范围。
+2. 检查公共入口、对象身份和补丁是否实际执行；没有命中证据时，不继续叠加位置补偿。
+3. 核实当前游戏程序集或原生实现的参数约定，特别是null、空字符串、唯一ID和枚举；不能只凭类型签名推断语义。
+4. 对照真实契约检查替身。替身不能自动修正原生会拒绝的参数，也不能省略包装对象身份差异。
+5. 只改已定位的错误路径，保留正常搜索框与已认可界面；通过对应回归、编译和部署校验后，再记录用户实测结论。
+6. 明确区分编译、托管检查与游戏确认。本次680项检查是交付证据，用户后续确认是修复验收；不自动扩大为存档重载、特殊物品或全部输入边界验收。
+
 ### 07.49共享人物、道具与输入克隆
 
 - `selectedUnitId`是四个人物页唯一选择源，对象栏不随切页重建。写入按世界上下文与明确人物ID解析，失效不回退玩家；弹窗切人/切页关闭，清空还核对唯一ID/配置ID/数量组成的排序指纹。世界切换关闭窗口，下一次由入口明确目标。
@@ -138,7 +157,7 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 - 普通恢复药限定 `effectType=101`、可用、可叠加、非隐藏、不高于目标境界；使用 `GetPillAddValue(unit,id,false)`比较hp/mp实际药效，同效果按品质优先。两种药各增加20，先预检两项溢出再发放，第二项失败说明第一项已增加。
 - 克隆活跃输入框不能仅看 `caretRectTrans`：非序列化引用可能指向源框，而克隆层级已有独立“ Input Caret”子对象。只删除克隆内生成子对象，置空克隆的renderer/cache/mesh/cursorVerts，不销毁源网格或源Caret。
 - Text字形网格按首顶点 `PixelAdjustPoint`取整，InputField光标按原点取整；不能混用偏移。依据：[Unity InputField](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)、[Unity Text](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/Text.cs)，原生反汇编另留 `.tools/items-native.txt`。这项几何修正没有解决07.49克隆框漏执行，不能当成游戏验收；对象身份原因见下条。
-- 07.50排查确认克隆框的光标补丁漏执行：本机UnhollowerBaseLib的Il2CppObjectBase没有覆盖 `System.Object.Equals`；Unity包装仅提供 `Equals(Il2CppSystem.Object)`，不覆盖托管Equals。`List<InputField>.Contains/Remove`比较包装引用，而Harmony回调可收到新包装；主搜索用Unity `==`所以正常。登记去重、Owns和释放统一用Unity `==`；回归替身必须模拟不同包装指向同一对象，不能全程使用同一个托管引用。旧几何修正保留，实际游戏表现仍待核对。
+- 07.50排查确认克隆框的光标补丁漏执行：本机UnhollowerBaseLib的Il2CppObjectBase没有覆盖 `System.Object.Equals`；Unity包装仅提供 `Equals(Il2CppSystem.Object)`，不覆盖托管Equals。`List<InputField>.Contains/Remove`比较包装引用，而Harmony回调可收到新包装；主搜索用Unity `==`所以正常。登记去重、Owns和释放统一用Unity `==`；回归替身必须模拟不同包装指向同一对象，不能全程使用同一个托管引用。旧几何修正保留，07.50本轮光标修复已获用户游戏内确认。
 - 所有模块标题与状态文字统一左留白20，缩减相应文字宽度，保留右侧操作空间；不移动对象栏与正文卡片。
 
 
