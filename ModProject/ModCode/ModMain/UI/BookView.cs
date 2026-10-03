@@ -101,45 +101,11 @@ namespace MOD_YtxSQ1.UI
             openingStages = "";
             requestClose = close;
             selectedUnitId = initialUnitId;
-            foreach (var text in window.GetComponentsInChildren<Text>(true))
-            {
-                if (text.font != null && (font == null || text.text.Length > 20)) font = text.font;
-            }
-            if (font == null) throw new InvalidOperationException("未找到原生中文字体。");
-            try
-            {
-                if (!fontCreationUnavailable) calligraphyFont = Font.CreateDynamicFontFromOSFont("KaiTi", 24);
-                if (calligraphyFont != null && !calligraphyFont.HasCharacter('荒'))
-                {
-                    UnityEngine.Object.Destroy(calligraphyFont);
-                    calligraphyFont = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                fontCreationUnavailable = true;
-                var failedFont = calligraphyFont;
-                calligraphyFont = null;
-                if (failedFont != null) Cleanup(() => UnityEngine.Object.Destroy(failedFont), "失败字体");
-                Debug.LogWarning("[八荒秘录] 楷体回退为游戏字体：" + ex.Message);
-            }
+            ResolveFonts(window);
             try { skin = PaperSkin.Acquire(); }
             catch (Exception ex) { Debug.LogWarning("[八荒秘录] 纸墨材质回退为纯色：" + ex.Message); }
             RecordOpeningStage("字体/纸墨纹理");
-            foreach (var graphic in window.GetComponentsInChildren<Graphic>(true))
-            {
-                if (!graphic.enabled) continue;
-                hiddenGraphics.Add(graphic);
-                graphic.enabled = false;
-            }
-            foreach (var button in window.GetComponentsInChildren<Button>(true))
-            {
-                nativeButtons.Add(button);
-                nativeButtonStates.Add(button.interactable);
-                nativeButtonActiveStates.Add(button.gameObject.activeSelf);
-                button.interactable = false;
-                button.gameObject.SetActive(false);
-            }
+            HideNativeControls(window);
 
             var overlay = NewRect("界面遮罩", window.transform);
             root = overlay.gameObject;
@@ -182,6 +148,79 @@ namespace MOD_YtxSQ1.UI
             MakeCloseButton(header, width - 82, 4, close);
             Fill(book, "标题分界", 20, 60, width - 40, 1, Gold);
 
+            BuildNavigation(book, width);
+            targetWidth = width < 1300 ? 190f : 224f;
+            var bodyHeight = height - BodyTop - 50;
+            BuildTargetPanel(book, bodyHeight);
+            contentWidth = width - targetWidth - 76;
+            contentHeight = bodyHeight;
+            content = Box("卷页", book, targetWidth + 52, BodyTop, contentWidth, contentHeight);
+
+            Fill(book, "页脚分界", 24, height - 40, width - 48, 1, Gold);
+            var footer = Box("页脚", book, 24, height - 36, width - 48, 28);
+            // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
+            Label(footer, "Jaye@2026-爱你一生一世", 214, 1, width - 48 - 428, 24, 16, Ink, TextAnchor.MiddleCenter);
+            Label(footer, ModVersion.Current + " / Esc 合上", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
+            RecordOpeningStage("窗口骨架/搜索模板");
+            Select(0);
+            if (!string.IsNullOrEmpty(initialUnitId)) ScrollToInitialUnit(initialUnitId);
+            RecordOpeningStage("完成绑定");
+            Debug.Log("[八荒秘录] " + ModVersion.Current + "界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height + openingStages);
+            openingTimer = null;
+            openingStages = null;
+            appearanceStarted = Time.unscaledTime;
+            appearing = true;
+        }
+
+        // 原生中文字体优先；楷体只作标题字，取不到或创建失败就回退，且失败的创建不再重试。
+        private void ResolveFonts(UITextInfoLong window)
+        {
+            foreach (var text in window.GetComponentsInChildren<Text>(true))
+            {
+                if (text.font != null && (font == null || text.text.Length > 20)) font = text.font;
+            }
+            if (font == null) throw new InvalidOperationException("未找到原生中文字体。");
+            try
+            {
+                if (!fontCreationUnavailable) calligraphyFont = Font.CreateDynamicFontFromOSFont("KaiTi", 24);
+                if (calligraphyFont != null && !calligraphyFont.HasCharacter('荒'))
+                {
+                    UnityEngine.Object.Destroy(calligraphyFont);
+                    calligraphyFont = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                fontCreationUnavailable = true;
+                var failedFont = calligraphyFont;
+                calligraphyFont = null;
+                if (failedFont != null) Cleanup(() => UnityEngine.Object.Destroy(failedFont), "失败字体");
+                Debug.LogWarning("[八荒秘录] 楷体回退为游戏字体：" + ex.Message);
+            }
+        }
+
+        // 隐藏并停用原生承载窗口的全部可见控件，同时记录原状态供释放时恢复。
+        private void HideNativeControls(UITextInfoLong window)
+        {
+            foreach (var graphic in window.GetComponentsInChildren<Graphic>(true))
+            {
+                if (!graphic.enabled) continue;
+                hiddenGraphics.Add(graphic);
+                graphic.enabled = false;
+            }
+            foreach (var button in window.GetComponentsInChildren<Button>(true))
+            {
+                nativeButtons.Add(button);
+                nativeButtonStates.Add(button.interactable);
+                nativeButtonActiveStates.Add(button.gameObject.activeSelf);
+                button.interactable = false;
+                button.gameObject.SetActive(false);
+            }
+        }
+
+        // 七项卷目；末项“保存”是操作而非页面，其余切换页面。
+        private void BuildNavigation(RectTransform book, float width)
+        {
             var navigation = Box("卷目区", book, 24, 64, width - 48, 44);
             var tabWidth = (width - 48 - (Modules.Length - 1) * 12) / Modules.Length;
             for (int i = 0; i < Modules.Length; i++)
@@ -198,34 +237,16 @@ namespace MOD_YtxSQ1.UI
                 tabLabels.Add(tab.GetComponentInChildren<Text>());
                 tabMarks.Add(Fill(tab.GetComponent<RectTransform>(), "选中标记", 8, 12, 3, 18, Cinnabar));
             }
-            targetWidth = width < 1300 ? 190f : 224f;
-            var bodyHeight = height - BodyTop - 50;
-            BuildTargetPanel(book, bodyHeight);
-            contentWidth = width - targetWidth - 76;
-            contentHeight = bodyHeight;
-            content = Box("卷页", book, targetWidth + 52, BodyTop, contentWidth, contentHeight);
+        }
 
-            Fill(book, "页脚分界", 24, height - 40, width - 48, 1, Gold);
-            var footer = Box("页脚", book, 24, height - 36, width - 48, 28);
-            // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
-            Label(footer, "Jaye@2026-爱你一生一世", 214, 1, width - 48 - 428, 24, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, ModVersion.Current + " / Esc 合上", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
-            RecordOpeningStage("窗口骨架/搜索模板");
-            Select(0);
-            if (!string.IsNullOrEmpty(initialUnitId))
-            {
-                var targetIndex = filteredRoster.FindIndex(entry => entry.Id == initialUnitId);
-                var range = Mathf.Max(0, rosterContent.sizeDelta.y - rosterHeight);
-                if (targetIndex >= 0 && range > 0)
-                    rosterScroll.verticalNormalizedPosition = 1 - Math.Min(1, Math.Max(0, targetIndex * RosterRowHeight / range));
-                RenderRosterRows();
-            }
-            RecordOpeningStage("完成绑定");
-            Debug.Log("[八荒秘录] " + ModVersion.Current + "界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height + openingStages);
-            openingTimer = null;
-            openingStages = null;
-            appearanceStarted = Time.unscaledTime;
-            appearing = true;
+        // 从玉简入口打开时把名单滚到目标人物；无有效目标或无需滚动时只重绘行。
+        private void ScrollToInitialUnit(string unitId)
+        {
+            var targetIndex = filteredRoster.FindIndex(entry => entry.Id == unitId);
+            var range = Mathf.Max(0, rosterContent.sizeDelta.y - rosterHeight);
+            if (targetIndex >= 0 && range > 0)
+                rosterScroll.verticalNormalizedPosition = 1 - Math.Min(1, Math.Max(0, targetIndex * RosterRowHeight / range));
+            RenderRosterRows();
         }
 
         private void Select(int index)

@@ -2,6 +2,14 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
+## 07.46：拆分BookView.Build并校正方法规模规范
+
+`BookView.Build`原为134行的单方法。按其内部**可分离阶段**抽出四个方法：`ResolveFonts`（原生字体优先＋楷体回退＋失败不重试）、`HideNativeControls`（隐藏并记录原生控件原状态）、`BuildNavigation`（七项卷目，末项为操作）、`ScrollToInitialUnit`（玉简入口打开时把名单滚到目标人物），主方法降到80行。行为等价点：阶段顺序与`RecordOpeningStage`埋点位置未变、`初始人物滚动`仍只在`initialUnitId`非空时执行且仍会调用`RenderRosterRows`、窗口尺寸校验与布局数值逐字未改。365项布局检查全绿。
+
+同时**校正了上一轮自己写的方法规模规范**：本轮测量发现全项目仍有14个方法超过50行（8个在`BookView`），且多为线性UI装配。规范改为“只有存在可分离阶段或重复逻辑才抽方法，不做机械拆分；`run-all.ps1`刻意不对方法长度设门禁”，避免后续会话为了过闸把装配流程切成一堆5行助手。仍待判断的较大方法：`CharacterRealmChange.Prepare`（115行，未验收的写路径，拆解需引入上下文对象）、`BookView.BuildAttributeOverview`（107行）、`BookView.BuildSearchInput`（88行）。
+
+验证：零警告零错误，546项托管检查全绿；构建07.46时`.tools/backups/before-07.46`自动存入07.45的DLL（`23541993…`）；产物`DF70C2299F390E1E55278377CE1D805ADFA1A3421DFD31B7DDE64A0C3A3E12B5`，Release与debug一致。未操作存档或终止游戏。
+
 ## 07.45：死代码检查门禁＋移除BookView遗留方法
 
 起因：前几轮是**偶然**发现死代码的（`WorkshopEntrances.Allowed()`、`BookView.UnavailableButton`），说明这类残留没有主动防线。本轮先做全项目扫描（统计每个`private/internal`成员在“产品源码＋全部harness”文本中的出现次数），确认产品源码里只剩`BookView.UnavailableButton`一处——那是给未接入模块画灰按钮的旧助手，早先换了渲染方式后已无人调用，予以删除。
