@@ -98,6 +98,7 @@ namespace MOD_YtxSQ1.UI
                     if (library ? query.Length == 0 || MatchesItem(entry, query) : query.Length > 0 ? MatchesItem(entry, query) : itemPicks.Contains(entry.Id)) entries.Add(entry);
             var columns = library ? ItemLibraryColumns() : 1;
             scroll.content.sizeDelta = new Vector2(scroll.content.sizeDelta.x, Mathf.Max(scroll.viewport.sizeDelta.y, (float)Math.Ceiling((double)entries.Count / columns) * ItemRowPitch));
+            if (library && scroll.verticalScrollbar != null) scroll.verticalScrollbar.gameObject.SetActive(scroll.content.sizeDelta.y > scroll.viewport.sizeDelta.y + .1f);
             scroll.content.anchoredPosition = Vector2.zero; scroll.verticalNormalizedPosition = 1;
             RenderItemRows(library ? itemLibraryRows : itemRows, entries, scroll, columns, library);
         }
@@ -353,7 +354,13 @@ namespace MOD_YtxSQ1.UI
             Label(panel, "物品列表", 12, 8, width - 100, 30, 24, Ink);
             MakeButton(panel, "关闭物品列表", width - 48, 8, 36, 28, "×", CloseItemLibrary);
             itemLibrarySearch = CreateSearchInput(panel, "物品列表检索", 12, 44, width - 24, 32, "检索物品（名称 / ID）", _ => FilterItems(true));
-            itemLibraryScroll = ItemScroll(panel, "物品列表视口", 12, 86, width - 24, height - 142);
+            itemLibraryScroll = ItemScroll(panel, "物品列表视口", 12, 86, width - 38, height - 142);
+            var track = Fill(panel, "物品列表滚动轨", width - 18, 86, 6, height - 142,
+                new Color(.35f, .34f, .27f, .12f), true);
+            var handle = ScrollHandle(track, "物品列表滚动柄", 24, Muted);
+            var bar = track.gameObject.AddComponent<Scrollbar>();
+            bar.handleRect = handle.rectTransform; bar.targetGraphic = handle;
+            bar.direction = Scrollbar.Direction.BottomToTop; itemLibraryScroll.verticalScrollbar = bar;
             BuildItemRows(itemLibraryRows, itemLibraryScroll, ItemLibraryColumns(), true);
             itemLibraryScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { HideFateTips(); RenderItemRows(itemLibraryRows, itemLibraryResults, itemLibraryScroll, ItemLibraryColumns(), true); })));
             itemLibraryCount = Label(panel, "", 12, height - 46, width - 150, 30, 15, Muted);
