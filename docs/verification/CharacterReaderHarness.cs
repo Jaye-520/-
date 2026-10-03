@@ -18,7 +18,7 @@ public sealed class DynInt
 public enum UnitSexType { None, Man, Woman }
 public sealed class PropertyData { public WorldUnitBase Owner; public int exp; public void SetGradeID(int id){Owner.data.dynUnitData.gradeID.Stored=id;exp=g.conf.roleGrade.GetItem(id).exp;} public int AddExp(int value){exp+=value;return value;} public UnhollowerBaseLib.Il2CppReferenceArray<DataUnit.LuckData> bornLuck; public System.Collections.Generic.List<DataUnit.LuckData> addLuck=new System.Collections.Generic.List<DataUnit.LuckData>(); public UnhollowerBaseLib.Il2CppStructArray<int> hobby = new[]{201,202,203}; public UnhollowerBaseLib.Il2CppStringArray name=new[]{"",""}; public string Name { get { return GetName(); } set { name=new[]{"",value}; } } public UnitSexType sex = UnitSexType.Woman; public int inTrait=1,outTrait1=2,outTrait2=3; public string GetName() { return name[0]+name[1]; } }
 public sealed class DataUnit { public class RelationData { public float intimToPlayerUnit; public System.Collections.Generic.Dictionary<string,float> intimToUnit=new System.Collections.Generic.Dictionary<string,float>(); public void SetIntim(string id,float value){if(id=="player")intimToPlayerUnit=value;else intimToUnit[id]=value;} } public sealed class LuckData { public int id,duration; } }
-public class ConfRoleCreateFeatureItem { public int id,type,conceal,group,lockLuck,globalMax; public string name,tips; }
+public class ConfRoleCreateFeatureItem { public int id,type,conceal,group,lockLuck,globalMax,level; public string name,tips; }
 public sealed class FateItem : ConfRoleCreateFeatureItem { }
 public static class ConfRoleCreateFeatureEx
 {

@@ -44,7 +44,19 @@ namespace MOD_YtxSQ1.UI
                 RefreshCharacter(true); RefreshEditors(); SetEditStatus(message, !success);
             });
             if (npc) npcActions.Add(button);
-            BindFateHover(button.gameObject, () => ShowFateTip(button.GetComponent<RectTransform>(), new CharacterFate(0, 0, label, hint)), () => { fateTipCloseAt = Time.unscaledTime + .12f; });
+            var rect = button.GetComponent<RectTransform>();
+            var title = button.GetComponentInChildren<Text>();
+            title.rectTransform.anchoredPosition = new Vector2(17, 0);
+            title.rectTransform.sizeDelta = new Vector2(width - 21, 32);
+            title.resizeTextForBestFit = true; title.resizeTextMinSize = 14; title.resizeTextMaxSize = 18;
+            title.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var dot = Label(rect, "●", 3, 3, 14, 14, 13, Muted, TextAnchor.MiddleCenter);
+            dot.gameObject.name = "BHML_说明点_" + label;
+            dot.raycastTarget = true;
+            // 单独的点击接收器阻止说明点点击向父按钮传递操作。
+            var help = dot.gameObject.AddComponent<Button>(); help.targetGraphic = dot;
+            Label(dot.rectTransform, "?", 0, 0, 14, 14, 8, new Color(.96f, .95f, .90f, 1), TextAnchor.MiddleCenter);
+            BindFateHover(dot.gameObject, () => ShowFateTip(rect, new CharacterFate(0, 0, label, hint), content.parent.GetComponent<RectTransform>(), true), () => { fateTipCloseAt = Time.unscaledTime + .12f; });
             return button;
         }
         private void BuildRestoreButton(RectTransform parent, float y, float width)
@@ -57,7 +69,7 @@ namespace MOD_YtxSQ1.UI
             Fill(rect, "金线下", 3, 28, width - 6, 1, gold);
             Fill(rect, "金线左", 3, 3, 1, 26, gold);
             Fill(rect, "金线右", width - 4, 3, 1, 26, gold);
-            Label(rect, "◇", 10, 4, 20, 24, 17, gold, TextAnchor.MiddleCenter);
+            Label(rect, "◇", 24, 4, 20, 24, 17, gold, TextAnchor.MiddleCenter);
             Label(rect, "◇", width - 30, 4, 20, 24, 17, gold, TextAnchor.MiddleCenter);
         }
         private void RefreshActions()

@@ -8,10 +8,10 @@ namespace MOD_YtxSQ1.Services
     // 快照仅含托管值；分类以官方RoleCreateFeature表头及拥有条目的来源为准。
     internal sealed class CharacterFate
     {
-        public readonly int Id, Category;
+        public readonly int Id, Category, Level;
         public readonly string Name, Description;
-        public CharacterFate(int id, int category, string name, string description)
-        { Id = id; Category = category; Name = name; Description = description; }
+        public CharacterFate(int id, int category, string name, string description, int level = 0)
+        { Id = id; Category = category; Name = name; Description = description; Level = level; }
     }
 
     internal static class CharacterFates
@@ -76,6 +76,7 @@ namespace MOD_YtxSQ1.Services
             var name = fallback;
             var description = "当前配置中未找到此气运。";
             var category = source;
+            var level = 0;
             var tooltip = "";
             try
             {
@@ -85,6 +86,7 @@ namespace MOD_YtxSQ1.Services
                     // 原NPC界面也会过滤conceal=1；隐藏运行效果不能充当可见气运。
                     if (item.conceal == 1) return;
                     category = item.type == 3 ? 2 : source;
+                    level = item.level;
                     try { name = LocalText(item.name, fallback); }
                     catch (Exception ex) { failures.Add("名称#" + id + ":" + ex.GetType().Name); }
                     try { description = LocalText(item.tips, "暂无说明"); }
@@ -95,7 +97,7 @@ namespace MOD_YtxSQ1.Services
             }
             catch (Exception ex) { failures.Add("配置#" + id + ":" + ex.GetType().Name); }
             if (string.IsNullOrEmpty(tooltip)) tooltip = name + "\n" + description;
-            result.Add(new CharacterFate(id, category, name, tooltip));
+            result.Add(new CharacterFate(id, category, name, tooltip, level));
         }
         private static string LocalText(string key, string fallback)
         {

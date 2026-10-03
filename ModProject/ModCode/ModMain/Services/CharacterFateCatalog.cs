@@ -18,7 +18,7 @@ namespace MOD_YtxSQ1.Services
                 var item = items[i];
                 if (item == null || item.id <= 0 || item.conceal == 1 || !seen.Add(item.id)) continue;
                 var name = Text(item.name, "气运 #" + item.id);
-                result.Add(new CharacterFate(item.id, Category(item.type), name, ""));
+                result.Add(new CharacterFate(item.id, Category(item.type), name, "", item.level));
             }
             return result;
         }
@@ -34,15 +34,15 @@ namespace MOD_YtxSQ1.Services
             {
                 var item = g.conf.roleCreateFeature.GetItem(entry.Id);
                 var description = ConfRoleCreateFeatureEx.tips(item, CharacterReader.Resolve(unitId), null, 2);
-                if (!string.IsNullOrEmpty(description)) return new CharacterFate(entry.Id, entry.Category, entry.Name, description);
+                if (!string.IsNullOrEmpty(description)) return new CharacterFate(entry.Id, entry.Category, entry.Name, description, entry.Level);
             }
             catch { }
             try
             {
                 var fallback = g.conf.roleCreateFeature.GetItem(entry.Id);
-                return new CharacterFate(entry.Id, entry.Category, entry.Name, fallback == null ? "暂无说明" : Text(fallback.tips, "暂无说明"));
+                return new CharacterFate(entry.Id, entry.Category, entry.Name, fallback == null ? "暂无说明" : Text(fallback.tips, "暂无说明"), entry.Level);
             }
-            catch { return new CharacterFate(entry.Id, entry.Category, entry.Name, "说明暂不可读取"); }
+            catch { return new CharacterFate(entry.Id, entry.Category, entry.Name, "说明暂不可读取", entry.Level); }
         }
     }
 }

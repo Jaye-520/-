@@ -177,9 +177,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.31 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.32 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.31界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.32界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -807,13 +807,14 @@ namespace MOD_YtxSQ1.UI
                     var nameWidth = rowWidth - (i < 3 ? 36 : 12);
                     var name = Label(row, items[n].Name, 6, 0, nameWidth, rowHeight, 16, Ink, TextAnchor.MiddleCenter);
                     name.resizeTextForBestFit = true; name.resizeTextMinSize = 12; name.resizeTextMaxSize = 16;
+                    StyleFateRow(rowImage, name, entry, rowWidth, rowHeight, 32);
                     if (i < 3)
                     {
                         var removeImage = Fill(row, "移除气运_" + i + "_" + n, rowWidth - 28, 2, 26, rowHeight - 4, new Color(1, 1, 1, .001f), true);
                         var remove = removeImage.gameObject.AddComponent<Button>();
                         remove.targetGraphic = removeImage;
                         remove.onClick.AddListener((UnityAction)(new Action(() => DeleteOwnedFate(entry))));
-                        Label(removeImage.rectTransform, "×", 0, 0, 26, rowHeight - 4, (int)Mathf.Min(23, rowHeight - 5), new Color(.43f, .43f, .39f, .60f), TextAnchor.MiddleCenter);
+                        Label(removeImage.rectTransform, "×", 0, 0, 26, rowHeight - 4, (int)Mathf.Min(23, rowHeight - 5), FateInk(entry.Level), TextAnchor.MiddleCenter);
                     }
                 }
                 column.verticalScrollbar.gameObject.SetActive(pageHeight > column.viewport.sizeDelta.y + .1f);
@@ -860,6 +861,15 @@ namespace MOD_YtxSQ1.UI
             return new Rect(x, y, width, height);
         }
 
+        internal static Rect ActionTipBounds(Rect row, float width, float height, Vector2 area)
+        {
+            const float margin = 8, gap = 6;
+            var below = row.y + row.height + gap;
+            var y = below + height <= area.y - margin ? below : row.y - height - gap;
+            return new Rect(Mathf.Max(margin, Mathf.Min(row.x, area.x - width - margin)),
+                Mathf.Max(margin, Mathf.Min(y, area.y - height - margin)), width, height);
+        }
+
         internal static Rect FateRowBounds(RectTransform row, RectTransform area)
         {
             // 对象栏与正文是同一书页下的兄弟节点，额外换算兄弟栏按钮。
@@ -885,17 +895,18 @@ namespace MOD_YtxSQ1.UI
             return new Rect(x, -y, row.sizeDelta.x, row.sizeDelta.y);
         }
 
-        private void ShowFateTip(RectTransform row, CharacterFate entry)
+        private void ShowFateTip(RectTransform row, CharacterFate entry, RectTransform area = null, bool belowButton = false)
         {
             HideFateTips();
             if (row == null || !row.gameObject.activeInHierarchy || selectedIndex != 0) return;
             fateTipOwner = row;
-            var width = Mathf.Min(280, contentWidth - 20);
-            var maxHeight = Mathf.Min(300, contentHeight - 20);
+            area = area ?? content;
+            var width = Mathf.Min(280, area.sizeDelta.x - 20);
+            var maxHeight = Mathf.Min(300, area.sizeDelta.y - 20);
             // 原生tips可能包含字号标签；小提示统一字号，保留介绍内容与换行。
             var description = Regex.Replace(entry.Description.Replace("<br>", "\n").Replace("\\n", "\n"), "<[^>]+>", "");
             if (description.StartsWith(entry.Name + "\n", StringComparison.Ordinal)) description = description.Substring(entry.Name.Length + 1);
-            fateTip = Fill(content, "气运介绍", 8, 8, width, maxHeight, new Color(.96f, .95f, .90f, 1), true).rectTransform;
+            fateTip = Fill(area, "气运介绍", 8, 8, width, maxHeight, new Color(.96f, .95f, .90f, 1), true).rectTransform;
             var title = Label(fateTip, entry.Name, 12, 8, width - 24, 24, 17, Cinnabar);
             title.resizeTextForBestFit = true; title.resizeTextMinSize = 12; title.resizeTextMaxSize = 17;
             var viewport = Box("气运介绍视口", fateTip, 12, 40, width - 24, maxHeight - 52);
@@ -914,8 +925,8 @@ namespace MOD_YtxSQ1.UI
             text.rectTransform.sizeDelta = page.sizeDelta;
             Border(fateTip, width, height);
             Fill(fateTip, "介绍分隔线", 12, 35, width - 24, 1, new Color(.55f, .48f, .32f, .3f));
-            var rowBounds = FateRowBounds(row, content);
-            var position = FateTipBounds(rowBounds, width, height, content.sizeDelta);
+            var rowBounds = FateRowBounds(row, area);
+            var position = belowButton ? ActionTipBounds(rowBounds, width, height, area.sizeDelta) : FateTipBounds(rowBounds, width, height, area.sizeDelta);
             fateTip.anchoredPosition = new Vector2(position.x, -position.y);
             if (textHeight > height - 52)
             {

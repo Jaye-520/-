@@ -14,6 +14,7 @@ namespace MOD_YtxSQ1.UI
             internal Button Button;
             internal Text Label;
             internal Image Image;
+            internal Text Rank;
             internal CharacterFate Entry;
         }
         private GameObject fateLibrary;
@@ -29,6 +30,48 @@ namespace MOD_YtxSQ1.UI
         private Text libraryCount;
         private const float FateTilePitch = 38;
         private string catalogContext;
+
+        internal static Color FateColor(int level)
+        {
+            switch (level)
+            {
+                case 6: return new Color(.53f, .19f, .16f, 1); // 神：朱红
+                case 5: return new Color(.85f, .78f, .55f, 1); // 仙：淡金
+                case 4: return new Color(.40f, .29f, .49f, 1); // 圣：紫
+                case 3: return new Color(.30f, .39f, .54f, 1);
+                case 2: return new Color(.34f, .46f, .34f, 1);
+                case 1: return new Color(.48f, .49f, .46f, 1);
+                default: return level < 0 ? new Color(.22f, .23f, .22f, 1) : new Color(.82f, .81f, .75f, 1);
+            }
+        }
+        private static Color FateInk(int level)
+        { return level == 5 || level == 0 || level > 6 ? Ink : new Color(.98f, .96f, .88f, 1); }
+
+        private Text StyleFateRow(Image image, Text name, CharacterFate entry, float width, float height, float rightInset = 8, Text rank = null)
+        {
+            // 纯色底、细线与品阶字均由UI绘制，不再加载或拉伸游戏气运贴图。
+            image.sprite = null; image.type = Image.Type.Simple; image.preserveAspect = false;
+            image.color = FateColor(entry.Level);
+            name.color = FateInk(entry.Level); name.alignment = TextAnchor.MiddleLeft;
+            name.horizontalOverflow = HorizontalWrapMode.Overflow;
+            name.rectTransform.anchorMin = name.rectTransform.anchorMax = new Vector2(0, 1);
+            name.rectTransform.pivot = new Vector2(0, 1);
+            name.rectTransform.offsetMin = name.rectTransform.offsetMax = Vector2.zero;
+            name.rectTransform.anchoredPosition = new Vector2(34, -2);
+            name.rectTransform.sizeDelta = new Vector2(width - 34 - rightInset, height - 4);
+            if (rank == null)
+            {
+                var line = new Color(.95f, .89f, .72f, .32f);
+                Fill(image.rectTransform, "气运细线上", 2, 2, width - 4, 1, line);
+                Fill(image.rectTransform, "气运细线下", 2, height - 3, width - 4, 1, line);
+                Fill(image.rectTransform, "气运品阶分隔", 28, 6, 1, height - 12, line);
+                rank = Label(image.rectTransform, "", 4, 0, 22, height, 14, name.color, TextAnchor.MiddleCenter);
+                rank.gameObject.name = "BHML_气运品阶";
+            }
+            rank.color = name.color;
+            rank.text = entry.Level == 6 ? "神" : entry.Level == 5 ? "仙" : entry.Level == 4 ? "圣" : "·";
+            return rank;
+        }
 
         private static void ResetClonedInput(InputField field, float padding = 8)
         {
@@ -129,18 +172,7 @@ namespace MOD_YtxSQ1.UI
                 var rect = tile.Button.GetComponent<RectTransform>();
                 rect.anchoredPosition = new Vector2(index % columns * (width + 8), -(index / columns) * FateTilePitch);
                 tile.Label.text = (library && libraryPicks.Contains(tile.Entry.Id) ? "✓ " : "") + CharacterFateCatalog.Prefix(tile.Entry.Category) + tile.Entry.Name;
-                tile.Image.color = Color.white;
-                try { tile.Image.sprite = SpriteTool.GetLuckBG(g.conf.roleCreateFeature.GetItem(tile.Entry.Id)); }
-                catch { tile.Image.sprite = null; }
-                tile.Image.type = Image.Type.Sliced;
-                tile.Image.preserveAspect = false;
-                // 原生品阶字在左端，名称始终位于同一底图上且避开它。
-                tile.Label.rectTransform.anchorMin = Vector2.zero;
-                tile.Label.rectTransform.anchorMax = Vector2.one;
-                tile.Label.rectTransform.pivot = new Vector2(.5f, .5f);
-                tile.Label.rectTransform.offsetMin = new Vector2(width * .22f, 2);
-                tile.Label.rectTransform.offsetMax = new Vector2(-8, -2);
-                tile.Label.color = tile.Image.sprite == null ? Ink : new Color(.98f, .95f, .86f, 1);
+                tile.Rank = StyleFateRow(tile.Image, tile.Label, tile.Entry, width, 32, 8, tile.Rank);
             }
         }
         private void RenderCandidates(bool reset = false)

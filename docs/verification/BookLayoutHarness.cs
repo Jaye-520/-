@@ -485,10 +485,10 @@ internal static class BookLayoutHarness
             string[] previewNames={"聪明谢顶","倾国倾城","天三才","陷入瓶颈"};
             for(int f=0;f<4;f++)
             {
-                g.conf.roleCreateFeature.Items[f+1]=new FateItem{type=f==3?2:1,name="preview"+f,tips="0"};
+                g.conf.roleCreateFeature.Items[f+1]=new FateItem{level=f==0?4:f==1?6:f==2?5:-1,type=f==3?2:1,name="preview"+f,tips="0"};
                 ConfLocalText.Texts["preview"+f]=previewNames[f];
             }
-            g.conf.roleCreateFeature.Items[9001]=new FateItem{type=3,name="catalog9001",tips="0"};ConfLocalText.Texts["catalog9001"]="未拥有气运";
+            g.conf.roleCreateFeature.Items[9001]=new FateItem{level=2,type=3,name="catalog9001",tips="0"};ConfLocalText.Texts["catalog9001"]="未拥有气运";
             var canvas=new UnityEngine.GameObject("canvas");canvas.transform.sizeDelta=new UnityEngine.Vector2(sizes[s][0],sizes[s][1]);g.ui=new LayoutUI { canvas=canvas.transform };
             bool closeRequested=false;
             var window=new UITextInfoLong();var bookView=new BookView();bookView.Build(window,()=>{closeRequested=true;});
@@ -513,10 +513,23 @@ internal static class BookLayoutHarness
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运检索") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_快捷_"))==7,"fourth fate heading is a registered global search and library action is enabled");
             var restore=Walk(book).First(t=>t.gameObject.name=="BHML_快捷_满状态");
             Check(Walk(restore).Any(t=>t.gameObject.name=="BHML_金线上") && Walk(restore).Any(t=>t.gameObject.name=="BHML_金线右"),"full status action has a quiet gold inset frame");
-            restore.GetComponent<UIEventListener>().OnPointerEnter(null);
+            var dots=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_说明点_")).ToArray();
+            Check(dots.Length==7 && dots.All(t=>t.GetComponent<UnityEngine.UI.Text>().raycastTarget && t.GetComponent<UnityEngine.UI.Button>()!=null) && Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_快捷_")).All(t=>t.GetComponent<UIEventListener>()==null),"seven help dots receive hover and clicks independently from action bodies");
+            var helpDot=Walk(restore).First(t=>t.gameObject.name=="BHML_说明点_满状态");
+            var beforeHp=g.world.playerUnit.data.dynUnitData.hp.Stored; helpDot.GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(g.world.playerUnit.data.dynUnitData.hp.Stored==beforeHp,"clicking help dot does not run restore action");
+            helpDot.GetComponent<UIEventListener>().OnPointerEnter(null);
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"target column action hover converts sibling coordinates safely");
-            restore.GetComponent<UIEventListener>().OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;bookView.RefreshCharacter();
+            var actionTip=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍");
+            var restoreBounds=BookView.FateRowBounds((UnityEngine.RectTransform)restore,(UnityEngine.RectTransform)book);
+            Check(actionTip.parent==book && Math.Abs(actionTip.anchoredPosition.x-restoreBounds.x)<1 && -actionTip.anchoredPosition.y>=restoreBounds.y+restoreBounds.height,"full status hint stays below its button in book coordinates");
+            using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
+            using(var graphics=Graphics.FromImage(bitmap))
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"action-tip-07-32-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            helpDot.GetComponent<UIEventListener>().OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;bookView.RefreshCharacter();
             Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_气运行_0_"))==3 && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2").GetComponentInChildren<UnityEngine.UI.Text>().text=="天三才","all three born entries render as individual rows");
+            var ownedRows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_气运行_")).ToArray();
+            Check(ownedRows.All(t=>t.GetComponent<UnityEngine.UI.Image>().sprite==null && t.GetComponentInChildren<UnityEngine.UI.Text>().rectTransform.anchoredPosition.x==34) && ownedRows.SelectMany(t=>t.GetComponentsInChildren<UnityEngine.UI.Text>(true)).Any(t=>t.text=="仙"),"owned fates share custom grade backgrounds, crisp rank labels and reserved delete space");
             var bornColumn=Walk(book).First(t=>t.gameObject.name=="BHML_气运条目视口_0").GetComponent<UnityEngine.UI.ScrollRect>();
             var thirdBorn=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2");
             Check(-thirdBorn.anchoredPosition.y+thirdBorn.sizeDelta.y<=bornColumn.viewport.sizeDelta.y+.1f,"three ordinary born rows fit without scrolling at "+sizes[s][0]);
@@ -526,7 +539,7 @@ internal static class BookLayoutHarness
             globalSearch.text="未拥有";
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运候选"&&t.GetComponentInChildren<UnityEngine.UI.Text>().text=="[逆] 未拥有气运"),"global search includes unowned configuration entries with category prefix");
             var candidate=Walk(book).First(t=>t.gameObject.name=="BHML_气运候选");
-            Check(!candidate.GetComponent<UnityEngine.UI.Image>().preserveAspect && candidate.GetComponentInChildren<UnityEngine.UI.Text>().rectTransform.anchorMax.x==1,"fate background fills complete tile and title stretches with inset around grade emblem");
+            Check(candidate.GetComponent<UnityEngine.UI.Image>().sprite==null && candidate.GetComponent<UnityEngine.UI.Image>().color.g>candidate.GetComponent<UnityEngine.UI.Image>().color.r && candidate.GetComponentInChildren<UnityEngine.UI.Text>().rectTransform.anchoredPosition.x==34,"candidate uses a sprite-free grade color and consistently inset title");
             Walk(book).First(t=>t.gameObject.name=="BHML_气运列表").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             var library=Walk(book).First(t=>t.gameObject.name=="BHML_气运图鉴");
             Check(Walk(library).Count(t=>t.gameObject.name=="BHML_气运候选")<128&&Walk(library).First(t=>t.gameObject.name=="BHML_图鉴长页").GetComponent<UnityEngine.RectTransform>().sizeDelta.y>10000,"thousands of catalog records use a bounded visible tile pool");
@@ -604,7 +617,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-31-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-32-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -714,7 +727,7 @@ internal static class BookLayoutHarness
             Check(tip.sizeDelta.y<150,"short introduction has compact content-driven height");
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
-            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-31-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-32-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
             UnityEngine.Time.frameCount++;UnityEngine.Input.Escape=true;bookView.RefreshCharacter();UnityEngine.Input.Escape=false;
             Check(closeRequested,"Escape forwards window close callback when no editor or child view is open");
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");
