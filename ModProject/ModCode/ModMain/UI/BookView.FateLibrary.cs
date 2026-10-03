@@ -89,9 +89,11 @@ namespace MOD_YtxSQ1.UI
         }
         private void FilterCandidates()
         {
+            var query = fateSearch == null ? "" : fateSearch.text.Trim();
+            // 空检索与空选择不读取两千项配置，打开角色页不需要图鉴全库。
+            if (query.Length == 0 && pickedFates.Count == 0) { candidates.Clear(); RenderCandidates(true); return; }
             if (!LoadFateCatalog()) return;
             candidates.Clear();
-            var query = fateSearch == null ? "" : fateSearch.text.Trim();
             foreach (var item in fateCatalog)
                 if (query.Length > 0 ? MatchesFate(item, query) : pickedFates.Contains(item.Id)) candidates.Add(item);
             RenderCandidates(true);
@@ -130,8 +132,14 @@ namespace MOD_YtxSQ1.UI
                 tile.Image.color = Color.white;
                 try { tile.Image.sprite = SpriteTool.GetLuckBG(g.conf.roleCreateFeature.GetItem(tile.Entry.Id)); }
                 catch { tile.Image.sprite = null; }
-                tile.Image.type = Image.Type.Simple;
-                tile.Image.preserveAspect = true;
+                tile.Image.type = Image.Type.Sliced;
+                tile.Image.preserveAspect = false;
+                // 原生品阶字在左端，名称始终位于同一底图上且避开它。
+                tile.Label.rectTransform.anchorMin = Vector2.zero;
+                tile.Label.rectTransform.anchorMax = Vector2.one;
+                tile.Label.rectTransform.pivot = new Vector2(.5f, .5f);
+                tile.Label.rectTransform.offsetMin = new Vector2(width * .22f, 2);
+                tile.Label.rectTransform.offsetMax = new Vector2(-8, -2);
                 tile.Label.color = tile.Image.sprite == null ? Ink : new Color(.98f, .95f, .86f, 1);
             }
         }

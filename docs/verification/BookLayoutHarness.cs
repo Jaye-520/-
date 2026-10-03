@@ -157,7 +157,7 @@ namespace UnityEngine.UI
 {
     using UnityEngine;
     public class Graphic : Component { public bool enabled=true,raycastTarget; public Color color; public T TryCast<T>() where T:class { return this as T; } public RectTransform rectTransform { get { return (RectTransform)transform; } } }
-    public class Image : Graphic { public enum Type{Simple}public Type type;public bool preserveAspect;public Object sprite; }
+    public class Image : Graphic { public enum Type{Simple,Sliced}public Type type;public bool preserveAspect;public Object sprite; }
     public class RawImage : Graphic { public Texture2D texture; public Rect uvRect; }
     public class Text : Graphic
     {
@@ -241,7 +241,7 @@ public sealed class UITextInfoLong : UnityEngine.Component
         var inactive=new UnityEngine.GameObject("native inactive");inactive.transform.SetParent(gameObject.transform,false);inactive.AddComponent<UnityEngine.UI.Button>();inactive.SetActive(false);
     }
 }
-public class UIType { public string uiName="NativeInput"; public static readonly UIType ModTableInputStringLong=new UIType(); public static readonly UIType ModWorkshopUpload=new UIType(); }
+public class UIType { public string uiName="NativeInput"; public static readonly UIType MapMain=new UIType(); public static readonly UIType ModTableInputStringLong=new UIType(); public static readonly UIType ModWorkshopUpload=new UIType(); }
 public sealed class LayoutUI
 {
     public UnityEngine.Component canvas;public UIModTableInputStringLong Editor;
@@ -510,7 +510,12 @@ internal static class BookLayoutHarness
             var cells=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_属性格_")).Cast<UnityEngine.RectTransform>().ToArray();
             Check(cells.Length==46 && cells.All(c=>c.sizeDelta.y>=26 && c.GetComponentsInChildren<UnityEngine.UI.Text>(true).Length>=3),"46 framed editable fields have room for label and value at "+sizes[s][0]);
             Check(texts.Any(t=>t.text=="玉器 · 书籍") && texts.Any(t=>t.text=="无私 · 义气 · 忠贞"),"reference hobby and personality values bind to view");
-            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运检索") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_快捷_"))==6,"fourth fate heading is a registered global search and library action is enabled");
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运检索") && Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_快捷_"))==7,"fourth fate heading is a registered global search and library action is enabled");
+            var restore=Walk(book).First(t=>t.gameObject.name=="BHML_快捷_满状态");
+            Check(Walk(restore).Any(t=>t.gameObject.name=="BHML_金线上") && Walk(restore).Any(t=>t.gameObject.name=="BHML_金线右"),"full status action has a quiet gold inset frame");
+            restore.GetComponent<UIEventListener>().OnPointerEnter(null);
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"target column action hover converts sibling coordinates safely");
+            restore.GetComponent<UIEventListener>().OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;bookView.RefreshCharacter();
             Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_气运行_0_"))==3 && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2").GetComponentInChildren<UnityEngine.UI.Text>().text=="天三才","all three born entries render as individual rows");
             var bornColumn=Walk(book).First(t=>t.gameObject.name=="BHML_气运条目视口_0").GetComponent<UnityEngine.UI.ScrollRect>();
             var thirdBorn=(UnityEngine.RectTransform)Walk(book).First(t=>t.gameObject.name=="BHML_气运行_0_2");
@@ -520,6 +525,8 @@ internal static class BookLayoutHarness
             var globalSearch=Walk(book).First(t=>t.gameObject.name=="BHML_气运检索").GetComponentInChildren<UnityEngine.UI.InputField>();
             globalSearch.text="未拥有";
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运候选"&&t.GetComponentInChildren<UnityEngine.UI.Text>().text=="[逆] 未拥有气运"),"global search includes unowned configuration entries with category prefix");
+            var candidate=Walk(book).First(t=>t.gameObject.name=="BHML_气运候选");
+            Check(!candidate.GetComponent<UnityEngine.UI.Image>().preserveAspect && candidate.GetComponentInChildren<UnityEngine.UI.Text>().rectTransform.anchorMax.x==1,"fate background fills complete tile and title stretches with inset around grade emblem");
             Walk(book).First(t=>t.gameObject.name=="BHML_气运列表").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             var library=Walk(book).First(t=>t.gameObject.name=="BHML_气运图鉴");
             Check(Walk(library).Count(t=>t.gameObject.name=="BHML_气运候选")<128&&Walk(library).First(t=>t.gameObject.name=="BHML_图鉴长页").GetComponent<UnityEngine.RectTransform>().sizeDelta.y>10000,"thousands of catalog records use a bounded visible tile pool");
@@ -568,7 +575,11 @@ internal static class BookLayoutHarness
             Check(hobby.GetComponentInChildren<UnityEngine.UI.Text>().text=="图册" && Walk(book).First(t=>t.gameObject.name=="BHML_编辑值_0:10:0").GetComponentInChildren<UnityEngine.UI.Text>().text=="玉器" && g.world.playerUnit.data.unitData.propertyData.hobby[1]==202,"hobby dropdown changes only its bound slot draft");
             var inner=Walk(book).First(t=>t.gameObject.name=="BHML_编辑值_1:10:0").GetComponent<UnityEngine.UI.Button>();inner.onClick.Invoke();
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_选项_4") && !Walk(book).Any(t=>t.gameObject.name=="BHML_选项_2"),"trait choices filter by real slot config type rather than guessed type numbers");
+            g.conf.roleCreateCharacter.GetItem(4).xdash_54sd="待人宽厚的性格介绍";
+            Walk(book).First(t=>t.gameObject.name=="BHML_选项_4").GetComponent<UIEventListener>().OnPointerEnter(null);
+            Check(Walk(book).First(t=>t.gameObject.name=="BHML_气运介绍").GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="待人宽厚的性格介绍"),"trait list hover uses actual localized configuration description");
             Walk(book).First(t=>t.gameObject.name=="BHML_选项_4").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍"),"choosing personality disposes associated floating introduction");
             Check(inner.GetComponentInChildren<UnityEngine.UI.Text>().text=="内在四" && g.world.playerUnit.data.unitData.propertyData.inTrait==1,"trait draft remains isolated from actual personality");
             Walk(book).First(t=>t.gameObject.name=="BHML_卷目6").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_属性格_体力") && MOD_YtxSQ1.Services.CharacterSave.Busy && g.world.playerUnit.data.dynUnitData.hp.Stored==90,"save applies drafts on current page and waits for real save callback");
@@ -593,7 +604,7 @@ internal static class BookLayoutHarness
             {
                 graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 Paint(graphics,book,0,0,true);
-                bitmap.Save(Path.Combine(args[1],"role-07-30-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
+                bitmap.Save(Path.Combine(args[1],"role-07-31-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);
             }
             var original=window.GetComponent<UnityEngine.UI.Text>();
             var rows=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修士行")).ToArray();
@@ -703,7 +714,7 @@ internal static class BookLayoutHarness
             Check(tip.sizeDelta.y<150,"short introduction has compact content-driven height");
             using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y))
             using(var graphics=Graphics.FromImage(bitmap))
-            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-30-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
+            { graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"fate-tip-07-31-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png); }
             UnityEngine.Time.frameCount++;UnityEngine.Input.Escape=true;bookView.RefreshCharacter();UnityEngine.Input.Escape=false;
             Check(closeRequested,"Escape forwards window close callback when no editor or child view is open");
             closeButton.onClick.Invoke();Check(closeRequested,"x close forwards window close callback");

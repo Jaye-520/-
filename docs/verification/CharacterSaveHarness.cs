@@ -85,16 +85,29 @@ internal static class CharacterSaveHarness
         bag.allProps.Add(new DataProps.PropsData{propsCount=20000,propsItem=new ConfItemPropsItem{isOverlay=1}});
         Check(CharacterActions.Execute("player","满材料",null,out result)&&bag.allProps[0].propsCount==9999&&bag.allProps[1].propsCount==1&&bag.allProps[2].propsCount==20000,"full bag tops up stackable counts, preserving unique and larger existing stacks");
         var npc=new WorldUnitBase();npc.data.unitData.unitID="npc";npc.data.unitData.Point=new UnityEngine.Vector2Int(20,30);g.world.unit.Npcs.Add(npc);
+        SceneType.map=new SceneMap();
         g.world.playerUnit.data.unitData.Point=new UnityEngine.Vector2Int(1,2);
         Check(CharacterActions.Execute("npc","来",null,out result)&&npc.data.unitData.Point==new UnityEngine.Vector2Int(1,2),"come moves selected NPC via native position action");
         CharacterActions.Execute("npc","来",null,out result);
         Check(CharacterActions.Execute("npc","返",null,out result)&&npc.data.unitData.Point==new UnityEngine.Vector2Int(20,30),"repeated come preserves original return destination");
         Check(CharacterActions.Execute("npc","去",null,out result)&&g.world.playerUnit.data.unitData.Point==npc.data.unitData.Point,"go moves player to selected NPC");
+        Check(SceneType.map.world.Refreshes==4 && SceneType.map.world.Commands==4 && g.ui.Map.uiGridUnit.Refreshes==4,"each successful teleport refreshes native map grids and selected tile NPC count");
         g.world.playerUnit.data.unitData.relationData.SetIntim("npc",4.5f);npc.data.unitData.relationData.intimToPlayerUnit=7.5f;
         Check(CharacterActions.Execute("npc","好感度","10",out result)&&g.world.playerUnit.data.unitData.relationData.intimToUnit["npc"]==14.5f&&npc.data.unitData.relationData.intimToPlayerUnit==17.5f,"bidirectional affection adds separately and preserves fractional originals");
         Check(!CharacterActions.Execute("player","来",null,out result)&&!CharacterActions.Execute("npc","好感度","-2",out result),"self teleport and invalid affection increments reject before mutation");
         var beforeDirty=CharacterSave.Pending; npc.RejectAction=true;
         Check(!CharacterActions.Execute("npc","来",null,out result)&&CharacterSave.Pending==beforeDirty,"rejected movement does not create a false pending save count");
+        Reset();var status=g.world.playerUnit.data.dynUnitData;
+        status.hp.Bonus=10;status.mp.Bonus=3;status.moodMax.Stored=100;status.healthMax.Stored=100;status.energyMax.Stored=100;
+        Check(CharacterActions.Execute("player","满状态",null,out result) && status.hp.value==status.hpMax.value && status.mp.value==status.mpMax.value && status.sp.value==status.spMax.value && status.mood.value==100 && status.health.value==100 && status.energy.value==100,"restore fills all six resources while preserving additive effects");
+        beforeDirty=CharacterSave.Pending;
+        Check(CharacterActions.Execute("player","满状态",null,out result) && CharacterSave.Pending==beforeDirty,"repeating full status never accumulates values or false pending changes");
+        Reset();status=g.world.playerUnit.data.dynUnitData;status.energy.lockValue=true;
+        Check(!CharacterActions.Execute("player","满状态",null,out result) && status.hp.value==123 && CharacterSave.Pending==0,"locked resource fails whole status preflight before any mutation");
+        Reset();status=g.world.playerUnit.data.dynUnitData;status.mood.RejectWrite=true;
+        Check(!CharacterActions.Execute("player","满状态",null,out result) && status.hp.value==123 && status.mp.value==12 && status.mood.value==0 && CharacterSave.Pending==0,"status setter failure restores preceding and failing resources");
+        Reset();status=g.world.playerUnit.data.dynUnitData;status.hp.Bonus=10;g.conf.roleGrade.Overrides[104]=new GradeItem{id=104,grade=3,phase=1};Stage(1,11,"104");Commit();
+        Check(status.hp.value==status.hpMax.value,"realm resource refill preserves additive bonus rather than assigning computed maximum as base");g.data.Complete(true);CharacterSave.Poll();
         Console.WriteLine(passed+" save/catalog/native-adapter checks passed; substitutes are not in-game persistence proof");
     }
 }

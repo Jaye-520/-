@@ -46,3 +46,22 @@ namespace UnityEngine
     }
 }
 public class UnitActionSetPoint { public UnityEngine.Vector2Int point;public UnitActionSetPoint(UnityEngine.Vector2Int value){point=value;} }
+public static class SceneType { public static SceneMap map; }
+public class SceneMap { public MapWorldMgr world = new MapWorldMgr(); }
+public class MapWorldMgr
+{
+    public static bool isEnableMap = true;
+    public int Refreshes, Commands;
+    public UnityEngine.Vector2Int curSelectPoint;
+    public void UpdateGridUI() { Refreshes++; }
+    public void UpdateGridUICmd() { Commands++; }
+}
+public class UIMapMain { public UIMapMainGridUnit uiGridUnit = new UIMapMainGridUnit(); }
+public class UIMapMainGridUnit { public int Refreshes; public void UpdateUI(UnityEngine.Vector2Int point) { Refreshes++; } }
+public static class NativeCastStub { public static T TryCast<T>(this object value) where T:class { return value as T; } }
+#if ACTIONS_ONLY
+public class UIType { public static UIType MapMain = new UIType(); }
+public class ActionsUI { public UIMapMain Map = new UIMapMain(); public object GetUI(UIType type) { return Map; } }
+public static partial class g { public static ActionsUI ui = new ActionsUI(); }
+namespace UnityEngine { public static class Debug { public static void LogWarning(string text) { } } }
+#endif

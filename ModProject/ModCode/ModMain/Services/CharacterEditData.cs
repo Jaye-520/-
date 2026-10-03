@@ -80,6 +80,17 @@ namespace MOD_YtxSQ1.Services
             var label = ConfLocalText.GetText(key);
             return string.IsNullOrEmpty(label) ? key : label;
         }
+        internal static string ChoiceDescription(CharacterField field, string id)
+        {
+            int value;
+            if (field.Group != 1 || field.Index != 10 || !int.TryParse(id, out value)) return null;
+            try
+            {
+                var item = g.conf.roleCreateCharacter.GetItem(value);
+                return item == null || string.IsNullOrEmpty(item.xdash_54sd) || item.xdash_54sd == "0" ? null : Local(item.xdash_54sd);
+            }
+            catch { return "说明暂不可读取"; }
+        }
         private static string GradeLabel(ConfRoleGradeItem item)
         {
             var label = g.conf.roleGrade.GetGradeName(item.grade, item.phase);

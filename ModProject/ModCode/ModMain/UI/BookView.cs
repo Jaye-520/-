@@ -38,6 +38,7 @@ namespace MOD_YtxSQ1.UI
         private int selectedIndex = -1;
         private Action requestClose;
         private Text characterName;
+        private static bool fontCreationUnavailable;
         private Text characterRealm;
         private readonly List<Text[]> attributeTexts = new List<Text[]>();
         private readonly List<ScrollRect> fateColumns = new List<ScrollRect>();
@@ -71,6 +72,7 @@ namespace MOD_YtxSQ1.UI
 
         public void Build(UITextInfoLong window, Action close)
         {
+            var openTimer = System.Diagnostics.Stopwatch.StartNew();
             requestClose = close;
             foreach (var text in window.GetComponentsInChildren<Text>(true))
             {
@@ -79,7 +81,7 @@ namespace MOD_YtxSQ1.UI
             if (font == null) throw new InvalidOperationException("未找到原生中文字体。");
             try
             {
-                calligraphyFont = Font.CreateDynamicFontFromOSFont("KaiTi", 24);
+                if (!fontCreationUnavailable) calligraphyFont = Font.CreateDynamicFontFromOSFont("KaiTi", 24);
                 if (calligraphyFont != null && !calligraphyFont.HasCharacter('荒'))
                 {
                     UnityEngine.Object.Destroy(calligraphyFont);
@@ -88,6 +90,7 @@ namespace MOD_YtxSQ1.UI
             }
             catch (Exception ex)
             {
+                fontCreationUnavailable = true;
                 var failedFont = calligraphyFont;
                 calligraphyFont = null;
                 if (failedFont != null) Cleanup(() => UnityEngine.Object.Destroy(failedFont), "失败字体");
@@ -174,9 +177,9 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 49, width - 48, 38);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 6, width - 48 - 428, 26, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.30 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, "07.31 / F8 收起", width - 254, 6, 190, 26, 16, Muted, TextAnchor.MiddleRight);
             Select(0);
-            Debug.Log("[八荒秘录] 07.30：全量气运检索/图鉴/增删，内联编辑与原生保存；画布=" + available + "；窗口=" + width + "×" + height);
+            Debug.Log("[八荒秘录] 07.31界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height);
         }
 
         private void Select(int index)
@@ -265,6 +268,8 @@ namespace MOD_YtxSQ1.UI
             }
             rosterScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderRosterRows())));
             float summaryTop = 116 + rosterHeight + 12;
+            BuildRestoreButton(targetPanel, summaryTop, targetWidth - 28);
+            summaryTop += 40;
             characterName = Label(targetPanel, "正在读取", 14, summaryTop, targetWidth - 28, 28, 20, Ink);
             characterRealm = Label(targetPanel, "—", 14, summaryTop + 30, targetWidth - 28, 24, 17, Muted);
             float portraitTop = summaryTop + 62;
@@ -857,6 +862,13 @@ namespace MOD_YtxSQ1.UI
 
         internal static Rect FateRowBounds(RectTransform row, RectTransform area)
         {
+            // 对象栏与正文是同一书页下的兄弟节点，额外换算兄弟栏按钮。
+            if (row != area && !row.IsChildOf(area))
+            {
+                if (area.parent == null) throw new InvalidOperationException("提示条目已离开书页层级");
+                var relative = FateRowBounds(row, area.parent.GetComponent<RectTransform>());
+                return new Rect(relative.x - area.anchoredPosition.x, relative.y + area.anchoredPosition.y, relative.width, relative.height);
+            }
             // 本视图所有祖先均为左上锚点/左上pivot、固定尺寸且单位localScale。
             // 累加实际anchoredPosition，包含两个ScrollRect长页的实时滚动偏移。
             // 不依赖原生CalculateRelativeRectTransformBounds的跨IL2CPP返回值。
@@ -905,8 +917,6 @@ namespace MOD_YtxSQ1.UI
             var rowBounds = FateRowBounds(row, content);
             var position = FateTipBounds(rowBounds, width, height, content.sizeDelta);
             fateTip.anchoredPosition = new Vector2(position.x, -position.y);
-            Debug.Log("[八荒秘录] 07.30气运定位：" + row.gameObject.name + "；条目=" + rowBounds.x + "," + rowBounds.y +
-                "；介绍=" + position.x + "," + position.y);
             if (textHeight > height - 52)
             {
                 var scroll = viewport.gameObject.AddComponent<ScrollRect>();

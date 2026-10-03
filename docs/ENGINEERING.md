@@ -95,6 +95,16 @@ Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/Project
 - WorkshopWindow成功取得承载后、Build之前Clear未应用草稿；切页/切人物仍保留当次草稿。真正磁盘保存失败的已应用内存Pending继续保留，原生保存成功回调才清零。预检错误包含具体人物和字段，范围以原生DynInt为准，不为消除报错而盲目扩大寿命/资源范围。
 ## 按变更验证
 
+### 07.31防止重复错误
+
+- 本机Unhollower生成的`Dictionary<TKey,TValue>.TryGetValue`对byref值使用引用包装构造，`float`会报`Single..ctor(IntPtr)`。用Mono.Cecil核对Il2Cppmscorlib的IL后，采用ContainsKey+索引getter的PointerToValueGeneric解箱。新增涉及原生泛型byref基本类型时先核实生成IL，普通托管字典替身不会暴露此问题。
+- UnitActionSetPoint成功和坐标回读不代表地图人数已经刷新。后续走MapWorldMgr.UpdateGridUI/UpdateGridUICmd及UIMapMain.uiGridUnit.UpdateUI(curSelectPoint)，不通过重建单位或直接改人数掩盖显示错误；游戏回归覆盖来、重复来、返和去。
+- Image等比会使宽横条底图留白；完整底图与文字必须共用几何范围。气运候选用Sliced、不preserveAspect，名称矩形先设stretch锚点再设offset，避免TopLeft锚点下offsetMax/Min改变出负宽度。性格描述字段为xdash_54sd；介绍沿用已认可浮窗生命周期。兄弟对象栏按钮先换算到共同父级再进入正文提示定位，保留原气运路径。
+- 资源显示上限不是资源baseValue；满状态和境界后恢复使用`baseValue + max.value - value`保留加法效果，锁定/倍率/固定状态拒绝任意反解。六项先预检，失败恢复所有已尝试字段并核对，无法恢复时保留Pending，不能谎称无修改。
+- 不把所有资质随境界提高当成既定游戏规则。RoleGrade和ItemRarityMaterials官方只读配置、UnitActionRoleUpGrade原生代码应共同核对；保留丹药/修炼和特殊气运效果，不制造无配置的固定资质奖励。
+- 光标连续反馈失败后不能再用托管测试自证：07.31记录每输入框空/非空的真实字形范围、原光标范围、转换位移和两矩形位置。按Unity原生AssignPositioningIfNeeded同步矩形，并将Text字形坐标转换到Caret局部坐标；诊断命中及游戏画面对照仍待取得。参考[Unity InputField源码](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)，具体接口以本机包装程序集为准。
+- 性能结论必须测量：空气运检索不加载全配置，介绍按悬停查询，已失败字体创建不重复执行，去掉逐次悬停日志；界面构建Stopwatch日志供新版实测。保留每次打开重读名单，不用过期世界缓存换取打开速度。
+
 ### 07.29写入与配置依据（原生游戏结果待验证）
 
 - 用户明确唯一存档是开发测试存档，授权本轮接入真实写入；不终止游戏。使用本机Managed程序集、官方CHM的WorldUnitBase.CreateAction/DataMgr.SaveData和官方RoleCreateFeature/RoleGrade表头及JSON核实接口。新增引用保持Private=False。

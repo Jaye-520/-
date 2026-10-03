@@ -262,11 +262,19 @@ namespace MOD_YtxSQ1.UI
                 });
                 var label = button.GetComponentInChildren<Text>(); label.fontSize = 16;
                 label.resizeTextForBestFit = true; label.resizeTextMinSize = 12; label.resizeTextMaxSize = 16;
+                if (binding.Field.Group == 1 && binding.Field.Index == 10)
+                    BindFateHover(button.gameObject, () =>
+                    {
+                        var description = CharacterEditData.ChoiceDescription(binding.Field, choice.Id);
+                        if (!string.IsNullOrEmpty(description)) ShowFateTip(button.GetComponent<RectTransform>(), new CharacterFate(0, 0, choice.Label, description));
+                    }, () => { fateTipCloseAt = Time.unscaledTime + .12f; });
             }
+            scroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => HideFateTips())));
         }
 
         private void CloseDropdown()
         {
+            HideFateTips();
             var previous = dropdownLayer; dropdownLayer = null;
             if (previous != null) { previous.SetActive(false); UnityEngine.Object.Destroy(previous); }
         }

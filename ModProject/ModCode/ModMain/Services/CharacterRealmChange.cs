@@ -51,6 +51,7 @@ namespace MOD_YtxSQ1.Services
                     var beforeDebt = metadata.ContainsKey(debtKey) ? metadata.GetString(debtKey) : null;
                     long debt = 0;
                     if (beforeDebt != null && !long.TryParse(beforeDebt, out debt)) throw new InvalidOperationException("成长差额记录异常");
+                    if (a == b && debt == 0) continue;
                     var ideal = checked(field.baseValue + b - a + debt);
                     // 下限截断的差额存入人物扩展数据；再升回去不会凭空多加一轮成长。
                     int minimum = field.minValue;
@@ -94,7 +95,12 @@ namespace MOD_YtxSQ1.Services
                     p.SetGradeID(id); // 同步原生经验基线和境界刷新事件，不能只赋gradeID。
                     unit.UpdateConf();
                     for (int i = 0; i < resources.Length; i++)
-                        resources[i].baseValue = i == 0 ? d.hpMax.value : i == 1 ? d.mpMax.value : d.spMax.value;
+                    {
+                        var maximum = i == 0 ? d.hpMax.value : i == 1 ? d.mpMax.value : d.spMax.value;
+                        // 显示值含加法效果；不能把计算上限直接作为基础值而再次叠加效果。
+                        resources[i].baseValue = checked(resources[i].baseValue + maximum - resources[i].value);
+                        if (resources[i].value != maximum) throw new InvalidOperationException("突破后的资源恢复回读不一致");
+                    }
                     if (d.gradeID.value != id) throw new InvalidOperationException("境界写入结果不一致");
                     foreach (var n in numbers) if (n.Field.baseValue != n.After) throw new InvalidOperationException("成长写入结果不一致");
                 },

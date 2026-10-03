@@ -6,11 +6,16 @@ using MOD_YtxSQ1.UI;
 namespace UnityEngine
 {
     public struct Vector2 { public float x,y; }
-    public struct Vector3 { public float x,y,z; }
+    public struct Vector3 { public float x,y,z; public Vector3(float a,float b,float c) { x=a;y=b;z=c; } }
     public struct UIVertex { public Vector3 position; }
     public class TextGenerator { public List<UIVertex> verts=new List<UIVertex>();public int vertexCount { get { return verts.Count; } } }
     public class Rect { public Vector2 center; }
-    public class RectTransform { public Rect rect=new Rect(); }
+    public class RectTransform
+    {
+        public Rect rect=new Rect(); public Vector3 localPosition;
+        public Vector3 TransformPoint(Vector3 v) { return new Vector3(v.x+localPosition.x,v.y+localPosition.y,v.z); }
+        public Vector3 InverseTransformPoint(Vector3 v) { return new Vector3(v.x-localPosition.x,v.y-localPosition.y,v.z); }
+    }
     public class Transform { public Transform parent;public string name="root"; }
     public class GameObject
     {
@@ -45,6 +50,7 @@ namespace UnityEngine.UI
         public bool isFocused;public UnityEngine.GameObject gameObject=new UnityEngine.GameObject();
         public string text="";public void DeactivateInputField() { isFocused=false; }
         public Text textComponent=new Text();public Graphic placeholder;
+        public UnityEngine.RectTransform caretRectTrans; public void AssignPositioningIfNeeded() { }
         public void GenerateCaret(VertexHelper vertices,UnityEngine.Vector2 offset) { }
     }
 }
@@ -110,6 +116,11 @@ internal static class WindowInputScopeHarness
         Check(caret.Vertices[0].position.y==-12 && caret.Vertices[2].position.y==12 && caret.Vertices[1].position.x==1,"moves low caret up to glyph center without changing height or horizontal position");
         Call("AlignCaret",new UnityEngine.UI.InputField(),caret,new UnityEngine.Vector2 { y=30 });
         Check(caret.Vertices[0].position.y==-12,"leaves all other input field caret geometry unchanged");
+        field.textComponent.rectTransform.localPosition=new UnityEngine.Vector3(0,6,0);
+        field.caretRectTrans=new UnityEngine.RectTransform { localPosition=new UnityEngine.Vector3(0,-3,0) };
+        Call("AlignCaret",field,caret,new UnityEngine.Vector2());
+        Check(caret.Vertices[0].position.y==-3 && caret.Vertices[2].position.y==21,"caret and text with differing origins align in the actual caret local coordinates");
+        field.caretRectTrans=null;field.textComponent.rectTransform.localPosition=new UnityEngine.Vector3();
         field.text="";var placeholder=new UnityEngine.UI.Text();field.placeholder=placeholder;
         for(int i=0;i<4;i++)placeholder.cachedTextGenerator.verts.Add(new UnityEngine.UIVertex { position=new UnityEngine.Vector3 { y=i<2 ? 0 : 8 } });
         Call("AlignCaret",field,caret,new UnityEngine.Vector2());

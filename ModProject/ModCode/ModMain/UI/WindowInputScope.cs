@@ -19,6 +19,7 @@ namespace MOD_YtxSQ1.UI
         private static Harmony patches;
         private static int diagnostics;
         private static bool ownerOperation;
+        private static readonly HashSet<string> caretDiagnostics = new HashSet<string>();
         private sealed class GroupState
         {
             internal UIOperationGroup Group;
@@ -32,6 +33,7 @@ namespace MOD_YtxSQ1.UI
             owner = window;
             input = field;
             diagnostics = 0;
+            caretDiagnostics.Clear();
             ownerOperation = window.isActiveOperation;
             patches = new Harmony("MOD_YtxSQ1.WindowInputScope");
             try
@@ -119,10 +121,14 @@ namespace MOD_YtxSQ1.UI
         private static void AlignCaret(InputField __instance, VertexHelper __0, Vector2 __1)
         {
             // 只改本搜索框的光标四边形，不改输入、闪烁、选区和焦点状态。
-            if (!Owns(__instance) || __0.currentVertCount != 4) return;
+            if (!Owns(__instance)) return;
+            if (__0.currentVertCount != 4) return;
             var input = __instance;
             var text = input.textComponent;
             if (text == null) return;
+            // 克隆模板后Caret可能保留旧矩形。先同步矩形，再在同一局部坐标系对齐。
+            input.AssignPositioningIfNeeded();
+            var caretRect = input.caretRectTrans;
             var visual = text;
             if (string.IsNullOrEmpty(input.text))
             {
@@ -155,7 +161,16 @@ namespace MOD_YtxSQ1.UI
             var caretBottom = vertex.position.y;
             __0.PopulateUIVertex(ref vertex, 2);
             var caretTop = vertex.position.y;
-            var shift = (bottom + top) * .5f + __1.y - (caretBottom + caretTop) * .5f;
+            var centerY = (bottom + top) * .5f + __1.y;
+            if (caretRect != null)
+                centerY = caretRect.InverseTransformPoint(visual.rectTransform.TransformPoint(new Vector3(0, centerY, 0))).y;
+            var shift = centerY - (caretBottom + caretTop) * .5f;
+            var diagnosticKey = input.gameObject.name + (string.IsNullOrEmpty(input.text) ? ":空" : ":输入");
+            if (caretDiagnostics.Add(diagnosticKey))
+                Debug.Log("[八荒秘录] 07.31光标：" + diagnosticKey + "；字形=" + bottom + "/" + top +
+                    "；原光标=" + caretBottom + "/" + caretTop + "；位移=" + shift +
+                    "；文字位置=" + visual.rectTransform.localPosition + "；光标位置=" +
+                    (caretRect == null ? "未生成" : caretRect.localPosition.ToString()));
             for (int i = 0; i < 4; i++)
             {
                 __0.PopulateUIVertex(ref vertex, i);
@@ -181,6 +196,7 @@ namespace MOD_YtxSQ1.UI
             owner = null;
             input = null;
             editors.Clear();
+            caretDiagnostics.Clear();
             var previous = patches;
             patches = null;
             try { if (previous != null) previous.UnpatchSelf(); }

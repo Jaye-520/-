@@ -32,7 +32,7 @@ namespace MOD_YtxSQ1.UI
                 ActionButton(panel, "执行", 16 + w, top, 56, "输入增量，再点击执行；玩家与所选NPC对彼此的好感度各增加此值。", true, "好感度");
             }
         }
-        private void ActionButton(RectTransform parent, string label, float x, float y, float width, string hint, bool npc, string action = null)
+        private Button ActionButton(RectTransform parent, string label, float x, float y, float width, string hint, bool npc, string action = null)
         {
             var button = MakeButton(parent, "快捷_" + label, x, y, width, 32, label, () =>
             {
@@ -45,6 +45,20 @@ namespace MOD_YtxSQ1.UI
             });
             if (npc) npcActions.Add(button);
             BindFateHover(button.gameObject, () => ShowFateTip(button.GetComponent<RectTransform>(), new CharacterFate(0, 0, label, hint)), () => { fateTipCloseAt = Time.unscaledTime + .12f; });
+            return button;
+        }
+        private void BuildRestoreButton(RectTransform parent, float y, float width)
+        {
+            var button = ActionButton(parent, "满状态", 14, y, width, "恢复当前选中人物的体力、灵力、心情、健康、精力与念力至当前上限。", false);
+            var rect = button.GetComponent<RectTransform>();
+            button.GetComponent<Image>().color = new Color(.86f, .84f, .74f, .95f);
+            var gold = new Color(.60f, .48f, .27f, .65f);
+            Fill(rect, "金线上", 3, 3, width - 6, 1, gold);
+            Fill(rect, "金线下", 3, 28, width - 6, 1, gold);
+            Fill(rect, "金线左", 3, 3, 1, 26, gold);
+            Fill(rect, "金线右", width - 4, 3, 1, 26, gold);
+            Label(rect, "◇", 10, 4, 20, 24, 17, gold, TextAnchor.MiddleCenter);
+            Label(rect, "◇", width - 30, 4, 20, 24, 17, gold, TextAnchor.MiddleCenter);
         }
         private void RefreshActions()
         {
