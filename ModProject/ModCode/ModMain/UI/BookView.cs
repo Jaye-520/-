@@ -442,8 +442,7 @@ namespace MOD_YtxSQ1.UI
                 placeholder.raycastTarget = false;
             }
             targetSearch.textComponent.raycastTarget = false;
-            var background = clone.GetComponent<Image>();
-            if (background != null) { background.sprite = null; background.color = new Color(.94f, .92f, .85f, .65f); }
+            FrameSearchInput(host, targetSearch);
             targetSearch.SetTextWithoutNotify(searchQuery);
             targetSearch.onValueChanged.AddListener((UnityAction<string>)(new Action<string>(query =>
             {
@@ -457,7 +456,6 @@ namespace MOD_YtxSQ1.UI
                 Debug.Log("[八荒秘录] 搜索结束编辑；isFocused=" + targetSearch.isFocused +
                     "；调用栈=" + Environment.StackTrace);
             })));
-            Border(host, targetWidth - 24, 36);
             clone.SetActive(true);
             targetSearch.AssignPositioningIfNeeded();
             targetSearch.UpdateLabel();

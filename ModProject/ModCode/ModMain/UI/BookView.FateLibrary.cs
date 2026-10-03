@@ -100,7 +100,7 @@ namespace MOD_YtxSQ1.UI
             var text = field.textComponent;
             text.rectTransform.anchorMin = Vector2.zero; text.rectTransform.anchorMax = Vector2.one;
             text.rectTransform.pivot = new Vector2(.5f, .5f); text.rectTransform.localScale = Vector3.one;
-            text.rectTransform.offsetMin = new Vector2(padding, 2); text.rectTransform.offsetMax = new Vector2(-padding, -2);
+            text.rectTransform.offsetMin = new Vector2(padding, 4); text.rectTransform.offsetMax = new Vector2(-padding, -4);
             text.resizeTextForBestFit = false; text.alignByGeometry = false; text.lineSpacing = 1;
             text.horizontalOverflow = HorizontalWrapMode.Overflow; text.verticalOverflow = VerticalWrapMode.Truncate;
             var hint = field.placeholder == null ? null : field.placeholder.TryCast<Text>();
@@ -111,6 +111,13 @@ namespace MOD_YtxSQ1.UI
                 hint.rectTransform.offsetMin = text.rectTransform.offsetMin; hint.rectTransform.offsetMax = text.rectTransform.offsetMax;
                 hint.alignByGeometry = false; hint.lineSpacing = 1; hint.alignment = text.alignment;
             }
+        }
+
+        private void FrameSearchInput(RectTransform host, InputField field)
+        {
+            var background = field.GetComponent<Image>();
+            if (background != null) { background.sprite = null; background.color = new Color(.96f, .94f, .87f, .85f); }
+            Border(host, host.sizeDelta.x, host.sizeDelta.y);
         }
 
         private InputField CreateSearchInput(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed)
@@ -134,6 +141,7 @@ namespace MOD_YtxSQ1.UI
             var placeholder = field.placeholder == null ? null : field.placeholder.TryCast<Text>();
             if (placeholder != null) { placeholder.text = hint; placeholder.fontSize = 15; }
             if (field.placeholder != null) field.placeholder.gameObject.SetActive(true);
+            FrameSearchInput(host, field);
             field.SetTextWithoutNotify("");
             field.onValueChanged.AddListener((UnityAction<string>)(new Action<string>(changed)));
             WindowInputScope.Register(field); clone.SetActive(true);

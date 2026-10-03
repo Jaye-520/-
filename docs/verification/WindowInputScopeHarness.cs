@@ -9,7 +9,7 @@ namespace UnityEngine
     public struct Vector3 { public float x,y,z; public Vector3(float a,float b,float c) { x=a;y=b;z=c; } }
     public struct UIVertex { public Vector3 position; }
     public class TextGenerator { public List<UIVertex> verts=new List<UIVertex>();public int vertexCount { get { return verts.Count; } } }
-    public class Rect { public Vector2 center; }
+    public class Rect { public Vector2 center; public float yMin=-50,yMax=50; public float height {get{return yMax-yMin;}} }
     public class RectTransform
     {
         public Rect rect=new Rect(); public Vector3 localPosition;
@@ -131,6 +131,13 @@ internal static class WindowInputScopeHarness
         Call("AlignCaret",field,caret,new UnityEngine.Vector2());
         Check(caret.Vertices[0].position.y==-3 && caret.Vertices[2].position.y==21,"caret and text with differing origins align in the actual caret local coordinates");
         field.caretRectTrans=null;field.textComponent.rectTransform.localPosition=new UnityEngine.Vector3();
+        field.textComponent.rectTransform.rect.yMin=-9;field.textComponent.rectTransform.rect.yMax=9;
+        Call("AlignCaret",field,caret,new UnityEngine.Vector2());
+        Check(caret.Vertices[0].position.y==-9 && caret.Vertices[2].position.y==9 && caret.Vertices[1].position.x==1,"compact field clips oversized native caret to padded text bounds without moving x");
+        field.textComponent.rectTransform.rect.yMin=-50;field.textComponent.rectTransform.rect.yMax=50;
+        caret.Vertices[0]=new UnityEngine.UIVertex{position=new UnityEngine.Vector3(0,-12,0)};caret.Vertices[1]=new UnityEngine.UIVertex{position=new UnityEngine.Vector3(1,-12,0)};
+        caret.Vertices[2]=new UnityEngine.UIVertex{position=new UnityEngine.Vector3(0,12,0)};caret.Vertices[3]=new UnityEngine.UIVertex{position=new UnityEngine.Vector3(1,12,0)};
+
         field.text="";var placeholder=new UnityEngine.UI.Text();field.placeholder=placeholder;
         for(int i=0;i<4;i++)placeholder.cachedTextGenerator.verts.Add(new UnityEngine.UIVertex { position=new UnityEngine.Vector3 { y=i<2 ? 0 : 8 } });
         Call("AlignCaret",field,caret,new UnityEngine.Vector2());

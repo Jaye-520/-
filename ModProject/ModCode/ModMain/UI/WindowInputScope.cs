@@ -147,7 +147,7 @@ namespace MOD_YtxSQ1.UI
                 var center = text.rectTransform.rect.center.y;
                 bottom = center - text.fontSize * .5f; top = center + text.fontSize * .5f;
             }
-            // 只移动光标：让中心跟实际文字对齐，保留原生高度、宽度和闪烁。
+            // 对齐字形中心，并将光标限制在带内边距的文字区域；保留宽度和闪烁。
             var vertex = new UIVertex();
             __0.PopulateUIVertex(ref vertex, 0);
             var caretBottom = vertex.position.y;
@@ -158,6 +158,22 @@ namespace MOD_YtxSQ1.UI
             var centerY = (bottom + top) * .5f;
             if (caretRect != null)
                 centerY = caretRect.InverseTransformPoint(visual.rectTransform.TransformPoint(new Vector3(0, centerY, 0))).y;
+            var originalHeight = caretTop - caretBottom;
+            if (originalHeight <= 0) return;
+            var height = originalHeight;
+            var textBounds = text.rectTransform.rect;
+            if (textBounds.height > 0)
+            {
+                var lower = text.rectTransform.TransformPoint(new Vector3(0, textBounds.yMin, 0));
+                var upper = text.rectTransform.TransformPoint(new Vector3(0, textBounds.yMax, 0));
+                var safeBottom = caretRect == null ? textBounds.yMin : caretRect.InverseTransformPoint(lower).y;
+                var safeTop = caretRect == null ? textBounds.yMax : caretRect.InverseTransformPoint(upper).y;
+                if (safeTop > safeBottom)
+                {
+                    height = Math.Min(height, safeTop - safeBottom);
+                    centerY = Math.Max(safeBottom + height * .5f, Math.Min(centerY, safeTop - height * .5f));
+                }
+            }
             var shift = centerY - (caretBottom + caretTop) * .5f;
             var diagnosticKey = field.gameObject.name + (string.IsNullOrEmpty(field.text) ? ":空" : ":输入");
             if (caretDiagnostics.Add(diagnosticKey))
@@ -169,7 +185,7 @@ namespace MOD_YtxSQ1.UI
             {
                 __0.PopulateUIVertex(ref vertex, i);
                 var position = vertex.position;
-                position.y += shift;
+                position.y = centerY + (position.y - (caretBottom + caretTop) * .5f) * height / originalHeight;
                 vertex.position = position;
                 __0.SetUIVertex(vertex, i);
             }
