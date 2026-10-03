@@ -9,12 +9,20 @@ namespace MOD_YtxSQ1.UI
     {
         internal sealed class Position
         {
-            internal bool Custom;
+            internal bool Custom;   // 用户调整过，需要写回文件
+            internal bool Preset;   // 出厂归一化默认，仅在文件没有该入口的值时生效
             internal float X, Y, Size = 56;
         }
         internal readonly Position Map = new Position(), Npc = new Position();
         internal readonly string Path;
-        internal EntranceLayout(string path) { Path = path; }
+        // NPC入口出厂预设：2026-10-03用户在游戏内（2560x1600）微调后记录的归一化中心与尺寸。
+        // 主界面入口不设预设，仍按原生念力读数的参照矩形计算。
+        private const float NpcPresetX = 0.253515631f, NpcPresetY = 0.750833333f, NpcPresetSize = 56f;
+        internal EntranceLayout(string path)
+        {
+            Path = path;
+            Npc.X = NpcPresetX; Npc.Y = NpcPresetY; Npc.Size = NpcPresetSize; Npc.Preset = true;
+        }
         internal void Load()
         {
             if (!File.Exists(Path)) return;

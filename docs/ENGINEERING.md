@@ -150,9 +150,10 @@ PaperSkin.Acquire在主线程懒创建唯一四纹理缓存（纸、刷、山水
 ### 入口定位与坐标
 
 - 07.39错误：GetWorldCorners实际签名为Il2CppStructArray<Vector3>，普通Vector3[]隐式转换只复制输入到新数组；读取原数组仍是零。不能把本机原生包装API当普通Unity托管方法。处理输出数组须读原生包装索引或改用单值返回；当前使用reference.rect→TransformPoint→root.InverseTransformPoint。禁止恢复原代码，托管数组替身通过不能证明原生写回。
-- 默认map=textSPValue右边中点+40单位；npc=btnAppellationAttack右边中点+22单位，与按钮同高，按07.40新红框调整。根矩形/缩放未就绪拒绝，半秒挂载核对，错误3秒重试。保持原UI层，不使用截图像素硬编码原生坐标。
+- 默认位置：主界面=textSPValue右边中点+40单位，按原生参照控件计算；NPC入口在无坐标文件时改用出厂归一化预设（见下条），参照控件`btnAppellationAttack`只用于缩放与就绪判断，不再决定默认位置。根矩形/缩放未就绪拒绝，半秒挂载核对，错误3秒重试。保持原UI层，不使用截图像素硬编码原生坐标。
 - F9仅无文本编辑且有效入口在层顶时切换；调整期间入口点击不打开内容。鼠标按下命中图标后保留抓取偏移，ScreenPointToLocalPointInRectangle使用所属UI canvas.worldCamera；松手记录并短时抑制Click。滚轮仅悬停修改本入口size40–100。提示显示局部坐标，靠边自动向内/上下面板。
 - EntranceLayout独立map/npc，Custom位置是相对各自UI根矩形的x/y归一化中心，尺寸是参照控件单位；保存后常规Sync使用Custom，不能把拖动结果每半秒覆写。存放Application.persistentDataPath/BHML/entrance-layout.ini，Player.log记录路径、两组值和画面尺寸。纯布局文件不关联人物/世界存档；换档保留布局，清理入口和调整状态。
+- 出厂预设与用户调整必须分开：`Position.Preset`是随代码发布的归一化默认（当前只有NPC入口，取自用户2560x1600实测），仅在文件缺少该入口时生效；`Position.Custom`表示用户调整过、需要写回文件。`Sync`按`Custom || Preset`使用归一化中心，`Save`只写`Custom`条目，日志区分`default`/`preset`/实测值。不得把预设直接标成`Custom`，否则文件和日志会谎称用户调整过；用户重新拖动后`Custom`自然覆盖预设。主界面入口不设预设，仍按原生参照控件计算。
 - 写入UTF8、InvariantCulture、同目录.tmp+File.Replace+bak；校验范围、NaN/Infinity及文件大小，非法条目忽略，读失败保留默认。写失败保留dirty并提示，可F9再次锁定重试。不得提前编造最终用户坐标；用户说调整好后读本机ini和日志再固化默认值。
 - 入口由ModMain独立持有，内容熔断后点击重建控制器，不重放修改；关闭/离图/换世界/卸载清理回调及原生对象。正常模式只检测F9，不逐帧查原生世界/UI；调整模式才逐帧处理鼠标。
 - 图标v2减少细碎纹饰；mipmap=true+Trilinear处理1254原图缩小采样。原图高清不能自证56单位下清晰；必须按真实游戏截图评估。只共用一张纹理，卸载释放。

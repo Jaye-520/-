@@ -85,7 +85,7 @@ namespace MOD_YtxSQ1.UI
             center.x += (player ? 40f : 22f) * scale;
             // clamp到原生面板内，避免宽高比变化把入口挤出可点击区域。
             var bounds = root.rect;
-            if (position.Custom)
+            if (position.Custom || position.Preset)
             { center.x = bounds.xMin + position.X * bounds.width; center.y = bounds.yMin + position.Y * bounds.height; }
             center.x = Mathf.Clamp(center.x, bounds.xMin + size * .5f, bounds.xMax - size * .5f);
             center.y = Mathf.Clamp(center.y, bounds.yMin + size * .5f, bounds.yMax - size * .5f);
@@ -150,7 +150,7 @@ namespace MOD_YtxSQ1.UI
                 listener.onMouseEnter = new UnityEvent(); listener.onMouseExit = new UnityEvent();
                 listener.onMouseEnter.AddListener((UnityAction)(new Action(() => { if (entry.Button.interactable) tip.SetActive(true); })));
                 listener.onMouseExit.AddListener((UnityAction)(new Action(() => tip.SetActive(false))));
-                Debug.Log("[八荒秘录] 07.40已挂载" + (player ? "主界面" : "NPC面板") + "玉简入口；F9调整位置。");
+                Debug.Log("[八荒秘录] 07.41已挂载" + (player ? "主界面" : "NPC面板") + "玉简入口；F9调整位置。");
                 return entry;
             }
             catch { go.SetActive(false); UnityEngine.Object.Destroy(go); throw; }
@@ -278,10 +278,15 @@ namespace MOD_YtxSQ1.UI
             try
             {
                 layout.Save(); dirty = false;
-                Debug.Log("[八荒秘录] 入口坐标已记录：map=" + (layout.Map.Custom ? EntranceLayout.Format(layout.Map) : "default") +
-                    "；npc=" + (layout.Npc.Custom ? EntranceLayout.Format(layout.Npc) : "default") + "；画面=" + Screen.width + "x" + Screen.height + "；文件=" + layout.Path);
+                Debug.Log("[八荒秘录] 入口坐标已记录：map=" + Describe(layout.Map) + "；npc=" + Describe(layout.Npc) +
+                    "；画面=" + Screen.width + "x" + Screen.height + "；文件=" + layout.Path);
             }
             catch (Exception ex) { Debug.LogWarning("[八荒秘录] 入口坐标保存失败：" + ex.Message); UITipItem.AddTip("入口位置未写入文件，请检查日志后再按F9重试。"); }
+        }
+        private static string Describe(EntranceLayout.Position position)
+        {
+            if (position.Custom) return EntranceLayout.Format(position);
+            return position.Preset ? EntranceLayout.Format(position) + "(preset)" : "default";
         }
         private static void Remove(ref Entry entry)
         {

@@ -71,7 +71,10 @@ internal static class EntrancesHarness {
         Check(Entry(g.ui.Map)!=null && Entry(g.ui.Npc)!=null,"both native hosts receive entrances");
         var mapEntry=Entry(g.ui.Map);var npcEntry=Entry(g.ui.Npc);
         Check(mapEntry.gameObject.layer==5 && npcEntry.gameObject.layer==7 && npcEntry.Children[0].gameObject.layer==7 && npcEntry.Children[0].Children[0].gameObject.layer==7,"icon and tooltip inherit native camera layers");
-        Check(mapEntry.localPosition.x==180 && mapEntry.localPosition.y==-300 && npcEntry.localPosition.x==-462 && npcEntry.localPosition.y==400,"positions follow resource right edge and NPC challenge right edge");
+        Check(mapEntry.localPosition.x==180 && mapEntry.localPosition.y==-300,"map entrance follows resource right edge");
+        var preset=new EntranceLayout(layoutPath);
+        Check(!preset.Npc.Custom && preset.Npc.Preset && !preset.Map.Preset,"NPC entrance ships a preset that is not treated as user-set");
+        Check(Math.Abs(npcEntry.localPosition.x-(-960f+preset.Npc.X*1920f))<.01f && Math.Abs(npcEntry.localPosition.y-(-540f+preset.Npc.Y*1080f))<.01f,"NPC entrance falls back to the shipped preset without a file value");
         Tick(entrances);Check(g.ui.Map.transform.Children.Count==1 && g.ui.Npc.transform.Children.Count==1,"polls do not duplicate controls");
         mapEntry.GetComponent<Button>().onClick.Invoke();Check(opens==1 && selected==null,"map click requests player");
         g.ui.Top=g.ui.Npc;Tick(entrances);g.ui.Npc.unit.data.unitData.unitID="npc-B";npcEntry.GetComponent<Button>().onClick.Invoke();Check(selected=="npc-B" && opens==2,"NPC click reads current panel target rather than creation target");
