@@ -2,6 +2,14 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
+## 2026-10-03：写入与编辑路径复审（未发现缺陷）
+
+按上轮计划逐个复审此前未读过的服务文件，目标是**真实缺陷**而非风格。本轮覆盖：`CharacterFateOperations`（气运增删）、`CharacterFateCatalog`（图鉴/分类/介绍降级）、`CharacterRoster`（名单读取）、`CharacterPortrait`（剧情立绘分流）、`CharacterEditSession`（草稿/校验/冲突基准）。
+
+结论：**未发现缺陷**。值得留档的防御性设计（说明这些路径不是靠运气）：气运添加在写`bornLuck`前先用`WorldFactory.CreateLuckInID`预检，`CreateLuck`失败会把数组回滚为原引用；删除时先快照，再让原生`UnitActionLuckDel`注销运行效果，随后补齐它不负责的先天记录，并用`HasRecord`回读确认；`HasRecord`对`bornLuck`/`addLuck`都做空元素防御；图鉴介绍三层降级（原生`tips`→配置`tips`→字面量）不会抛穿；名单在`unit/data/unitData/property`四层都判空；草稿在校验标签越界时也被`try`兜住，最坏只表现为“目标人物已失效”这句略含糊的提示。
+
+方法：这类“复审无缺陷”是有效结论，不应重复通读同一批文件；覆盖率验证交给`run-mutations.ps1`（12组探针已证明10个harness都会在代码被破坏时失败）。**未改任何产品代码、未改版本号**；未操作存档或终止游戏。
+
 ## 07.48：产物自述版本＋构建交叉校验
 
 此前“这是哪一版”只能靠源码里的`ModVersion.Current`（页脚与日志）或DLL哈希；DLL自身的元数据仍是`1.0.0.0`/`ModMain`时代的占位。本轮让**产物自己声明版本**：`AssemblyInfo.cs`把`AssemblyInformationalVersion`设为`ModVersion.Current`，于是DLL属性的“产品版本”直接是游戏内版本号（`AssemblyVersion`/`FileVersion`必须纯数字，保持不变）。
