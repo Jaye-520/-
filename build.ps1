@@ -1,4 +1,4 @@
-param([string]$GameRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
+﻿param([string]$GameRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 $ErrorActionPreference = 'Stop'
 $toolsDirectory = Join-Path $PSScriptRoot '.tools'
 New-Item -ItemType Directory -Path $toolsDirectory -Force | Out-Null

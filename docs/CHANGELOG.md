@@ -2,6 +2,14 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
+## 2026-10-03：修复脚本编码，使构建与检查在PowerShell 5.1可运行（配置与文档）
+
+上一轮记录的环境问题已根治：11个受跟踪`.ps1`（`build.ps1`与10个`run-*.ps1`）原先无BOM，在Windows PowerShell 5.1下按系统ANSI读取，中文连同其后的引号被吞掉，**修复前实测11个全部解析失败（`build.ps1`含5处错误）**，文档里写的`./build.ps1`在本机根本无法执行。改为字节级前置UTF-8 BOM，不改内容与换行（diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1执行。新增或改写`.ps1`今后必须保留BOM。
+
+顺带完成**全套托管检查**（此前数轮只跑其中4个）：entrances 26、lifecycle 25、controller-idle 15、book-layout 365、character-reader 11、character-fates 15、character-editing 19、character-save 48、input-scope 21、paper-skin 6，**共551项全部通过、0失败**。其中character-reader/fates/editing三项自07.31以来未再记录，本轮证明07.29–07.40的改动未使其回退，且计数与当时一致（11/15/19）。`./build.ps1`重跑零警告零错误，DLL SHA256仍为`F434BAC8886A74A975DEADD21EDBDA6C368652CC0E29A246ACC3F55E5DABEF34`。
+
+仍未游戏验证：运行实例仍是07.39、`entrance-layout.ini`不存在，未取得校准坐标，未操作存档或终止游戏。
+
 ## 2026-10-03：07.40验证与提交、脚本编码环境发现（仅验证与文档，无代码改动）
 
 接上一轮被中断的部分。重跑四项托管检查：入口/校准/配置26项、生命周期25项、控制器15项、内容布局365项，合计**431项全部通过**，与07.40记录一致，确认上一轮最后一次`EntrancesHarness`改动（`GetWorldCorners`改为直接抛错，防止回退到数组写回写法）成立。用同目录BOM临时副本执行`build.ps1`，零警告零错误，DLL SHA256仍为`F434BAC8886A74A975DEADD21EDBDA6C368652CC0E29A246ACC3F55E5DABEF34`，Release与debug一致。07.40分两次提交：`7da686d`代码与检查、`1c45e92`文档整理；`ModProject.cache`按约定不提交。

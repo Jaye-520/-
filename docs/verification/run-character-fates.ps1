@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $compiler = Join-Path $projectDirectory '.tools/microsoft.net.compilers.toolset.4.8.0/tasks/net472/csc.exe'
 $output = Join-Path $projectDirectory '.tools/character-fates-harness.exe'

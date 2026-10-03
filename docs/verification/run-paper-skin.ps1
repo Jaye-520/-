@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $codeDirectory = Join-Path $projectDirectory 'ModProject/ModCode/ModMain'
 $compiler = Join-Path $projectDirectory '.tools/microsoft.net.compilers.toolset.4.8.0/tasks/net472/csc.exe'

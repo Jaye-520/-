@@ -54,7 +54,7 @@ Get-FileHash -LiteralPath ./ModProject/ModCode/ModMain/bin/Release/MOD_YtxSQ1.dl
 
 build.ps1成功前不会覆盖上次Release产物；Release不混入额外DLL。PDB按实际同步情况单独记录。官方编辑器“进入游戏调试”复制Release DLL并加载；手动复制与哈希只能证明磁盘一致，不证明运行游戏重载。运行版本以日志、界面和实测反馈核对，不擅自终止游戏。
 
-**脚本编码限制（2026-10-03实测）**：`build.ps1`与`docs/verification/run-*.ps1`均为无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误无法运行**（本机仅有5.1：`$PSVersionTable.PSVersion`为5.1，`[Text.Encoding]::Latin1`不存在）。`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。变通办法：把脚本复制为带BOM的临时副本放在同目录执行（`$PSScriptRoot`仍指向原目录，相对路径解析不变），执行后删除；彻底修复需给脚本加UTF-8 BOM或安装PowerShell 7，尚未实施。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。
+**脚本编码约定（2026-10-03实测并修复）**：`build.ps1`与`docs/verification/run-*.ps1`原先是无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误、完全无法运行**（本机仅有5.1：`$PSVersionTable.PSVersion`为5.1、`[Text.Encoding]::Latin1`不存在；修复前实测11个脚本全部解析失败，`build.ps1`含5处错误）。已给全部11个受跟踪`.ps1`加UTF-8 BOM（字节级前置，不改内容与换行，diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1下执行。**今后新增或改写`.ps1`必须保留BOM**（或写成纯ASCII），否则本机下次又会整体失效；`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。
 
 2026-10-02按用户指令在工程根建立本地Git，主分支main，无远程。初始提交包含当时07.15源码、工程会话入口、配置、源资源、检查脚本及文档；最新验收以项目记忆为准。未配置原用户提交身份，因此仅仓库内使用Codex <codex@localhost>作为自动化身份，不修改全局设置。
 
