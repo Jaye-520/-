@@ -121,7 +121,7 @@ if ($Build) {
 Write-Host ''
 Write-Host '== 托管检查 =='
 $harnesses = Get-ChildItem -LiteralPath $verificationDirectory -Filter 'run-*.ps1' -File |
-    Where-Object { $_.Name -ne 'run-all.ps1' } | Sort-Object Name
+    Where-Object { $_.Name -ne 'run-all.ps1' -and $_.Name -ne 'run-mutations.ps1' } | Sort-Object Name
 $results = @()
 foreach ($harness in $harnesses) {
     $name = [IO.Path]::GetFileNameWithoutExtension($harness.Name)
