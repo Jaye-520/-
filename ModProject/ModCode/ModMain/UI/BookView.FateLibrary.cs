@@ -120,7 +120,7 @@ namespace MOD_YtxSQ1.UI
             Border(host, host.sizeDelta.x, host.sizeDelta.y, true);
         }
 
-        private InputField CreateSearchInput(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed)
+        private InputField CreateSearchInput(RectTransform parent, string name, float x, float y, float width, float height, string hint, Action<string> changed, bool framed = true)
         {
             var host = Box(name, parent, x, y, width, height);
             var clone = UnityEngine.Object.Instantiate(targetSearch.gameObject, host, false);
@@ -141,16 +141,29 @@ namespace MOD_YtxSQ1.UI
             var placeholder = field.placeholder == null ? null : field.placeholder.TryCast<Text>();
             if (placeholder != null) { placeholder.text = hint; placeholder.fontSize = 15; }
             if (field.placeholder != null) field.placeholder.gameObject.SetActive(true);
-            FrameSearchInput(host, field);
+            if (framed) FrameSearchInput(host, field);
             field.SetTextWithoutNotify("");
             field.onValueChanged.AddListener((UnityAction<string>)(new Action<string>(changed)));
             WindowInputScope.Register(field); clone.SetActive(true);
             field.AssignPositioningIfNeeded(); field.UpdateLabel();
             return field;
         }
-        private void BuildFateSearch(RectTransform heading, float width)
+        private InputField SearchWithLibrary(RectTransform parent, string name, string buttonName, float x, float y,
+            float width, float height, float actionWidth, string hint, Action<string> changed, Action open)
         {
-            fateSearch = CreateSearchInput(heading, "气运检索", 4, 1, width, 26, "检索气运（名称/ID）", _ => FilterCandidates());
+            var bar = Fill(parent, name + "组合栏", x, y, width, height, new Color(.96f, .94f, .87f, .85f)).rectTransform;
+            var field = CreateSearchInput(bar, name, 1, 1, width - actionWidth - 1, height - 2, hint, changed, false);
+            var button = MakeButton(bar, buttonName, width - actionWidth, 1, actionWidth - 1, height - 2, buttonName, open, false);
+            button.GetComponent<Image>().color = new Color(.92f, .90f, .82f, .8f);
+            button.GetComponentInChildren<Text>().fontSize = 16;
+            Fill(bar, "搜索入口分隔线", width - actionWidth, 6, 1, height - 12, new Color(.43f, .39f, .28f, .30f));
+            Border(bar, width, height, true);
+            return field;
+        }
+        private void BuildFateSearch(RectTransform heading)
+        {
+            fateSearch = SearchWithLibrary(heading, "气运检索", "气运列表", 0, 0,
+                heading.sizeDelta.x, heading.sizeDelta.y, 88, "检索气运（名称/ID）", _ => FilterCandidates(), OpenFateLibrary);
         }
         private bool LoadFateCatalog()
         {

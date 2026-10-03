@@ -660,12 +660,11 @@ namespace MOD_YtxSQ1.UI
                 var panel = Card(flow, fates[i], 8 + i * (fateWidth + 12), 0, panelWidth, fateHeight);
                 Border(panel, panelWidth, fateHeight);
                 var heading = Fill(panel, "气运题栏_" + i, 8, 8, panelWidth - 16, 28, new Color(.91f, .90f, .85f, .88f)).rectTransform;
-                Border(heading, panelWidth - 16, 28);
+                if (i < 3) Border(heading, panelWidth - 16, 28);
                 if (i < 3) Label(heading, fates[i], 4, 0, panelWidth - 24, 28, 17, Ink, TextAnchor.MiddleCenter);
                 if (i == 3)
                 {
-                    BuildFateSearch(heading, panelWidth - 120);
-                    MakeButton(heading, "气运列表", panelWidth - 108, 2, 88, 24, "气运列表", OpenFateLibrary);
+                    BuildFateSearch(heading);
                 }
                 var bodyWidth = panelWidth - 16;
                 var bodyHeight = fateHeight - 48;
@@ -1156,7 +1155,7 @@ namespace MOD_YtxSQ1.UI
             Label(image.rectTransform, "×", 0, 0, 38, 38, 30, new Color(.88f, .76f, .43f, 1f), TextAnchor.MiddleCenter);
         }
 
-        private Button MakeButton(RectTransform parent, string name, float left, float top, float width, float height, string text, Action action)
+        private Button MakeButton(RectTransform parent, string name, float left, float top, float width, float height, string text, Action action, bool framed = true)
         {
             var image = Fill(parent, name, left, top, width, height, new Color(.84f, .82f, .74f, 1f), true);
             var button = image.gameObject.AddComponent<Button>();
@@ -1168,7 +1167,7 @@ namespace MOD_YtxSQ1.UI
             colors.selectedColor = Color.white;
             button.colors = colors;
             button.onClick.AddListener((UnityAction)action);
-            Border(image.rectTransform, width, height);
+            if (framed) Border(image.rectTransform, width, height);
             Label(image.rectTransform, text, 0, 0, width, height, 18, Ink, TextAnchor.MiddleCenter);
             return button;
         }

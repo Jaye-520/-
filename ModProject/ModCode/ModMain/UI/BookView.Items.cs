@@ -47,8 +47,8 @@ namespace MOD_YtxSQ1.UI
             var searchWidth = Mathf.Min(284, Mathf.Max(210, contentWidth * .24f));
             var search = Card(content, "物品检索栏", 0, 76, searchWidth, contentHeight - 76);
             Border(search, searchWidth, search.sizeDelta.y);
-            MakeButton(search, "物品列表", 10, 10, 82, 32, "物品列表", OpenItemLibrary);
-            itemSearch = CreateSearchInput(search, "物品检索", 98, 10, searchWidth - 108, 32, "名称 / ID", _ => FilterItems(false));
+            itemSearch = SearchWithLibrary(search, "物品检索", "物品列表", 10, 10, searchWidth - 20, 32,
+                82, "名称 / ID", _ => FilterItems(false), OpenItemLibrary);
             itemResultsScroll = ItemScroll(search, "物品检索结果", 10, 54, searchWidth - 20, search.sizeDelta.y - 114);
             BuildItemRows(itemRows, itemResultsScroll, 1, false);
             itemResultsScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { HideFateTips(); RenderItemRows(itemRows, itemResults, itemResultsScroll, 1, false); })));

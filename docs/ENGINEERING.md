@@ -379,3 +379,5 @@ GetDesc不是最终可读正文：身法/心法模板会含&技能数值键&及$
 FrameSearchInput统一修士搜索和CreateSearchInput创建的气运、气运列表、道具、物品列表搜索，使用纸色底与现有双细线Border；边框挂在host而非克隆体，避免继续克隆时复制叠加边框，线条不拦指针。ResetClonedInput上下内边距由2改4，与修士框一致；不同位置高度和字号仍按布局保留。CreateSearchInput也用于道具数量输入，沿用同一框线与内边距；属性原位数字编辑未加入新边框。实际字体与光标显示仍需游戏核对，GDI不画真实光标。
 
 07.60：FrameSearchInput调用Border(..., transparentInner:true)，内侧上下线alpha为0，节点/尺寸保留；外侧框线可见。线条只是装饰，实际留白和光标安全区域由文字内边距/AlignCaret保障，不依赖线条是否可见。其他卡片默认transparentInner=false。
+
+07.61：SearchWithLibrary负责气运/道具检索和列表入口组合；CreateSearchInput(..., framed:false)及MakeButton(..., framed:false)关闭组合内部的各自外框，只在组合父节点Border一次。按钮仍是独立Button，分隔线不拦射线；移除气运第四题栏的额外Border，避免三层框挤压。独立搜索与其他按钮默认framed=true。
