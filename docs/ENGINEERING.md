@@ -60,6 +60,8 @@
 
 Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/ProjectSettings、ModAssets/ModExcel源内容、实测截图及小型历史文档归档。ModProject.cache/ModData.cache保存官方身份，必须跟踪。忽略.tools、debug、bin/obj、游戏引用dll、Unity临时目录/生成工程、日志、用户设置、可重建模拟截图及凭据。换行约定见.gitattributes；当前功能源码未因初始化而改写。
 
+`ModProject.cache`是**游戏模组编辑器持续写入的活文件**：`exportVer`为编辑器自增的导出版本（2026-10-03一次会话内即从29→54→58），`tags`/`isCreateNPC`等只在编辑器里改。因此规则是——它单独提交并在提交信息里说明有意义字段的变化，**不搭进无关提交**；日常`git status`里出现该项属正常，不要顺手`git checkout --`丢掉编辑器的写入，也不要因为它长期显示已修改就把它加进`.gitignore`（那会丢掉官方身份的可复现性）。
+
 变更前看git status/diff，完成独立小目标后核对暂存差异并提交相关文件，不混入他人未完成改动。检查用git diff --check；历史用git log --oneline。需要取回旧文件时先保护当前改动，避免无依据reset --hard或清空工作区。源码可回退不表示实际存档可回退；旧DLL等产物仍按需要放.tools/backups并记录版本/哈希。
 
 首次导入的官方Unity序列化资源和部分旧源码带历史尾空白，已检查并保留原文，不为建立Git批量格式化源码；之后检查本轮新增差异。所有源码与资源在Git索引中按.gitattributes规范化换行，工作区未批量重写。
