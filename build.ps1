@@ -1,4 +1,4 @@
-﻿param([string]$GameRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
+﻿param([string]$GameRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)), [switch]$NoDeploy)
 $ErrorActionPreference = 'Stop'
 $toolsDirectory = Join-Path $PSScriptRoot '.tools'
 New-Item -ItemType Directory -Path $toolsDirectory -Force | Out-Null
@@ -65,4 +65,24 @@ $unexpected = Get-ChildItem -LiteralPath $outputDirectory -Filter '*.dll' | Wher
 if ($unexpected) { throw ('Release 存在额外 DLL，请检查：' + ($unexpected.Name -join ', ')) }
 Copy-Item -LiteralPath $stagedDll -Destination $outputDirectory -Force
 Copy-Item -LiteralPath (Join-Path $stagingDirectory ($assemblyName + '.pdb')) -Destination $outputDirectory -Force
-Get-FileHash -LiteralPath (Join-Path $outputDirectory ($assemblyName + '.dll')) -Algorithm SHA256
+$releaseDll = Join-Path $outputDirectory ($assemblyName + '.dll')
+$releaseHash = (Get-FileHash -LiteralPath $releaseDll -Algorithm SHA256).Hash
+
+if ($NoDeploy) {
+    Write-Host "Release 已更新（-NoDeploy，未部署）：$releaseDll"
+    Write-Host "SHA256 $releaseHash"
+    return
+}
+
+# 部署到游戏实际加载的调试包。官方调试流程只复制DLL，因此这里不添加PDB等额外文件。
+$deployDirectory = Join-Path $PSScriptRoot 'debug\Mod_YtxSQ1\ModCode\dll'
+New-Item -ItemType Directory -Path $deployDirectory -Force | Out-Null
+$staleDll = Get-ChildItem -LiteralPath $deployDirectory -Filter '*.dll' | Where-Object Name -NE ($assemblyName + '.dll')
+if ($staleDll) { Write-Warning ('部署目录还有其它 DLL，请确认是否需要：' + ($staleDll.Name -join ', ')) }
+$deployDll = Join-Path $deployDirectory ($assemblyName + '.dll')
+try { Copy-Item -LiteralPath $releaseDll -Destination $deployDll -Force }
+catch { throw "部署失败（游戏可能正占用该文件，请关闭游戏后重试）：$deployDll`n$($_.Exception.Message)" }
+$deployHash = (Get-FileHash -LiteralPath $deployDll -Algorithm SHA256).Hash
+if ($deployHash -ne $releaseHash) { throw "部署校验失败：Release 与部署目录哈希不一致。Release=$releaseHash Deploy=$deployHash" }
+Write-Host "Release 与调试包已同步：$deployDll"
+Get-FileHash -LiteralPath $releaseDll,$deployDll -Algorithm SHA256 | Format-Table -AutoSize

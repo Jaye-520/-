@@ -24,7 +24,7 @@ if ($hygieneFailures -eq 0) { Write-Host ("  OK    {0} 个脚本均有 BOM 且�
 $buildFailure = $null
 if ($Build) {
     Write-Host ''
-    Write-Host '== 编译（build.ps1）=='
+    Write-Host '== 编译与部署（build.ps1，含 Release→调试包同步）=='
     try {
         & (Join-Path $projectDirectory 'build.ps1') | Out-Null
         Write-Host '  OK    编译通过，零警告零错误'

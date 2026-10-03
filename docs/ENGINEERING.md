@@ -45,13 +45,14 @@
 在工程根目录运行：
 
 ```powershell
-$ErrorActionPreference = 'Stop'
-& ./build.ps1
-Copy-Item -LiteralPath ./ModProject/ModCode/ModMain/bin/Release/MOD_YtxSQ1.dll -Destination ./debug/Mod_YtxSQ1/ModCode/dll/MOD_YtxSQ1.dll -Force
-Get-FileHash -LiteralPath ./ModProject/ModCode/ModMain/bin/Release/MOD_YtxSQ1.dll,./debug/Mod_YtxSQ1/ModCode/dll/MOD_YtxSQ1.dll -Algorithm SHA256
+& ./build.ps1                            # 编译 + 同步到游戏调试包 + 校验两端哈希
+& ./build.ps1 -NoDeploy                  # 只编译，不动调试包
+./docs/verification/run-all.ps1 -Build   # 编译部署 + 全套托管检查与脚本卫生
 ```
 
-build.ps1成功前不会覆盖上次Release产物；Release不混入额外DLL。PDB按实际同步情况单独记录。官方编辑器“进入游戏调试”复制Release DLL并加载；手动复制与哈希只能证明磁盘一致，不证明运行游戏重载。运行版本以日志、界面和实测反馈核对，不擅自终止游戏。
+`build.ps1`默认**编译并部署**：编译成功后才覆盖`bin/Release`，随后复制到游戏实际加载的`debug/Mod_YtxSQ1/ModCode/dll/`并比对两端SHA256，不一致即报错。编译失败不覆盖任何产物；部署失败（例如游戏占用文件）明确报错并保留原文件，不会留下半个包。只复制DLL、不部署PDB——官方调试流程只复制DLL，不往调试包里添加额外文件；部署目录若存在其它DLL只警告不阻断（可能是需要的插件DLL）。Release不混入额外DLL。
+
+磁盘哈希一致只证明文件相同，不证明运行中的游戏已重载该版本；官方编辑器“进入游戏调试”也会复制Release DLL并加载。运行版本以日志、界面和实测反馈核对，不擅自终止游戏。
 
 **脚本编码约定（2026-10-03实测并修复）**：`build.ps1`与`docs/verification/run-*.ps1`原先是无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误、完全无法运行**（本机仅有5.1：`$PSVersionTable.PSVersion`为5.1、`[Text.Encoding]::Latin1`不存在；修复前实测11个脚本全部解析失败，`build.ps1`含5处错误）。已给全部11个受跟踪`.ps1`加UTF-8 BOM（字节级前置，不改内容与换行，diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1下执行。**今后新增或改写`.ps1`必须保留BOM**（或写成纯ASCII），否则本机下次又会整体失效；`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。**改写`.ps1`会丢掉BOM**：2026-10-03用文本编辑方式改`run-entrances.ps1`后脚本立即无法解析，须在改完后按字节重新前置`EF BB BF`，并在提交前用`[System.Management.Automation.Language.Parser]::ParseFile`复验全部受跟踪`.ps1`。
 
