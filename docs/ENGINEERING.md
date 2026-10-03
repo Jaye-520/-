@@ -11,6 +11,7 @@
 | 文件 | 职责 |
 | --- | --- |
 | ModMain.cs | 初始化、帧计时器、重复释放和异常熔断 |
+| ModVersion.cs | 版本号唯一来源；界面页脚与全部日志共用，升级只改此处 |
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
 | UI/WorkshopEntrances.cs | 原生双入口挂载、单值坐标转换、出厂位置常量、点击核对、独立于内容熔断的生命周期 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
@@ -40,7 +41,8 @@
 
 ## 代码风格与结构约定
 
-- 文件与命名：一个文件一个职责；`partial`只用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）。新增源码必须登记csproj并在上文“代码导航”表登记职责——`run-all.ps1`会自检“csproj ↔ 磁盘源码 ↔ 代码导航表”三者一致，任何一处漏登记都直接门禁失败。
+- 文件与命名：一个文件一个职责；`partial`只用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）。新增源码必须登记csproj并在上文“代码导航”表登记职责——`run-all.ps1`会自检“csproj ↔ 磁盘源码 ↔ 代码导航表”三者一致，任何一处漏登记都直接门禁失败。若该文件会被某个harness编译（如`UI/BookView.cs`、`UI/WorkshopEntrances.cs`、`UI/WorkshopWindow.cs`、`ModMain.cs`），还必须在对应`run-*.ps1`的编译清单里加上它，否则该harness编译失败——2026-10-03新增`ModVersion.cs`时正是漏了这一步，被门禁当场拦下。
+- 版本号唯一来源：`ModVersion.Current`（`ModVersion.cs`）。界面页脚与全部日志都引用它，升级只改这一处；`run-all.ps1`会检查当前版本字面量只出现在该文件，防止漏改造成“页脚显示旧版、日志显示新版”。`WindowInputScope`中形如07.10/07.31的编号标记该诊断引入时的版本，属于历史事实，不随升级变动。
 - 方法规模以≤50行为准，超长分派方法按操作拆分。2026-10-03把`CharacterActions.Execute`（133行、四层分支）拆为RestoreStatus/FillCultivation/FillMaterials/AddIntimacy/Move，最长方法降到38行，546项检查全绿。拆分必须**保持分支顺序与报错语义**：未知操作在原实现里会先校验NPC目标再报“未知快捷操作”，拆完仍要先校验。
 - 注释解释“为什么”，不复述代码：原生包装的坑（`Il2CppStructArray`不写回、`Single..ctor(IntPtr)`）、回退顺序与幂等理由必须留在代码旁；纯语言直译的注释不加。
 - 写操作失败一律`throw`，由调用处统一转成用户可见消息并记日志；日志统一`[八荒秘录]`前缀、重复失败去重，不用日志代替返回值表达状态。

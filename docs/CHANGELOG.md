@@ -2,6 +2,16 @@
 
 本文件保存影响当前开发的版本结论。当前状态以[项目记忆](../PROJECT_MEMORY.md)为准；旧版本的“待验证”保留当时结论，不自动变成当前待办。已被替换的视觉方案不再作为开发基线。
 
+## 2026-10-03：版本号收敛为唯一来源并加入漂移门禁
+
+问题：当前版本号`07.42`原以字面量散落在**4个文件的5处**（`ModMain.cs`初始化日志、`WorkshopWindow.cs`打开耗时、`BookView.cs`界面构建日志与**用户可见的页脚**、`WorkshopEntrances.cs`挂载日志）。升级需手改5处，漏改一处就会出现“页脚显示07.42、日志显示07.43”——而本项目恰恰靠版本号判断游戏里加载的是哪一版，本会话升级07.41/07.42时就是手工同步的。
+
+改动：新增`ModVersion.cs`（`internal const string Current`，唯一来源），5处全部改为引用`ModVersion.Current`；`run-all.ps1`新增漂移检查——从`ModVersion.cs`解析当前版本，扫描其余`.cs`中的该字符串字面量，命中即`一致性问题`并`RESULT: FAIL`。顺带修正`AssemblyInfo.cs`的`AssemblyTitle`/`AssemblyProduct`：原为`ModMain`，与实际程序集名`MOD_YtxSQ1`不符。
+
+验证（含反向，且第一次反向测试**写错了**）：正向`OK 版本号 07.42 只在 ModVersion.cs 中定义`、546项、`RESULT: PASS`；第一次探针只写了不带引号的`07.42`，而检查只抓字符串字面量，因此**没测到**——这正是真实缺陷形态，随即改用带引号的`"07.42"`重测，抓到`CharacterActions.cs:190`、`一致性问题 1 个`、`RESULT: FAIL`、退出码1，还原后恢复PASS。探针未进入提交。
+
+过程中被自己的门禁拦下一次：新文件`ModVersion.cs`只登记了csproj与手册，漏了`run-book-layout`/`run-entrances`/`run-lifecycle`三个harness的编译清单，三者编译失败被当场报出，补齐后全绿；该要求已写入工程手册。未改版本号数值（仍07.42）、未操作存档或终止游戏。
+
 ## 2026-10-03：工程一致性门禁（csproj ↔ 源码 ↔ 代码导航表）
 
 手册规定“新增源码必须登记csproj并在代码导航表登记职责”，但此前没有任何机制守着它——三者可以静默漂移：漏登记csproj会被漏编译（不报错），漏登记手册会让文档与实际结构脱节。本轮把该规则变成`run-all.ps1`的第二项自检：解析csproj的`Compile`项、递归扫描`ModCode/ModMain`下的`.cs`（排除obj/bin）、正则提取手册“代码导航”表首列，三向比对并逐条报出差异；任一差异计入`一致性问题`并返回`RESULT: FAIL`。

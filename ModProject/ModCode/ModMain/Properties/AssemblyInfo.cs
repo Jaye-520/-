@@ -1,15 +1,15 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 // 有关程序集的一般信息由以下
 // 控制。更改这些特性值可修改
 // 与程序集关联的信息。
-[assembly: AssemblyTitle("ModMain")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("MOD_YtxSQ1")]
+[assembly: AssemblyDescription("八荒秘录 · 鬼谷八荒综合修改器（游戏内版本号见ModVersion.cs）")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("ModMain")]
+[assembly: AssemblyProduct("MOD_YtxSQ1")]
 [assembly: AssemblyCopyright("Copyright ©  2022")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

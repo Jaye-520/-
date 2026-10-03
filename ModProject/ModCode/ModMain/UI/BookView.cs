@@ -209,7 +209,7 @@ namespace MOD_YtxSQ1.UI
             var footer = Box("页脚", book, 24, height - 36, width - 48, 28);
             // 两侧对称留白，署名始终相对整个窗口居中，不随页面或读取状态变化。
             Label(footer, "Jaye@2026-爱你一生一世", 214, 1, width - 48 - 428, 24, 16, Ink, TextAnchor.MiddleCenter);
-            Label(footer, "07.42 / Esc 合上", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
+            Label(footer, ModVersion.Current + " / Esc 合上", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
             RecordOpeningStage("窗口骨架/搜索模板");
             Select(0);
             if (!string.IsNullOrEmpty(initialUnitId))
@@ -221,7 +221,7 @@ namespace MOD_YtxSQ1.UI
                 RenderRosterRows();
             }
             RecordOpeningStage("完成绑定");
-            Debug.Log("[八荒秘录] 07.42界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height + openingStages);
+            Debug.Log("[八荒秘录] " + ModVersion.Current + "界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height + openingStages);
             openingTimer = null;
             openingStages = null;
             appearanceStarted = Time.unscaledTime;

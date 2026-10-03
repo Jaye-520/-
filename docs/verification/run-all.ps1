@@ -48,6 +48,20 @@ try {
         if (-not ($onDisk | Where-Object { $_ -like "*$name" })) {
             $consistencyFailures++; Write-Host ("  FAIL  手册登记但源码不存在：{0}" -f $name) } }
     if ($consistencyFailures -eq 0) { Write-Host ("  OK    {0} 个源码文件在 csproj 与手册中一致" -f $onDisk.Count) }
+    # 版本号唯一来源：当前版本字面量只允许出现在 ModVersion.cs，避免页脚与日志版本漂移。
+    $versionText = Get-Content -LiteralPath (Join-Path $codeDirectory 'ModVersion.cs') -Raw
+    $versionMatch = [regex]::Match($versionText, 'Current\s*=\s*"([^"]+)"')
+    if (-not $versionMatch.Success) { $consistencyFailures++; Write-Host '  FAIL  未能从 ModVersion.cs 解析出版本号' }
+    else {
+        $version = $versionMatch.Groups[1].Value
+        $stray = @(Get-ChildItem -LiteralPath $codeDirectory -Recurse -Filter '*.cs' -File |
+            Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' -and $_.Name -ne 'ModVersion.cs' } |
+            Select-String -Pattern ('"' + $version) -SimpleMatch)
+        foreach ($hit in $stray) {
+            $consistencyFailures++
+            Write-Host ("  FAIL  版本号 {0} 应只在 ModVersion.cs 定义，实际还出现在：{1}:{2}" -f $version, (Split-Path $hit.Path -Leaf), $hit.LineNumber) }
+        if ($stray.Count -eq 0) { Write-Host ("  OK    版本号 {0} 只在 ModVersion.cs 中定义" -f $version) }
+    }
 } catch {
     $consistencyFailures++
     Write-Host ("  FAIL  一致性检查无法执行：{0}" -f $_.Exception.Message)

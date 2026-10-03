@@ -144,7 +144,7 @@ namespace MOD_YtxSQ1.UI
                 listener.onMouseEnter = new UnityEvent(); listener.onMouseExit = new UnityEvent();
                 listener.onMouseEnter.AddListener((UnityAction)(new Action(() => { if (entry.Button.interactable) tip.SetActive(true); })));
                 listener.onMouseExit.AddListener((UnityAction)(new Action(() => tip.SetActive(false))));
-                Debug.Log("[八荒秘录] 07.42已挂载" + (player ? "主界面" : "NPC面板") + "玉简入口。");
+                Debug.Log("[八荒秘录] " + ModVersion.Current + "已挂载" + (player ? "主界面" : "NPC面板") + "玉简入口。");
                 return entry;
             }
             catch { go.SetActive(false); UnityEngine.Object.Destroy(go); throw; }
