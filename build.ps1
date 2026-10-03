@@ -80,6 +80,19 @@ New-Item -ItemType Directory -Path $deployDirectory -Force | Out-Null
 $staleDll = Get-ChildItem -LiteralPath $deployDirectory -Filter '*.dll' | Where-Object Name -NE ($assemblyName + '.dll')
 if ($staleDll) { Write-Warning ('部署目录还有其它 DLL，请确认是否需要：' + ($staleDll.Name -join ', ')) }
 $deployDll = Join-Path $deployDirectory ($assemblyName + '.dll')
+# 部署前把当前调试包里的旧DLL存档到 .tools/backups/before-<新版本>，失败时可快速回退。
+# 版本号来自 ModVersion.cs（唯一来源）；同名备份已存在则保持原样，避免重建同版本时覆盖真正的旧版。
+if (Test-Path -LiteralPath $deployDll) {
+    $versionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $codeDirectory 'ModVersion.cs') -Raw), 'Current\s*=\s*"([^"]+)"')
+    if (!$versionMatch.Success) { throw '未能从 ModVersion.cs 解析版本号，无法命名旧版备份。' }
+    $backupDll = Join-Path $toolsDirectory ('backups\before-' + $versionMatch.Groups[1].Value + '\' + $assemblyName + '.dll')
+    if (Test-Path -LiteralPath $backupDll) { Write-Host "旧版备份已存在，保持原样：$backupDll" }
+    else {
+        New-Item -ItemType Directory -Path (Split-Path $backupDll -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $deployDll -Destination $backupDll -Force
+        Write-Host ("旧版已备份：{0}（SHA256 {1}）" -f $backupDll, (Get-FileHash -LiteralPath $backupDll -Algorithm SHA256).Hash)
+    }
+}
 try { Copy-Item -LiteralPath $releaseDll -Destination $deployDll -Force }
 catch { throw "部署失败（游戏可能正占用该文件，请关闭游戏后重试）：$deployDll`n$($_.Exception.Message)" }
 $deployHash = (Get-FileHash -LiteralPath $deployDll -Algorithm SHA256).Hash
