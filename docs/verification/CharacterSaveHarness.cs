@@ -24,6 +24,48 @@ internal static class CharacterSaveHarness
     { try { Run(); } catch (Exception ex) { Console.WriteLine("FAIL: " + ex.Message); Environment.ExitCode=1; } }
     private static void Run()
     {
+        foreach (var npcSide in new[] { false, true })
+        foreach (var relationLate in new[] { false, true })
+        foreach (var container in new[] { "data", "info", "relation" })
+        {
+            Reset(); var relationNpc = new WorldUnitBase(); relationNpc.data.unitData.unitID = "npc"; g.world.unit.Npcs.Add(relationNpc);
+            var owner = npcSide ? relationNpc : g.world.playerUnit;
+            var originalData = owner.data; var originalInfo = originalData.unitData;
+            var playerRelation = g.world.playerUnit.data.unitData.relationData; var npcRelation = relationNpc.data.unitData.relationData;
+            playerRelation.intimToUnit["npc"] = 1.5f; npcRelation.intimToPlayerUnit = 2.5f;
+            int callbacks = 0;
+            Action replace = () => {
+                callbacks++;
+                if (container == "data") { owner.data = new PlayerData(); owner.data.unitData.unitID = npcSide ? "npc" : "player"; }
+                else if (container == "info") { originalData.unitData = new UnitData(); originalData.unitData.unitID = npcSide ? "npc" : "player"; }
+                else originalInfo.relationData = new DataUnit.RelationData();
+            };
+            if (relationLate) npcRelation.AfterSet = replace; else playerRelation.AfterSet = replace;
+            string relationResult;
+            Check(!CharacterActions.Execute("npc", "好感度", "10", out relationResult) && callbacks == 1 && CharacterSave.Pending > 0,
+                "relation replacement stops success and blind rollback: " + container + " NPC=" + npcSide + " relationLate=" + relationLate);
+            Check(playerRelation.intimToUnit["npc"] == 11.5f && npcRelation.intimToPlayerUnit == (relationLate ? 12.5f : 2.5f) && g.data.Calls == 0,
+                "relation replacement stops following write and preserves partial observations: " + container + " NPC=" + npcSide + " relationLate=" + relationLate);
+        }
+        foreach (var isNpc in new[] { false, true })
+        foreach (var replacement in new[] { "data", "dynamic", "hp", "mp", "mood", "health", "energy", "sp", "hpMax", "mpMax", "moodMax", "healthMax", "energyMax", "spMax" })
+        {
+            Reset(); var target = isNpc ? new WorldUnitBase() : g.world.playerUnit;
+            if (isNpc) { target.data.unitData.unitID = "npc"; g.world.unit.Npcs.Add(target); }
+            var owned = target.data; var dyn = owned.dynUnitData; var first = dyn.hp; var second = dyn.mp;
+            var fresh = new DynInt { Stored = 777 }; int writes = 0;
+            first.AfterWrite = () => {
+                writes++;
+                if (replacement == "data") target.data = new PlayerData();
+                else if (replacement == "dynamic") owned.dynUnitData = new DynamicData();
+                else typeof(DynamicData).GetField(replacement).SetValue(dyn, fresh);
+            };
+            string statusResult;
+            Check(!CharacterActions.Execute(target.data.unitData.unitID, "满状态", null, out statusResult) && writes == 1 && second.Stored == 12 && CharacterSave.Pending > 0,
+                "status replacement stops later writes and rollback, preserving pending: " + replacement + " NPC=" + isNpc);
+            Check(first.Stored == 456 && fresh.Stored == 777 && g.data.Calls == 0,
+                "status replacement preserves observed and replacement fields without saving: " + replacement + " NPC=" + isNpc);
+        }
         Reset();var duplicateHobby=new WorldUnitHobbyBase();g.world.playerUnit.allHobby.Add(duplicateHobby);g.world.playerUnit.allHobby.Add(duplicateHobby);
         Stage(0,10,"204",1);Commit();
         Check(g.data.Calls==0 && CharacterSave.Pending==0 && session.Count==1 && duplicateHobby.DestroyCalls==0,

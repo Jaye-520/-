@@ -60,6 +60,27 @@ namespace MOD_YtxSQ1.Services
             var d = unit.data.dynUnitData;
             var fields = new[] { d.hp, d.mp, d.mood, d.health, d.energy, d.sp };
             var maxima = new[] { d.hpMax, d.mpMax, d.moodMax, d.healthMax, d.energyMax, d.spMax };
+            var dataPointer = unit.data.Pointer; var dynamicPointer = d.Pointer;
+            var fieldPointers = new IntPtr[fields.Length]; var maximumPointers = new IntPtr[maxima.Length];
+            for (int i = 0; i < fields.Length; i++)
+            {
+                if (fields[i] == null || maxima[i] == null) throw new InvalidOperationException("状态字段尚未就绪");
+                fieldPointers[i] = fields[i].Pointer; maximumPointers[i] = maxima[i].Pointer;
+            }
+            var ensureTarget = ensure;
+            ensure = () =>
+            {
+                ensureTarget(); var currentData = unit.data;
+                if (currentData == null || currentData.Pointer != dataPointer || currentData.dynUnitData == null || currentData.dynUnitData.Pointer != dynamicPointer)
+                    throw new InvalidOperationException("人物状态数据已被替换，停止恢复");
+                var current = currentData.dynUnitData;
+                var resources = new[] { current.hp, current.mp, current.mood, current.health, current.energy, current.sp };
+                var limits = new[] { current.hpMax, current.mpMax, current.moodMax, current.healthMax, current.energyMax, current.spMax };
+                for (int i = 0; i < resources.Length; i++)
+                    if (resources[i] == null || resources[i].Pointer != fieldPointers[i] || limits[i] == null || limits[i].Pointer != maximumPointers[i])
+                        throw new InvalidOperationException("状态或上限字段已被替换，停止恢复");
+            };
+            ensure();
             var old = new int[fields.Length]; var targets = new int[fields.Length];
             for (int i = 0; i < fields.Length; i++)
             {
@@ -169,12 +190,27 @@ namespace MOD_YtxSQ1.Services
         }
 
         // 双向好感度：SetIntim维护原生关系缓存；叠加原始浮点值，避免GetIntim整数化损失。失败逆序回退并核对。
+        private static Action GuardRelation(WorldUnitBase unit, string context)
+        {
+            var ensureTarget = Guard(unit, context);
+            var data = unit.data; var info = data.unitData; var relation = info.relationData;
+            if (relation == null) throw new InvalidOperationException("人物关系尚未就绪");
+            var dataPointer = data.Pointer; var infoPointer = info.Pointer; var relationPointer = relation.Pointer;
+            Action ensure = () =>
+            {
+                ensureTarget(); var current = unit.data;
+                if (current == null || current.Pointer != dataPointer || current.unitData == null || current.unitData.Pointer != infoPointer ||
+                    current.unitData.relationData == null || current.unitData.relationData.Pointer != relationPointer)
+                    throw new InvalidOperationException("人物关系数据已被替换，停止修改");
+            };
+            ensure(); return ensure;
+        }
         private static string AddIntimacy(WorldUnitBase player, WorldUnitBase npc, string id, string amount)
         {
             int add;
             if (!int.TryParse(amount, out add) || add <= 0 || add > 100000) throw new InvalidOperationException("请输入1–100000的好感度增量");
             var context = CharacterReader.ContextKey();
-            var ensurePlayer = Guard(player, context); var ensureNpc = Guard(npc, context);
+            var ensurePlayer = GuardRelation(player, context); var ensureNpc = GuardRelation(npc, context);
             Action ensure = () => { ensurePlayer(); ensureNpc(); };
             var playerId = player.data.unitData.unitID;
             var a = player.data.unitData.relationData; var b = npc.data.unitData.relationData;

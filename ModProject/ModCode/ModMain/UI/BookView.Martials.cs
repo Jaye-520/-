@@ -158,6 +158,11 @@ namespace MOD_YtxSQ1.UI
         private void RenderMartialDetail()
         {
             if (martialDetailPanel == null) return;
+            // 空检索或切到背包不会进入BeginMartialDraft，须在详情入口释放旧草稿。
+            if (martialSelection == null || martialSelection.InBag || martialSelection.ReadError != null ||
+                martialDraftEntry != null && (!SameMartialSelection(martialDraftEntry, martialSelection) ||
+                    martialDraftEntry.Signature != martialSelection.Signature || martialDraftEntry.Exp != martialSelection.Exp))
+                ResetMartialDraft();
             DestroyMartialChildren(martialDetailPanel, 7);
             var width = martialDetailPanel.sizeDelta.x; var height = martialDetailPanel.sizeDelta.y;
             if (martialCompact) MakeButton(martialDetailPanel, "返回功法列表", 12, 10, 100, 30, "‹ 返回列表", () =>

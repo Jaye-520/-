@@ -630,6 +630,22 @@ internal static class BookLayoutHarness
         Check(g.data.Calls==calls+1 && CharacterSave.Busy,"save modification initiates one existing game save callback at "+size);
         g.data.Complete(true);CharacterSave.Poll();
         entry=CharacterMartials.Read(target).Single();var archive=CharacterMartials.AllPrefixes(target,entry,0,0);
+        var draftFlags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        foreach(var transition in new[]{"books","emptySearch"})
+        {
+            ClickNamed(book,"当前词条0");ClickNamed(book,"候选词条6");
+            Check((bool)typeof(BookView).GetField("martialDraftChanged",draftFlags).GetValue(view),"draft exists before selection transition "+transition+" at "+size);
+            var saveCalls=g.data.Calls;var savedSignature=props.soleIDHashData;var savedPending=CharacterSave.Pending;
+            if(transition=="books")ClickNamed(book,"切换功法阶段");
+            else Walk(book).Select(t=>t.GetComponent<UnityEngine.UI.InputField>()).First(x=>x!=null && x.gameObject.name=="BHML_功法检索").text="no-such-martial";
+            Check(!(bool)typeof(BookView).GetField("martialDraftChanged",draftFlags).GetValue(view) && typeof(BookView).GetField("martialDraft",draftFlags).GetValue(view)==null,
+                "selection transition clears old martial draft "+transition+" at "+size);
+            ClickNamed(book,"卷目6");
+            Check(g.data.Calls==saveCalls && props.soleIDHashData==savedSignature && CharacterSave.Pending==savedPending,
+                "toolbar save cannot apply invisible old martial draft "+transition+" at "+size);
+            if(transition=="books")ClickNamed(book,"切换功法阶段");
+            else Walk(book).Select(t=>t.GetComponent<UnityEngine.UI.InputField>()).First(x=>x!=null && x.gameObject.name=="BHML_功法检索").text="";
+        }
         Check(archive.Count==1657 && archive.First().Unavailable==null && archive.Last().Unavailable!=null,"full catalog preserves 1657 configs with editable records first at "+size);
         ClickNamed(book,"当前词条0");ClickNamed(book,"词条库范围");
         Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_候选词条") && t.gameObject.activeInHierarchy)<=40,"complete catalog renders forty rows per page at "+size);
