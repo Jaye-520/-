@@ -251,8 +251,9 @@ namespace MOD_YtxSQ1.UI
                         ? UIMartialInfoTool.GetDescRichText(UIMartialInfoTool.GetDesc(martial), new BattleSkillValueData(martial), 2)
                         : UIPropInfo.GetDesc(unit, props);
                     var info = props.propsInfoBase;
+                    var saleText = info == null ? "—" : info.sale < 0 ? "不可出售" : info.sale + "灵石";
                     var detail = (info?.typeSuffix ?? "") + "\n" + (string.IsNullOrEmpty(description) ? "暂无介绍" : description)
-                        + "\n\n出售价格：" + (info == null ? "—" : info.sale.ToString()) + "灵石\n当前持有：" + props.propsCount;
+                        + "\n\n出售价格：" + saleText + "\n当前持有：" + props.propsCount;
                     ShowFateTip(slot, new CharacterFate(item.Id, 0, item.Name, detail), content, false, true);
                 }
                 catch (Exception ex)
