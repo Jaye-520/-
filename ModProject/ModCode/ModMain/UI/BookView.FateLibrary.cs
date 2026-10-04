@@ -94,7 +94,7 @@ namespace MOD_YtxSQ1.UI
             // 非序列化caretRectTrans可能仍指向源框，仅清它无法移除克隆里的孤立光标。
             foreach (var child in field.GetComponentsInChildren<RectTransform>(true))
                 if (child != field.transform && child.gameObject.name.EndsWith(" Input Caret", StringComparison.Ordinal))
-                { child.gameObject.SetActive(false); UnityEngine.Object.Destroy(child.gameObject); }
+                { ReleaseViewObject(child.gameObject, "克隆光标"); }
             field.caretRectTrans = null; field.m_CachedInputRenderer = null; field.m_InputTextCache = null;
             field.m_Mesh = null; field.m_CursorVerts = null;
             var text = field.textComponent;
@@ -223,7 +223,7 @@ namespace MOD_YtxSQ1.UI
             var scroll = fateColumns[3]; var page = scroll.content;
             if (candidateTiles.Count == 0)
             {
-                for (int i = page.childCount - 1; i >= 0; i--) { var child = page.GetChild(i).gameObject; child.SetActive(false); UnityEngine.Object.Destroy(child); }
+                for (int i = page.childCount - 1; i >= 0; i--) { var child = page.GetChild(i).gameObject; ReleaseViewObject(child, "气运候选内容"); }
                 var count = (int)Math.Ceiling(scroll.viewport.sizeDelta.y / FateTilePitch) + 1;
                 for (int i = 0; i < count; i++) candidateTiles.Add(MakeFateTile(page, page.sizeDelta.x, AddCandidateFate, false));
                 scroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { HideFateTips(); BindFateTiles(candidateTiles, candidates, scroll, 1, false); })));
@@ -311,7 +311,7 @@ namespace MOD_YtxSQ1.UI
             if (librarySearch != null) WindowInputScope.Unregister(librarySearch);
             librarySearch = null; libraryScroll = null; libraryCount = null; libraryTiles.Clear(); libraryEntries.Clear();
             var old = fateLibrary; fateLibrary = null;
-            if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
+            ReleaseViewObject(old, "气运浮层");
         }
         private void ClearFateLibraryView()
         {

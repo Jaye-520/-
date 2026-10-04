@@ -5,10 +5,10 @@ using MOD_YtxSQ1.UI;
 using UnityEngine;
 using UnityEngine.UI;
 namespace UnityEngine {
-    public class Object { public static void Destroy(Object o) { var go=o as GameObject; if(go!=null) { go.activeInHierarchy=false; go.transform.parent.Children.Remove(go.transform); } } }
+    public class Object { public static void Destroy(Object o) { var go=o as GameObject; if(go!=null) { foreach(var child in go.transform.Children.ToArray())Destroy(child.gameObject);go.activeInHierarchy=false;if(go.transform.parent!=null)go.transform.parent.Children.Remove(go.transform);GameObject.Live.Remove(go); } var tex=o as Texture2D;if(tex!=null)Texture2D.Live.Remove(tex); } }
     public class Component:Object { public GameObject gameObject; public Transform transform { get { return gameObject.transform; } } public T GetComponent<T>() where T:Component { return gameObject.GetComponent<T>(); } }
-    public class GameObject:Object { public string name;public int layer;public bool activeInHierarchy=true;public RectTransform transform;private Dictionary<Type,Component> components=new Dictionary<Type,Component>();public GameObject(string n) { name=n;transform=new RectTransform {gameObject=this};components[typeof(RectTransform)]=transform; } public T AddComponent<T>() where T:Component,new() { if(components.ContainsKey(typeof(T)))return (T)components[typeof(T)];var c=new T {gameObject=this};components[typeof(T)]=c;return c; } public T GetComponent<T>() where T:Component { Component c;return components.TryGetValue(typeof(T),out c)?(T)c:null; } public void SetActive(bool value) {activeInHierarchy=value;} }
-    public class Transform:Component {public Transform parent; public List<Transform> Children=new List<Transform>();public Vector3 localPosition;public Vector3 lossyScale=new Vector3(1,1,1);public void SetParent(Transform p,bool world) {parent=p;p.Children.Add(this);} public Vector3 InverseTransformPoint(Vector3 v) {return v;} public Vector3 TransformPoint(Vector3 v) {return v + localPosition;} }
+    public class GameObject:Object { public static bool Fault;public static string FaultLayerName,FaultParentName;public static HashSet<GameObject> Live=new HashSet<GameObject>();public string name;private int nativeLayer;public int layer {get{return nativeLayer;}set{if(FaultLayerName==name)throw new Exception("layer-failure");nativeLayer=value;}}public bool activeInHierarchy=true;public RectTransform transform;private Dictionary<Type,Component> components=new Dictionary<Type,Component>();public GameObject(string n) { name=n;Live.Add(this);transform=new RectTransform {gameObject=this};components[typeof(RectTransform)]=transform; } public T AddComponent<T>() where T:Component,new() { if(components.ContainsKey(typeof(T)))return (T)components[typeof(T)];var c=new T {gameObject=this};components[typeof(T)]=c;return c; } public T GetComponent<T>() where T:Component { Component c;return components.TryGetValue(typeof(T),out c)?(T)c:null; } public void SetActive(bool value) {if(Fault && !value && name=="BHML_MapEntrance")throw new Exception("hide-failure");activeInHierarchy=value;} }
+    public class Transform:Component {public Transform parent; public List<Transform> Children=new List<Transform>();public Vector3 localPosition;public Vector3 lossyScale=new Vector3(1,1,1);public void SetParent(Transform p,bool world) {if(GameObject.FaultParentName==gameObject.name)throw new Exception("parent-failure");parent=p;p.Children.Add(this);} public Vector3 InverseTransformPoint(Vector3 v) {return v;} public Vector3 TransformPoint(Vector3 v) {return v + localPosition;} }
     public class RectTransform:Transform {public Vector2 anchorMin,anchorMax,pivot,sizeDelta,anchoredPosition,offsetMin,offsetMax;public Rect rect {get {return new Rect(-sizeDelta.x/2,-sizeDelta.y/2,sizeDelta.x,sizeDelta.y);} }public void GetWorldCorners(Vector3[] c) {throw new Exception("Do not model IL2CPP output-array writeback as an ordinary C# array.");} }
     public struct Vector2 {public float x,y;public Vector2(float x,float y){this.x=x;this.y=y;}public static Vector2 zero=new Vector2(0,0),one=new Vector2(1,1);}
     public struct Vector3 {public float x,y,z;public Vector3(float x,float y,float z){this.x=x;this.y=y;this.z=z;}public static Vector3 operator +(Vector3 a,Vector3 b){return new Vector3(a.x+b.x,a.y+b.y,a.z+b.z);}public static Vector3 operator *(Vector3 a,float b){return new Vector3(a.x*b,a.y*b,a.z*b);} }
@@ -18,8 +18,8 @@ namespace UnityEngine {
     public static class Time {public static float unscaledTime;}
     public static class Debug {public static void Log(string s){}public static void LogWarning(string s){}public static void LogError(string s){throw new Exception(s);} }
     public enum TextureFormat {RGBA32}public enum FilterMode {Bilinear,Trilinear}public enum TextureWrapMode {Clamp}public enum HideFlags {HideAndDontSave}public enum TextAnchor {MiddleCenter}
-    public class Texture2D:Object {public Texture2D(int a,int b,TextureFormat c,bool d){}public FilterMode filterMode;public TextureWrapMode wrapMode;public HideFlags hideFlags;}
-    public static class ImageConversion {public static bool LoadImage(Texture2D t,byte[] b,bool n){return b.Length>0;} }
+    public class Texture2D:Object {public static bool FaultFilter;public static HashSet<Texture2D> Live=new HashSet<Texture2D>();public Texture2D(int a,int b,TextureFormat c,bool d){Live.Add(this);}private FilterMode nativeFilter;public FilterMode filterMode {get{return nativeFilter;}set{if(FaultFilter)throw new Exception("filter-failure");nativeFilter=value;}}public TextureWrapMode wrapMode;public HideFlags hideFlags;}
+    public static class ImageConversion {public static bool FailDecode;public static bool LoadImage(Texture2D t,byte[] b,bool n){return !FailDecode && b.Length>0;} }
         public class Font:Object {}
     public class Camera:Object {}public class Canvas {public Camera worldCamera;}
     public static class Application {public static string persistentDataPath=System.IO.Path.Combine(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location),"entry-test-data");}
@@ -36,7 +36,7 @@ namespace UnityEngine.Events {public class UnityAction {internal Action Call;pub
 namespace UnityEngine.UI {
     public class Graphic:Component {public bool raycastTarget;public Color color;public RectTransform rectTransform {get{return (RectTransform)transform;}}}
     public class RawImage:Graphic {public Texture2D texture;}public class Image:Graphic {}
-    public class Text:Graphic {public Font font=new Font();public string text;public int fontSize;public TextAnchor alignment;}
+    public class Text:Graphic {private Font nativeFont=new Font();public Font font {get{return nativeFont;}set{if(GameObject.Fault && gameObject.name=="文字")throw new Exception("font-failure");nativeFont=value;}}public string text;public int fontSize;public TextAnchor alignment;}
     public struct Navigation {public enum Mode {None}public Mode mode;}
     public struct ColorBlock {public Color normalColor,highlightedColor,pressedColor,disabledColor;public float fadeDuration;}
     public class Button:Component {public Graphic targetGraphic;public ColorBlock colors;public Navigation navigation;public bool interactable=true;public UnityEngine.Events.UnityEvent onClick=new UnityEngine.Events.UnityEvent();}
@@ -98,6 +98,41 @@ internal static class EntrancesHarness {
         Check(Math.Abs(npcEntry.localPosition.x-(-960f+0.2542969f*1920f))<.01f && Math.Abs(npcEntry.localPosition.y-(-540f+0.746458352f*1080f))<.01f,"NPC entrance keeps the frozen position across polls");
         entrances.Dispose();
         entrances=new WorkshopEntrances(id=>{});Tick(entrances);Check(Entry(g.ui.Map).localPosition.x==180 && Math.Abs(Entry(g.ui.Npc).localPosition.y-(-540f+0.746458352f*1080f))<.01f,"recreated entrances reuse positions without any file");entrances.Dispose();
+
+        entrances=new WorkshopEntrances(id=>{});
+        GameObject.Fault=true;
+        string failure=null;
+        try { typeof(WorkshopEntrances).GetMethod("Create",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).Invoke(entrances,new object[]{g.ui.Map,true,"world-two"}); }
+        catch(System.Reflection.TargetInvocationException ex) {failure=ex.InnerException.Message;}
+        finally {GameObject.Fault=false;}
+        Check(failure=="font-failure", "failed entrance cleanup preserves the initialization error");
+        Check(g.ui.Map.transform.Children.Count==0, "failed entrance is destroyed even when hiding throws");
+        Tick(entrances);
+        Check(g.ui.Map.transform.Children.Count==1, "retry after initialization failure creates one entrance");
+        entrances.Dispose();
+
+
+        // Record all native-like allocations, including children not yet parented.
+        foreach(var stage in new[]{"root-layer","tip-layer","label-layer","tip-parent","label-parent","texture-filter","texture-decode"})
+        {
+            int liveObjects=GameObject.Live.Count,liveTextures=Texture2D.Live.Count;
+            entrances=new WorkshopEntrances(id=>{});
+            GameObject.FaultLayerName=stage=="root-layer"?"BHML_MapEntrance":stage=="tip-layer"?"BHML_EntranceTip":stage=="label-layer"?"文字":null;
+            GameObject.FaultParentName=stage=="tip-parent"?"BHML_EntranceTip":stage=="label-parent"?"文字":null;
+            Texture2D.FaultFilter=stage=="texture-filter";ImageConversion.FailDecode=stage=="texture-decode";
+            failure=null;
+            try { typeof(WorkshopEntrances).GetMethod("Create",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).Invoke(entrances,new object[]{g.ui.Map,true,"world-two"}); }
+            catch(System.Reflection.TargetInvocationException ex) {failure=ex.InnerException.Message;}
+            finally {GameObject.FaultLayerName=GameObject.FaultParentName=null;Texture2D.FaultFilter=false;ImageConversion.FailDecode=false;}
+            Check(failure==(stage.EndsWith("layer")?"layer-failure":stage.EndsWith("parent")?"parent-failure":stage=="texture-filter"?"filter-failure":"玉简图片解码失败。"), stage+" keeps initialization failure");
+            entrances.Dispose();
+            Check(GameObject.Live.Count==liveObjects && Texture2D.Live.Count==liveTextures,stage+" releases all allocated objects and textures");
+            entrances=new WorkshopEntrances(id=>{});Tick(entrances);Tick(entrances);
+            bool oneEach=g.ui.Map.transform.Children.Count==1 && g.ui.Npc.transform.Children.Count==1;
+            entrances.Dispose();
+            Check(oneEach && GameObject.Live.Count==liveObjects && Texture2D.Live.Count==liveTextures,stage+" retries once per host and disposes cleanly");
+        }
+
         Console.WriteLine("TOTAL: "+count);
     }
 }

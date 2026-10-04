@@ -157,8 +157,8 @@ namespace MOD_YtxSQ1.Services
         internal static string ContextKey()
         {
             var player = Resolve(null);
-            return player == null || player.data == null || player.data.unitData == null ? null :
-                player.Pointer.ToInt64().ToString(CultureInfo.InvariantCulture) + ":" + player.data.unitData.unitID;
+            return player == null || player.data == null || player.data.unitData == null || g.data == null ? null :
+                player.Pointer.ToInt64().ToString(CultureInfo.InvariantCulture) + ":" + player.data.unitData.unitID + ":" + g.data.Pointer.ToInt64().ToString(CultureInfo.InvariantCulture);
         }
 
         private static string Percent(DynInt value)

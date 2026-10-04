@@ -13,8 +13,8 @@ namespace MOD_YtxSQ1.UI
         private InputField martialSearch, martialLibrarySearch;
         private RectTransform martialListPanel, martialDetailPanel;
         private ScrollRect martialListScroll, martialLibraryScroll;
-        private Text martialCount, martialLibraryStatus, martialLibraryHint;
-        private Button martialEquippedButton;
+        private Text martialCount, martialLibraryStatus, martialLibraryHint, martialListTitle;
+        private Button martialEquippedButton, martialStageButton;
         private readonly List<MartialRow> martialRows = new List<MartialRow>(), martialLibraryRows = new List<MartialRow>();
         private List<MartialEntry> martialEntries = new List<MartialEntry>(), martialCatalog = new List<MartialEntry>();
         private readonly List<MartialEntry> martialFiltered = new List<MartialEntry>(), martialLibraryResults = new List<MartialEntry>();
@@ -22,7 +22,7 @@ namespace MOD_YtxSQ1.UI
         private readonly List<Button> martialCategoryButtons = new List<Button>();
         private string martialQuery = "", martialOwner, martialFingerprint, martialLibraryOwner, martialLibraryContext;
         private MartialEntry martialSelection;
-        private bool martialCompact, martialEquippedOnly;
+        private bool martialCompact, martialEquippedOnly, martialBooksOnly;
         private int martialCategory, martialLibraryGrade;
         private GameObject martialOverlay;
         private const float MartialPitch = 72;
@@ -33,7 +33,15 @@ namespace MOD_YtxSQ1.UI
             var height = contentHeight - 76;
             var width = martialCompact ? contentWidth : Mathf.Min(352, Mathf.Max(280, contentWidth * .35f));
             martialListPanel = Card(content, "功法选取", 0, 76, width, height); Border(martialListPanel, width, height);
-            Label(martialListPanel, "已学功法", 12, 10, width - 24, 28, 22, Ink);
+            martialListTitle = Label(martialListPanel, martialBooksOnly ? "背包秘籍" : "已学功法", 12, 10, width - 118, 28, 22, Ink);
+            martialStageButton = MakeButton(martialListPanel, "切换功法阶段", width - 106, 10, 94, 28, martialBooksOnly ? "已学功法" : "背包秘籍", () =>
+            {
+                CloseMartialOverlay(); martialBooksOnly = !martialBooksOnly; martialSelection = null;
+                martialListTitle.text = martialBooksOnly ? "背包秘籍" : "已学功法";
+                martialStageButton.GetComponentInChildren<Text>().text = martialBooksOnly ? "已学功法" : "背包秘籍";
+                martialEquippedButton.interactable = !martialBooksOnly; RefreshMartials(true);
+            });
+            martialStageButton.GetComponentInChildren<Text>().fontSize = 14;
             martialSearch = SearchWithLibrary(martialListPanel, "功法检索", "秘籍库", 10, 48, width - 20, 32,
                 82, "名称 / 招式 / ID", value => { martialQuery = value.Trim(); FilterMartials(); }, OpenMartialLibrary);
             martialSearch.SetTextWithoutNotify(martialQuery);
@@ -42,6 +50,7 @@ namespace MOD_YtxSQ1.UI
                 martialEquippedOnly ? "显示全部功法" : "显示装备功法", () =>
                 { martialEquippedOnly = !martialEquippedOnly; martialEquippedButton.GetComponentInChildren<Text>().text = martialEquippedOnly ? "显示全部功法" : "显示装备功法"; FilterMartials(); });
             martialEquippedButton.GetComponentInChildren<Text>().fontSize = 16;
+            martialEquippedButton.interactable = !martialBooksOnly;
             MakeButton(martialListPanel, "功法搭配", half + 18, 92, half, 32, "功法搭配", OpenMartialBuilds);
             martialCount = Label(martialListPanel, "正在读取功法…", 12, 134, width - 24, 22, 14, Muted);
             martialListScroll = ItemScroll(martialListPanel, "功法列表", 10, 164, width - 20, Mathf.Max(70, height - 180));
@@ -56,7 +65,7 @@ namespace MOD_YtxSQ1.UI
             if (selectedIndex != 2 || martialListScroll == null) return;
             try
             {
-                var entries = CharacterMartials.Read(selectedUnitId); var signature = CharacterMartials.Fingerprint(entries);
+                var entries = martialBooksOnly ? CharacterMartials.ReadBooks(selectedUnitId) : CharacterMartials.Read(selectedUnitId); var signature = CharacterMartials.Fingerprint(entries);
                 if (!force && martialOwner == selectedUnitId && martialFingerprint == signature) return;
                 if (martialOwner != selectedUnitId) { CloseMartialOverlay(); martialSelection = null; }
                 martialOwner = selectedUnitId; martialFingerprint = signature; martialEntries = entries;
@@ -67,15 +76,22 @@ namespace MOD_YtxSQ1.UI
         }
         private static bool MatchesMartial(MartialEntry entry, string query)
         { return query.Length == 0 || entry.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 || entry.Id.ToString().IndexOf(query, StringComparison.Ordinal) >= 0; }
+        private static bool SameMartialSelection(MartialEntry previous, MartialEntry current)
+        {
+            if (previous == null || current == null || previous.InBag != current.InBag) return false;
+            if (ReferenceEquals(previous, current)) return true;
+            if (!string.IsNullOrEmpty(previous.SoleId) && !string.IsNullOrEmpty(current.SoleId)) return previous.SoleId == current.SoleId;
+            return previous.ReadPointer != IntPtr.Zero && previous.ReadPointer == current.ReadPointer && previous.Type == current.Type;
+        }
         private void FilterMartials()
         {
             if (martialListScroll == null) return;
-            var id = martialSelection == null ? null : martialSelection.SoleId;
+            var previous = martialSelection;
             martialFiltered.Clear();
-            foreach (var entry in martialEntries) if ((!martialEquippedOnly || entry.Equipped) && MatchesMartial(entry, martialQuery)) martialFiltered.Add(entry);
-            martialSelection = martialFiltered.Find(entry => entry.SoleId == id);
+            foreach (var entry in martialEntries) if ((martialBooksOnly || !martialEquippedOnly || entry.Equipped) && MatchesMartial(entry, martialQuery)) martialFiltered.Add(entry);
+            martialSelection = martialFiltered.Find(entry => SameMartialSelection(previous, entry));
             if (martialSelection == null && martialFiltered.Count > 0) martialSelection = martialFiltered[0];
-            martialCount.text = (martialEquippedOnly ? "已装备" : "已学") + " · " + martialFiltered.Count + " 本";
+            martialCount.text = (martialBooksOnly ? "背包秘籍" : martialEquippedOnly ? "已装备" : "已学") + " · " + martialFiltered.Count + " 本";
             ResizeMartialList(martialListScroll, martialFiltered.Count, 1); RenderMartialRows(false); RenderMartialDetail();
             if (martialCompact) { martialListPanel.gameObject.SetActive(true); martialDetailPanel.gameObject.SetActive(false); }
         }
@@ -127,13 +143,13 @@ namespace MOD_YtxSQ1.UI
                 row.Name.text = (library && picked ? "✓ " : "") + entry.Name;
                 row.Mark.color = library ? CharacterMartials.CanAcquire(entry, martialLibraryGrade) ? MartialQualityColor(6) : Muted : MartialQualityColor(entry.Level);
                 row.Meta.text = library ? LibraryMartialMeta(entry)
-                    : CharacterMartials.Realm(entry.Grade) + " · " + CharacterMartials.Categories[entry.Category] + (entry.Equipped ? " · 已装备" : "");
+                    : CharacterMartials.Realm(entry.Grade) + " · " + (entry.Type == MartialType.None ? "类别未读取" : CharacterMartials.Categories[entry.Category]) + (entry.InBag ? " · 未学习" : entry.Equipped ? " · 已装备" : "");
                 row.Button.interactable = !library || CharacterMartials.CanAcquire(entry, martialLibraryGrade);
             }
         }
         private string LibraryMartialMeta(MartialEntry entry)
         {
-            var source = CharacterMartials.Categories[entry.Category] + " · " + entry.School + (entry.SuitId != 0 ? "/传承" : "");
+            var source = (entry.Type == MartialType.None ? "类别未读取" : CharacterMartials.Categories[entry.Category]) + " · " + entry.School + (entry.SuitId != 0 ? "/传承" : "");
             if (entry.SuitGradeUnknown) return source + " · 境界待核实 · 不可获取";
             if (martialLibraryGrade < entry.GradeMin) return source + " · 最低" + CharacterMartials.Realm(entry.GradeMin) + " · 未解锁";
             if (martialLibraryGrade > entry.GradeMax) return source + " · 最高" + CharacterMartials.Realm(entry.GradeMax) + " · 不可获取";
@@ -149,30 +165,46 @@ namespace MOD_YtxSQ1.UI
             var top = martialCompact ? 48 : 12;
             if (martialSelection == null)
             {
-                Label(martialDetailPanel, "没有符合条件的已学功法", 16, top + 60, width - 32, 38, 21, Ink, TextAnchor.MiddleCenter);
-                Label(martialDetailPanel, "可从秘籍库获取秘籍；学习后会显示在这里", 16, top + 110, width - 32, 48, 16, Muted, TextAnchor.MiddleCenter); return;
+                Label(martialDetailPanel, martialBooksOnly ? "背包没有符合条件的秘籍" : "没有符合条件的已学功法", 16, top + 60, width - 32, 38, 21, Ink, TextAnchor.MiddleCenter);
+                Label(martialDetailPanel, "秘籍库获取 → 背包秘籍学习 → 修炼与装备 → 参悟词条", 16, top + 110, width - 32, 48, 16, Muted, TextAnchor.MiddleCenter); return;
             }
             var entry = martialSelection;
             Label(martialDetailPanel, entry.Name, 18, top, width - 36, 40, 26, MartialQualityColor(entry.Level));
-            Label(martialDetailPanel, CharacterMartials.Realm(entry.Grade) + " · " + entry.School + " · " + CharacterMartials.Categories[entry.Category], 18, top + 44, width - 36, 24, 16, Muted);
-            Label(martialDetailPanel, (entry.Equipped ? "已装备" : "未装备") + " · 修炼经验 " + entry.Exp + " · #" + entry.Id, 18, top + 74, width - 36, 22, 14, Muted);
+            Label(martialDetailPanel, CharacterMartials.Realm(entry.Grade) + " · " + entry.School + " · " + (entry.Type == MartialType.None ? "类别未读取" : CharacterMartials.Categories[entry.Category]), 18, top + 44, width - 36, 24, 16, Muted);
+            Label(martialDetailPanel, entry.ReadError != null ? "记录读取未完成" + (entry.Id > 0 ? " · #" + entry.Id : "") : entry.InBag ? "背包秘籍 · 未学习 · #" + entry.Id
+                : (entry.Equipped ? "已装备" : "未装备") + " · 修炼 " + entry.Exp + " / " + entry.MaxExp + (entry.Exp >= entry.MaxExp ? " · 圆满" : "") + " · #" + entry.Id, 18, top + 74, width - 36, 22, 14, Muted);
             Fill(martialDetailPanel, "功法详情题线", 16, top + 104, width - 32, 1, Gold);
+            if (entry.ReadError != null)
+            { ResetMartialDraft(); Label(martialDetailPanel, "此记录暂不可修改：" + entry.ReadError + "\n其他功法仍可操作。", 18, top + 116, width - 36, 100, 17, Cinnabar); return; }
             var scroll = ItemScroll(martialDetailPanel, "功法效果", 16, top + 116, width - 32, Mathf.Max(60, height - top - 204)); AddMartialScrollbar(scroll);
             string description;
             try { description = CharacterMartials.Description(selectedUnitId, entry); }
             catch (Exception ex) { description = "介绍读取失败：" + ex.Message; }
             var textWidth = scroll.content.sizeDelta.x - 16;
             var label = Label(scroll.content, description, 0, 0, textWidth, scroll.viewport.sizeDelta.y, 17, Ink, TextAnchor.UpperLeft);
-            var textHeight = Mathf.Max(scroll.viewport.sizeDelta.y, label.preferredHeight + 12);
+            var textHeight = label.preferredHeight + 20;
             label.rectTransform.sizeDelta = new Vector2(textWidth, textHeight); scroll.content.sizeDelta = new Vector2(scroll.content.sizeDelta.x, textHeight);
-            scroll.verticalScrollbar.gameObject.SetActive(textHeight > scroll.viewport.sizeDelta.y);
-            var half = (width - 44) / 2;
-            for (int i = 0; i < 2; i++)
+            if (!entry.InBag)
             {
-                var button = MakeButton(martialDetailPanel, "功法操作" + i, 16 + i * (half + 12), height - 72, half, 32, i == 0 ? "修炼圆满" : "词条修改", () => { });
-                button.interactable = false; button.GetComponentInChildren<Text>().color = Muted;
+                try { textHeight = RenderMartialPrefixes(scroll, entry, textHeight); }
+                catch (Exception ex) { Label(scroll.content, "词条暂不可读取：" + ex.Message, 0, textHeight, textWidth, 70, 15, Cinnabar); textHeight += 80; }
             }
-            Label(martialDetailPanel, "修炼及词条修改下一步接入", 16, height - 28, width - 32, 20, 13, Muted, TextAnchor.MiddleCenter);
+            scroll.content.sizeDelta = new Vector2(scroll.content.sizeDelta.x, Mathf.Max(scroll.viewport.sizeDelta.y, textHeight));
+            scroll.verticalScrollbar.gameObject.SetActive(textHeight > scroll.viewport.sizeDelta.y);
+            if (entry.InBag)
+            {
+                MakeButton(martialDetailPanel, "直接学会秘籍", 16, height - 72, width - 32, 32, "直接学会这本秘籍", () => OpenMartialStudy(entry));
+            }
+            else
+            {
+                var third = (width - 56) / 3;
+                var complete = MakeButton(martialDetailPanel, "修炼圆满", 16, height - 72, third, 32, entry.Exp >= entry.MaxExp ? "已修炼圆满" : "修炼圆满", () => RunMartialEdit(() => CharacterMartials.Complete(contextKey, selectedUnitId, entry)));
+                complete.interactable = entry.Exp < entry.MaxExp;
+                MakeButton(martialDetailPanel, "装备功法", 28 + third, height - 72, third, 32, entry.Equipped ? "卸下功法" : "装备功法", () => OpenMartialEquip(entry));
+                var save = MakeButton(martialDetailPanel, "保存修改", 40 + third * 2, height - 72, third, 32, "保存修改", SaveMartialDraft);
+                save.interactable = martialDraftChanged && !CharacterSave.Busy;
+            }
+            Label(martialDetailPanel, entry.InBag ? "学习消耗这本秘籍；不自动修炼或装备" : "选择词条仅改草稿；保存修改后应用并存档，装备效果由原生动作更新", 16, height - 28, width - 32, 20, 13, Muted, TextAnchor.MiddleCenter);
         }
         private RectTransform MartialOverlay(string title)
         {
@@ -281,7 +313,7 @@ namespace MOD_YtxSQ1.UI
                 var scroll = ItemScroll(panel, "搭配说明", 16, 50, width - 32, height - 134); AddMartialScrollbar(scroll);
                 var text = build.Summary + "\n\n" + build.Requirements + "\n\n功法清单：\n";
                 foreach (var id in build.Ids)
-                { var entry = martialCatalog.Find(item => item.Id == id); text += (entry == null ? "缺少配置 #" + id : CharacterMartials.Categories[entry.Category] + " · " + entry.Name) + "\n"; }
+                { var entry = martialCatalog.Find(item => item.Id == id); text += (entry == null ? "缺少配置 #" + id : (entry.Type == MartialType.None ? "类别未读取" : CharacterMartials.Categories[entry.Category]) + " · " + entry.Name) + "\n"; }
                 text += "\n" + build.Evidence + "\n来源：" + build.Source + "\n\n按当前人物境界获取；不自动学习、装备、改词条或发放传承套装。通用心法保留合法原生词条，按攻略自行调整。";
                 var label = Label(scroll.content, text, 0, 0, scroll.content.sizeDelta.x - 16, scroll.viewport.sizeDelta.y, 16, Ink, TextAnchor.UpperLeft);
                 var textHeight = Mathf.Max(scroll.viewport.sizeDelta.y, label.preferredHeight + 16);
@@ -304,7 +336,7 @@ namespace MOD_YtxSQ1.UI
         {
             if (martialLibrarySearch != null) WindowInputScope.Unregister(martialLibrarySearch);
             martialLibrarySearch = null; martialLibraryScroll = null; martialLibraryStatus = null; martialLibraryHint = null; martialLibraryRows.Clear(); martialLibraryResults.Clear(); martialCategoryButtons.Clear(); martialPicks.Clear();
-            var old = martialOverlay; martialOverlay = null; if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
+            var old = martialOverlay; martialOverlay = null; ReleaseViewObject(old, "功法浮层");
         }
         private void AddMartialScrollbar(ScrollRect scroll)
         {
@@ -315,11 +347,11 @@ namespace MOD_YtxSQ1.UI
         private static Color MartialQualityColor(int level)
         { return level == 6 ? new Color(.59f, .24f, .20f, 1) : level == 5 ? new Color(.59f, .43f, .20f, 1) : level == 4 ? new Color(.43f, .33f, .52f, 1) : level == 3 ? new Color(.30f, .39f, .54f, 1) : level == 2 ? new Color(.34f, .46f, .34f, 1) : Muted; }
         private static void DestroyMartialChildren(RectTransform parent, int keep)
-        { for (int i = parent.childCount - 1; i >= keep; i--) { var child = parent.GetChild(i).gameObject; child.SetActive(false); UnityEngine.Object.Destroy(child); } }
+        { for (int i = parent.childCount - 1; i >= keep; i--) { var child = parent.GetChild(i).gameObject; ReleaseViewObject(child, "功法行内容"); } }
         private void ClearMartialsView()
         {
-            CloseMartialOverlay(); if (martialSearch != null) WindowInputScope.Unregister(martialSearch);
-            martialSearch = null; martialListPanel = null; martialDetailPanel = null; martialListScroll = null; martialCount = null; martialEquippedButton = null;
+            ResetMartialDraft(); CloseMartialOverlay(); if (martialSearch != null) WindowInputScope.Unregister(martialSearch);
+            martialSearch = null; martialListPanel = null; martialDetailPanel = null; martialListScroll = null; martialCount = null; martialEquippedButton = null; martialStageButton = null; martialListTitle = null;
             martialRows.Clear(); martialEntries.Clear(); martialFiltered.Clear(); martialCatalog.Clear(); martialSelection = null; martialOwner = martialFingerprint = null;
         }
     }

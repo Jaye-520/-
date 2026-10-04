@@ -95,7 +95,7 @@ namespace MOD_YtxSQ1.UI
         private void CloseItemMenu()
         {
             var old = itemMenu; itemMenu = null;
-            if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
+            ReleaseViewObject(old, "背包菜单");
         }
     }
 }

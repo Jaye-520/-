@@ -37,7 +37,7 @@ namespace UnityEngine
             if(texture!=null && texture.Pixels!=null) { texture.Pixels=null;Texture2D.LiveProcedural--; }
             var go = obj as GameObject;
             if (go != null) ModelRenderTexture.ReleaseNative(go);
-            if (go != null) { go.activeInHierarchy = false; if (go.transform.parent != null) go.transform.parent.Children.Remove(go.transform); }
+            if (go != null) { go.Destroyed=true;go.activeInHierarchy = false; if (go.transform.parent != null) go.transform.parent.Children.Remove(go.transform); }
         }
     }
     public struct Vector2
@@ -94,8 +94,8 @@ namespace UnityEngine
     }
     public class GameObject : Object
     {
-        public static string ThrowDeactivateName;
-        public string name; public int layer; public bool activeInHierarchy=true; public RectTransform transform;
+        public static string ThrowDeactivateName,ThrowLayerName,ThrowParentName;public static GameObject FaultAllocated;public bool Destroyed;
+        public string name;private int nativeLayer;public int layer {get{return nativeLayer;}set{if(name==ThrowLayerName){FaultAllocated=this;throw new Exception("layer failure");}nativeLayer=value;}} public bool activeInHierarchy=true; public RectTransform transform;
         public bool activeSelf { get { return activeInHierarchy; } }
         public readonly List<Component> Components = new List<Component>();
         public GameObject(string name) { this.name=name; transform=new RectTransform { gameObject=this }; Components.Add(transform); }
@@ -114,7 +114,7 @@ namespace UnityEngine
         public Vector3 position;public Transform parent; public readonly List<Transform> Children=new List<Transform>();
         public bool IsChildOf(Transform ancestor){for(var p=parent;p!=null;p=p.parent)if(p==ancestor)return true;return false;} public int childCount { get { return Children.Count; } }
         public Transform GetChild(int index) { return Children[index]; }
-        public void SetParent(Transform value,bool world) { parent=value; value.Children.Add(this); }
+        public void SetParent(Transform value,bool world) {if(gameObject.name==GameObject.ThrowParentName){GameObject.FaultAllocated=gameObject;throw new Exception("parent failure");} parent=value; value.Children.Add(this); }
         public void SetAsFirstSibling() { parent.Children.Remove(this); parent.Children.Insert(0,this); }
     }
     public class RectTransform : Transform
@@ -262,6 +262,7 @@ public static class UIPropInfo { public static string GetDesc(WorldUnitBase unit
 public class BattleSkillValueData { public DataProps.MartialData Martial; public BattleSkillValueData(DataProps.MartialData martial){Martial=martial;} }
 public static class UIMartialInfoTool
 {
+    public static string GetDescRichText(SkillPrefixData prefix,string desc,BattleSkillValueData data,string a,string b,int type,bool unused){return desc;}
     public static DataProps.MartialData FormattedMartial;
     public static string GetDesc(DataProps.MartialData props){return "功法详情："+(props.ExtraData??(props.martialInfo==null?"":props.martialInfo.name+"\n原生效果介绍的托管替身；实际效果需游戏验证。"));}
     public static string GetDescRichText(string desc,BattleSkillValueData data,int bgType,string valueColorKey="y",string effectColorKey="e")
@@ -476,7 +477,7 @@ internal static class BookLayoutHarness
     }
     private static void Check(bool value,string description) { if(!value) throw new Exception("FAIL: "+description); Console.WriteLine("PASS: "+description); }
     private static string Selected(BookView view) { return (string)typeof(BookView).GetField("selectedUnitId",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view); }
-    private static void ClickNamed(UnityEngine.Transform book,string name) { Walk(book).First(t=>t.gameObject.name=="BHML_"+name).GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); }
+    private static void ClickNamed(UnityEngine.Transform book,string name) { var item=Walk(book).FirstOrDefault(t=>t.gameObject.name=="BHML_"+name);if(item==null)throw new InvalidOperationException("Button missing: "+name);item.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); }
     private static bool Rejected(Action action) { try { action();return false; } catch(InvalidOperationException){return true;} catch(OverflowException){return true;} }
     private static void VerifyMartials(BookView view,UnityEngine.RectTransform book,string[] args,int size)
     {
@@ -495,7 +496,7 @@ internal static class BookLayoutHarness
         data.Learned[sample.Type]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props,exp=120}};data.skillLeft=props.soleID;
         ClickNamed(book,"卷目2");
         Check(Selected(view)==target && CharacterMartials.Read(target).Single().Equipped,"martial page reads actual selected learned and equipped records at "+size);
-        Check(Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_修改词条")).All(t=>!t.GetComponent<UnityEngine.UI.Button>().interactable),"unfinished prefix editor remains disabled at "+size);
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_当前词条0" && t.GetComponent<UnityEngine.UI.Button>().interactable),"learned record exposes inline native prefix editor at "+size);
         SaveMartialPreview(book,args,size,"martials-layout-");
         var search=Walk(book).First(t=>t.gameObject.name=="BHML_功法检索").GetComponentInChildren<UnityEngine.UI.InputField>();
         search.text="不存在的功法";
@@ -571,7 +572,186 @@ internal static class BookLayoutHarness
         Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_功法弹窗遮罩" && t.gameObject.activeSelf),"target selection closes acquisition modal at "+size);
         ClickNamed(book,"卷目0");
         Check(!WindowInputScope.Registered.Contains(search) && CharacterSave.Pending==pending,"leaving martial page releases input without new writes at "+size);
+        VerifyMartialLifecycle(view,book,args,size,target);
+        VerifyMartialInterruptions(size);
         ClickNamed(book,"卷目1");
+    }
+    private static void SetFixturePrefixCount(DataProps.PropsData props,int count)
+    {
+        var old=props.GetValues();var values=new int[7+count*2];for(int i=0;i<6;i++)values[i]=old[i];
+        for(int i=0;i<count;i++){values[6+i]=i==count-1?2:1;values[7+count+i]=20;}values[6+count]=-1;props.SetValues(values);
+    }
+    private static void VerifyMartialLifecycle(BookView view,UnityEngine.RectTransform book,string[] args,int size,string target)
+    {
+        var context=CharacterReader.ContextKey();var unit=CharacterReader.Resolve(target);var data=unit.data.unitData;var bag=data.propData;
+        data.Learned.Clear();data.skillLeft="";data.skillRight="";data.step="";data.ultimate="";data.abilitys=new[]{"","","","","","","",""};
+        var props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade(target)});
+        int count=g.conf.battleSkillLevel.GetPrefixCount(1,props.Martial.grade,g.conf.battleSkillLevel.GetGradeMin(MartialType.SkillLeft,14111));SetFixturePrefixCount(props,count);bag.allProps.Add(props);
+        typeof(BookView).GetField("martialEquippedOnly",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).SetValue(view,false);
+        ClickNamed(book,"卷目2");ClickNamed(book,"切换功法阶段");ClickNamed(book,"直接学会秘籍");
+        SaveMartialPreview(book,args,size,"martials-study-layout-");
+        var bookEntry=CharacterMartials.ReadBooks(target).First(x=>x.SoleId==props.soleID);var pending=CharacterSave.Pending;
+        UnitActionPropMartialStudy.Refuse=true;
+        Check(Rejected(()=>CharacterMartials.Study(context,target,bookEntry)) && bag.IsHasProps(props.soleID) && CharacterSave.Pending==pending,"study refusal leaves book and pending unchanged at "+size);UnitActionPropMartialStudy.Refuse=false;
+        ClickNamed(book,"确认学会秘籍");ClickNamed(book,"切换功法阶段");
+        var entry=CharacterMartials.Read(target).Single();
+        Check(!bag.IsHasProps(props.soleID) && entry.Exp==0 && !entry.Equipped,"study consumes exact book and retains unique untrained record at "+size);
+        Check(Rejected(()=>CharacterMartials.Study(context,target,bookEntry)),"consumed book cannot be studied twice at "+size);
+        ClickNamed(book,"装备功法");
+        Check(data.skillLeft==props.soleID && !Walk(book).Any(t=>t.gameObject.name=="BHML_功法弹窗遮罩" && t.gameObject.activeInHierarchy),"equipment acts directly without full page at "+size);
+        entry=CharacterMartials.Read(target).Single();var max=g.conf.battleSkillMastery.GetExp(g.conf.battleSkillMastery.GetItems(unit,props.Martial).Last(),props.Martial.grade);
+        Check(entry.MaxExp==max,"cultivation ceiling uses martial realm and actual prefix count at "+size);
+        CharacterMartials.Complete(context,target,entry);
+        Check(data.GetActionMartial(props.soleID).exp==max,"native cultivation reaches exact realm-specific ceiling at "+size);
+        Check(Rejected(()=>CharacterMartials.Complete(context,target,entry)),"stale cultivation snapshot cannot replay at "+size);
+        entry=CharacterMartials.Read(target).Single();pending=CharacterSave.Pending;CharacterMartials.Complete(context,target,entry);
+        Check(CharacterSave.Pending==pending,"completed cultivation does not dirty again at "+size);
+        ClickNamed(book,"卷目0");ClickNamed(book,"卷目2");ClickNamed(book,"装备功法");
+        Check(data.skillLeft=="" && data.GetActionMartial(props.soleID).exp==max,"direct unequip retains learning and progress at "+size);
+        ClickNamed(book,"装备功法");entry=CharacterMartials.Read(target).Single();
+        int capacity=CharacterMartials.PrefixCapacity(props);
+        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_当前词条") && t.GetComponent<UnityEngine.UI.Button>()!=null)==capacity,"inline rows follow actual native capacity instead of fixed eleven at "+size);
+        SaveMartialPreview(book,args,size,"martials-inline-prefixes-layout-");
+        var original=props.soleIDHashData;pending=CharacterSave.Pending;
+        ClickNamed(book,"当前词条0");
+        var buttons=Walk(book).Where(t=>t.gameObject.name.StartsWith("BHML_候选词条") && t.GetComponent<UnityEngine.UI.Button>()!=null).Select(t=>t.GetComponent<UnityEngine.UI.Button>()).ToList();
+        bool blocked=false,ordered=true;foreach(var button in buttons){if(!button.interactable)blocked=true;else if(blocked)ordered=false;}
+        Check(ordered && buttons.Any(x=>!x.interactable),"editable candidates precede unavailable choices at "+size);
+        ClickNamed(book,"候选词条3");
+        Check(props.soleIDHashData==original && CharacterSave.Pending==pending && props.Martial.Prefixes[0].prefixValueItem.number==1,"selection changes only draft without native write or pending at "+size);
+        ClickNamed(book,"当前词条"+count);
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_候选词条1" && t.GetComponent<UnityEngine.UI.Button>().interactable),"next empty slot opens a usable candidate picker at "+size);
+        ClickNamed(book,"候选词条1");
+        var draft=(DataProps.PropsData)typeof(BookView).GetField("martialDraft",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view);
+        Check(draft.Martial.Prefixes.Count==count+1 && draft.Martial.martialInfo.level==2 && props.Martial.Prefixes.Count==count && draft.GetValues().Length==props.GetValues().Length+2,"append rebuilds serialized draft and derives new quality without touching original at "+size);
+        SaveMartialPreview(book,args,size,"martials-draft-prefixes-layout-");
+        var calls=g.data.Calls;ClickNamed(book,"保存修改");
+        Check(props.Martial.Prefixes.Count==count+1 && props.Martial.Prefixes[0].prefixValueItem.number==3 && data.skillLeft==props.soleID && data.GetActionMartial(props.soleID).exp==max,"save applies staged edits and restores equipped slot while preserving progress at "+size);
+        Check(g.data.Calls==calls+1 && CharacterSave.Busy,"save modification initiates one existing game save callback at "+size);
+        g.data.Complete(true);CharacterSave.Poll();
+        entry=CharacterMartials.Read(target).Single();var archive=CharacterMartials.AllPrefixes(target,entry,0,0);
+        Check(archive.Count==1657 && archive.First().Unavailable==null && archive.Last().Unavailable!=null,"full catalog preserves 1657 configs with editable records first at "+size);
+        ClickNamed(book,"当前词条0");ClickNamed(book,"词条库范围");
+        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_候选词条") && t.gameObject.activeInHierarchy)<=40,"complete catalog renders forty rows per page at "+size);
+        SaveMartialPreview(book,args,size,"martials-prefix-all-layout-");ClickNamed(book,"词条下一页");
+        var search=Walk(book).Select(t=>t.GetComponent<UnityEngine.UI.InputField>()).First(x=>x!=null && x.gameObject.name=="BHML_词条检索");search.text="配置#1657";
+        Check(Walk(book).Count(t=>t.gameObject.name.StartsWith("BHML_候选词条") && t.gameObject.activeInHierarchy)==1,"search reaches final native catalog configuration across pages at "+size);
+        view.FocusTarget(target);ClickNamed(book,"卷目0");ClickNamed(book,"卷目2");
+        entry=CharacterMartials.Read(target).Single();original=props.soleIDHashData;var source=CharacterMartials.Draft(target,entry);var chosen=CharacterMartials.ChoosePrefix(target,entry,source,0,6);
+        pending=CharacterSave.Pending;DataMgr.isSaveData=true;
+        Check(Rejected(()=>CharacterMartials.SavePrefixes(context,target,entry,chosen)) && CharacterSave.Pending==pending,"save busy rejects draft commit before writes at "+size);DataMgr.isSaveData=false;
+        Check(Rejected(()=>CharacterMartials.SavePrefixes(context+"stale",target,entry,chosen)) && CharacterSave.Pending==pending,"world mismatch rejects draft commit at "+size);
+        var tampered=chosen.Clone();tampered.Raw[0]++;
+        Check(Rejected(()=>CharacterMartials.SavePrefixes(context,target,entry,tampered)) && props.soleIDHashData==original && CharacterSave.Pending==pending,"changed common header is rejected before native write at "+size);
+        g.conf.battleSkillValue.EmptyNumber=6;
+        var bounded=CharacterMartials.Candidates(target,entry,0,false,0,true);
+        Check(bounded.Any(x=>x.Number==6 && x.Unavailable!=null) && bounded.Any(x=>x.Number==3 && x.Unavailable==null),"empty native strength bounds isolate candidate without array exception at "+size);g.conf.battleSkillValue.EmptyNumber=0;
+        var shortBook=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,1});var longBook=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,5});
+        Check(CharacterMartials.PrefixCapacity(shortBook)==7 && CharacterMartials.PrefixCapacity(longBook)==11,"native red capacity changes from seven to eleven by relative realm at "+size);
+        var probe=props.Clone();var ids=new int[probe.Martial.Prefixes.Count+1];for(int i=0;i<ids.Length;i++)ids[i]=1;
+        g.conf.battleSkillPrefixValue.SetPrefixsID(probe.Martial,ids);
+        Check(probe.Martial.Prefixes.Count==count+1 && Rejected(()=>probe.Martial.SetPrefixLevel(count+1,100)),"faithful native ID setter never resizes prefix storage at "+size);
+        var corrupt=props.Clone();corrupt.soleID="malformed-"+size;corrupt.Raw=new[]{1,1,1,1,14111,1,1,-1};data.Learned[MartialType.SkillLeft].Add(new DataUnit.ActionMartialData{data=corrupt});
+        var all=CharacterMartials.Read(target);
+        Check(all.Any(x=>x.SoleId==corrupt.soleID && x.ReadError!=null) && all.Any(x=>x.SoleId==props.soleID && x.ReadError==null),"malformed record is isolated while healthy martial remains usable at "+size);
+        data.Learned[MartialType.SkillLeft].RemoveAll(x=>x.data==corrupt);
+        var npc=DataProps.PropsData.NewMartial(MartialType.SkillRight,new[]{13111,3});SetFixturePrefixCount(npc,g.conf.battleSkillLevel.GetPrefixCount(4,3,g.conf.battleSkillLevel.GetGradeMin(MartialType.SkillRight,13111)));bag.allProps.Add(npc);
+        CharacterMartials.Study(context,target,CharacterMartials.ReadBooks(target).First(x=>x.SoleId==npc.soleID));var npcEntry=CharacterMartials.Read(target).First(x=>x.SoleId==npc.soleID);
+        Check(npcEntry.Level==4 && npcEntry.MaxExp==g.conf.battleSkillMastery.GetExp(g.conf.battleSkillMastery.GetItems(unit,npc.Martial).Last(),3),"purple NPC martial uses realm three rather than quality four for mastery at "+size);
+        CharacterMartials.Complete(context,target,npcEntry);
+        Check(data.GetActionMartial(npc.soleID).exp==npcEntry.MaxExp,"NPC cultivation readback matches native cap at "+size);
+        var heartBase=CharacterMartials.Catalog().First(x=>x.SuitId==10016).Id;var heart=DataProps.PropsData.NewMartial(MartialType.Ability,new[]{heartBase,CharacterMartials.Grade(target)});heart.To<DataProps.PropsAbilityData>().suitID=10016;bag.allProps.Add(heart);
+        CharacterMartials.Study(context,target,CharacterMartials.ReadBooks(target).First(x=>x.SoleId==heart.soleID));var heartEntry=CharacterMartials.Read(target).First(x=>x.SoleId==heart.soleID);
+        CharacterMartials.ChangePrefix(context,target,heartEntry,0,7,false,6);
+        Check(heart.To<DataProps.PropsAbilityData>().suitID==10016 && heart.Martial.Prefixes[0].prefixLevel==600,"red affix commit preserves inheritance identity and writes native strength at "+size);
+        heartEntry=CharacterMartials.Read(target).First(x=>x.SoleId==heart.soleID);CharacterMartials.Equip(context,target,heartEntry,3,"");heartEntry=CharacterMartials.Read(target).First(x=>x.SoleId==heart.soleID);CharacterMartials.Equip(context,target,heartEntry,3,"");
+        Check(data.abilitys[3]=="" && data.GetActionMartial(heart.soleID)!=null,"heart equip and unequip honor actual native slot at "+size);
+        ClickNamed(book,"卷目0");ClickNamed(book,"卷目2");
+        var heartRow=Walk(book).Where(t=>t.gameObject.name=="BHML_功法条目" && t.gameObject.activeInHierarchy).Last();heartRow.GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+        ClickNamed(book,"装备功法");SaveMartialPreview(book,args,size,"martials-heart-dropdown-layout-");
+        Check(Walk(book).Any(t=>t.gameObject.name=="BHML_心法位置3") && !Walk(book).Any(t=>t.gameObject.name=="BHML_功法弹窗遮罩" && t.gameObject.activeInHierarchy),"heart slot picker uses compact dropdown without a full confirmation page at "+size);
+        ClickNamed(book,"心法位置3");ClickNamed(book,"装备功法");
+        Check(data.abilitys[3]=="","actual heart dropdown equip and direct unload release original slot at "+size);
+        heartEntry=CharacterMartials.Read(target).First(x=>x.SoleId==heart.soleID);var heartDraft=CharacterMartials.ChoosePrefix(target,heartEntry,CharacterMartials.Draft(target,heartEntry),0,6);
+        pending=CharacterSave.Pending;heart.FailSetValuesAfterWrite=true;
+        Check(Rejected(()=>CharacterMartials.SavePrefixes(context,target,heartEntry,heartDraft)) && CharacterSave.Pending>pending && heart.Martial.Prefixes[0].prefixValueItem.number==6,"partial serialized setter failure preserves actual changed state and pending at "+size);heart.FailSetValuesAfterWrite=false;
+        Check(Rejected(()=>CharacterMartials.SavePrefixes(context,target,heartEntry,heartDraft)),"stale signature prevents blind replay after partial native failure at "+size);
+        var bare=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,1});var header=Enumerable.Range(0,6).Select(i=>bare.GetValues()[i]).ToArray();bare.SetValues(header);
+        data.Learned.Clear();data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=bare}};
+        data.skillLeft="";data.skillRight="";data.abilitys=new[]{"","","","","","","",""};
+        var bareEntry=CharacterMartials.Read(target).Single();
+        Check(bareEntry.ReadError==null && bareEntry.Id==14111 && bareEntry.Grade==1 && bareEntry.Name==MartialFixture.Name(14111) && bareEntry.MaxExp==0,"six-field native zero-prefix martial retains real identity and is not corrupt at "+size);
+        var bareDraft=CharacterMartials.ChoosePrefix(target,bareEntry,CharacterMartials.Draft(target,bareEntry),0,1);
+        Check(bare.GetValues().Length==6 && bareDraft.GetValues().Length==9 && bareDraft.GetValues()[7]==-1 && Enumerable.Range(0,6).Select(i=>bareDraft.GetValues()[i]).SequenceEqual(header),"first append converts six-field draft to complete ID separator strength layout at "+size);
+        var zero=bare.Clone();zero.SetValues(header.Concat(new[]{-1}).ToArray());CharacterMartials.ValidatePrefixLayout(zero);
+        Check(CharacterMartials.Candidates(target,bareEntry,0,false,0,false,zero).Any(x=>x.Number==1),"explicit separator with zero prefixes also supports first append at "+size);
+        ClickNamed(book,"卷目0");ClickNamed(book,"卷目2");SaveMartialPreview(book,args,size,"martials-zero-prefix-layout-");ClickNamed(book,"当前词条0");ClickNamed(book,"候选词条1");ClickNamed(book,"保存修改");
+        Check(bare.Martial.Prefixes.Count==1 && bare.GetValues().Length==9 && CharacterSave.Busy,"actual zero-prefix UI adds first affix and starts save at "+size);
+        g.data.Complete(true);CharacterSave.Poll();
+        var truncated=bare.Clone();truncated.SetValues(header.Take(5).ToArray());data.Learned[MartialType.SkillLeft].Add(new DataUnit.ActionMartialData{data=truncated});
+        var truncatedEntry=CharacterMartials.Read(target).Last(x=>x.ReadError!=null);
+        Check(truncatedEntry.Id==14111 && truncatedEntry.Grade==0 && CharacterMartials.Realm(0)=="境界未读取" && Rejected(()=>CharacterMartials.Draft(target,truncatedEntry)),"truncated actual header remains protected and never invents stage or identity at "+size);
+        data.Learned[MartialType.SkillLeft].RemoveAll(x=>x.data==truncated);
+        ClickNamed(book,"卷目0");ClickNamed(book,"卷目2");if(CharacterSave.Pending>0){ClickNamed(book,"卷目6");g.data.Complete(true);CharacterSave.Poll();}
+    }
+    private static void VerifyMartialInterruptions(int size)
+    {
+        var oldWorld=g.world;var oldData=g.data;
+        Action reset=()=>{g.world=new World();g.data=new DataMgr();CharacterSave.Sync(CharacterReader.ContextKey());};
+        try
+        {
+            reset();var unit=g.world.playerUnit;var data=unit.data.unitData;var bag=data.propData;var context=CharacterReader.ContextKey();
+            var props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});bag.allProps.Add(props);
+            var entry=CharacterMartials.ReadBooks("player").First();data.AfterStudy=()=>{g.world=new World();g.data=new DataMgr();};
+            Check(Rejected(()=>CharacterMartials.Study(context,"player",entry)) && bag.RefreshCalls==0 && CharacterSave.Pending==0,"study callback world switch stops old refresh and new pending at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};
+            entry=CharacterMartials.Read("player").First();data.AfterExp=()=>{g.world=new World();g.data=new DataMgr();};
+            Check(Rejected(()=>CharacterMartials.Complete(context,"player",entry)) && unit.ConfUpdates==0 && CharacterSave.Pending==0,"cultivation callback world switch stops old effects and new pending at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};
+            entry=CharacterMartials.Read("player").First();unit.AfterAction=()=>{g.world=new World();g.data=new DataMgr();};
+            Check(Rejected(()=>CharacterMartials.Equip(context,"player",entry,0,"")) && CharacterSave.Pending==0,"equip callback world switch never dirties replacement world at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};
+            entry=CharacterMartials.Read("player").First();var draft=props.Clone();draft.Martial.SetPrefixLevel(0,21);props.AfterSetValues=()=>{g.world=new World();g.data=new DataMgr();};
+            Check(Rejected(()=>CharacterMartials.SavePrefixes(context,"player",entry,draft)) && unit.ConfUpdates==0 && CharacterSave.Pending==0,"prefix setter callback world switch stops old conf refresh and new pending at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};data.skillLeft=props.soleID;
+            entry=CharacterMartials.Read("player").First();draft=props.Clone();draft.Martial.SetPrefixLevel(0,21);var changingData=data;unit.AfterConf=()=>changingData.skillLeft="foreign";
+            Check(Rejected(()=>CharacterMartials.SavePrefixes(context,"player",entry,draft)) && data.skillLeft=="foreign" && CharacterSave.Pending>0,"prefix restore never overwrites slot filled inside refresh callback at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;bag=data.propData;
+            var good=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});var bad=good.Clone();bad.soleID="bad-hash";bad.ThrowHash=true;
+            data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=bad},new DataUnit.ActionMartialData{data=good}};
+            var isolated=CharacterMartials.Read("player");
+            Check(isolated.Count==2 && isolated.Any(x=>x.ReadError!=null) && isolated.Any(x=>x.SoleId==good.soleID && x.ReadError==null),"bad signature getter remains isolated from healthy learned record at "+size);
+            var brokenAction=data.Learned[MartialType.SkillLeft][0];bad.ThrowHash=false;
+            data.Learned[MartialType.SkillLeft].Insert(0,null);
+            Check(CharacterMartials.Read("player").Count==2,"null learned element does not crash or create a phantom martial at "+size);
+            brokenAction.ThrowData=true;isolated=CharacterMartials.Read("player");
+            Check(isolated.Count==2 && isolated.Any(x=>x.ReadError!=null) && isolated.Any(x=>x.SoleId==good.soleID && x.ReadError==null),"learned props getter failure is isolated from other records at "+size);
+            brokenAction.ThrowData=false;brokenAction.ThrowExp=true;isolated=CharacterMartials.Read("player");
+            Check(isolated.Count==2 && isolated.Any(x=>x.ReadError!=null) && isolated.Any(x=>x.SoleId==good.soleID && x.ReadError==null),"learned experience getter failure is isolated from other records at "+size);
+            brokenAction.ThrowExp=false;
+            bag.allProps.Add(bad);bag.allProps.Add(good);bad.ThrowPropsType=true;isolated=CharacterMartials.ReadBooks("player");
+            Check(isolated.Count==2 && isolated.Any(x=>x.ReadError!=null) && isolated.Any(x=>x.SoleId==good.soleID && x.ReadError==null),"bag props type getter failure is isolated from healthy book at "+size);
+            bad.ThrowPropsType=false;bag.allProps.Clear();
+
+            bag.allProps.Add(bad);bag.allProps.Add(good);bad.ThrowHash=false;bad.ThrowValues=true;isolated=CharacterMartials.ReadBooks("player");
+            Check(isolated.Count==2 && isolated.Any(x=>x.ReadError!=null) && isolated.Any(x=>x.SoleId==good.soleID && x.ReadError==null),"bad values getter remains isolated from healthy bag book at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;bag=data.propData;context=CharacterReader.ContextKey();var grade=CharacterMartials.Grade("player");
+            var sample=CharacterMartials.Catalog().First(x=>x.Id==14111 && x.SuitId==0);bag.AfterAdd=()=>{g.world=new World();g.data=new DataMgr();};
+            Check(Rejected(()=>CharacterMartials.Give(context,"player",new[]{sample},grade)) && bag.RefreshCalls==0 && CharacterSave.Pending==0,"martial give callback world switch stops old bag refresh and new pending at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};
+            entry=CharacterMartials.Read("player").First();var replacedData=data;var oldRecord=props;data.AfterExp=()=>replacedData.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=oldRecord.Clone(),exp=entry.MaxExp}};
+            Check(Rejected(()=>CharacterMartials.Complete(context,"player",entry)) && unit.ConfUpdates==0 && CharacterSave.Pending>0,"cultivation detects replacement with matching identity and experience before effects refresh at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};data.skillLeft=props.soleID;
+            entry=CharacterMartials.Read("player").First();unit.AfterDestroyEquip=()=>{g.world=new World();g.data=new DataMgr();};
+            Check(Rejected(()=>CharacterMartials.Complete(context,"player",entry)) && unit.EquipRebuilds==1 && CharacterSave.Pending==0,"effects destruction callback world switch stops subsequent native equipment creation at "+size);
+        }
+        finally {g.world=oldWorld;g.data=oldData;CharacterSave.Sync(CharacterReader.ContextKey());}
     }
     private static void SaveMartialPreview(UnityEngine.RectTransform book,string[] args,int size,string prefix)
     {
@@ -1218,6 +1398,68 @@ internal static class BookLayoutHarness
         var directBook = Walk(directWindow.transform).First(t => t.gameObject.name == "BHML_秘录外框");
         Check(Walk(directBook).Any(t => t.gameObject.name.StartsWith("BHML_修士行") && t.GetComponentInChildren<UnityEngine.UI.Text>() != null && t.GetComponentInChildren<UnityEngine.UI.Text>().text == "修士299"), "initial NPC selection scrolls selected row into view");
         directView.Dispose();
+        foreach(var module in new[]{0,1,2})
+        {
+            var cleanupWindow=new UITextInfoLong();var cleanupView=new BookView();cleanupView.Build(cleanupWindow,()=>{});
+            var cleanupBook=(UnityEngine.RectTransform)Walk(cleanupWindow.transform).First(t=>t.gameObject.name=="BHML_秘录外框");
+            try
+            {
+                ClickNamed(cleanupBook,"卷目"+module);var searchCount=WindowInputScope.Registered.Count;
+                ClickNamed(cleanupBook,module==0?"编辑值_0:9:0":module==1?"物品列表":"秘籍库");
+                var overlayName=module==0?"BHML_选择浮层":module==1?"BHML_物品列表遮罩":"BHML_功法弹窗遮罩";
+                UnityEngine.GameObject.ThrowDeactivateName=overlayName;bool closeFailed=false;
+                try{ClickNamed(cleanupBook,module==0?"选择浮层":module==1?"关闭物品列表":"关闭功法弹窗");}catch{closeFailed=true;}
+                Check(!closeFailed && !Walk(cleanupBook).Any(t=>t.gameObject.name==overlayName) && WindowInputScope.Registered.Count==searchCount,"overlay deactivation failure still destroys object and releases input for module "+module);
+                UnityEngine.GameObject.ThrowDeactivateName=null;
+            }
+            finally {UnityEngine.GameObject.ThrowDeactivateName=null;cleanupView.Dispose();}
+        }
+        var cycleWindow=new UITextInfoLong();bool cyclesClean=true;int nativeChildCount=cycleWindow.transform.childCount;
+        for(int cycle=0;cycle<24;cycle++)
+        {
+            var cycleView=new BookView();cycleView.Build(cycleWindow,()=>{});var cycleBook=(UnityEngine.RectTransform)Walk(cycleWindow.transform).First(t=>t.gameObject.name=="BHML_秘录外框");
+            ClickNamed(cycleBook,"卷目1");ClickNamed(cycleBook,"物品列表");ClickNamed(cycleBook,"关闭物品列表");
+            ClickNamed(cycleBook,"卷目2");ClickNamed(cycleBook,"秘籍库");ClickNamed(cycleBook,"关闭功法弹窗");
+            ClickNamed(cycleBook,"卷目0");cycleView.Dispose();cycleView.Dispose();
+            if(WindowInputScope.Registered.Count!=0 || cycleWindow.transform.childCount!=nativeChildCount || ModelRenderTexture.Active!=0 || UnityEngine.Texture2D.LiveProcedural!=0)cyclesClean=false;
+        }
+        Check(cyclesClean,"24 real BookView build/module/modal/dispose cycles leave no registered input, portrait, procedural texture or extra root");
+
+        foreach(var stage in new[]{"layer","parent"})
+        {
+            var parent=new UnityEngine.GameObject("allocation host").transform;parent.gameObject.layer=9;
+            var allocationView=new BookView();string error=null;
+            UnityEngine.GameObject.ThrowLayerName=stage=="layer"?"BHML_allocation fault":null;
+            UnityEngine.GameObject.ThrowParentName=stage=="parent"?"BHML_allocation fault":null;
+            UnityEngine.GameObject.ThrowDeactivateName="BHML_allocation fault";
+            var newRect=typeof(BookView).GetMethod("NewRect",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance);
+            try {newRect.Invoke(allocationView,new object[]{"allocation fault",parent});}
+            catch(System.Reflection.TargetInvocationException ex){error=ex.InnerException.Message;}
+            finally {UnityEngine.GameObject.ThrowLayerName=UnityEngine.GameObject.ThrowParentName=UnityEngine.GameObject.ThrowDeactivateName=null;}
+            Check(error==stage+" failure" && UnityEngine.GameObject.FaultAllocated.Destroyed && parent.childCount==0,stage+" failure before BookView parenting destroys unowned object and preserves original error even when hide fails");
+            var retry=(UnityEngine.RectTransform)newRect.Invoke(allocationView,new object[]{"allocation fault",parent});
+            Check(parent.childCount==1 && retry.gameObject.layer==9,stage+" allocation retry attaches one object in native layer");
+            UnityEngine.Object.Destroy(retry.gameObject);UnityEngine.Object.Destroy(parent.gameObject);allocationView.Dispose();UnityEngine.GameObject.FaultAllocated=null;
+        }
+
+        var unreadView=new BookView();var unreadWindow=new UITextInfoLong();unreadView.Build(unreadWindow,()=>{});
+        var unreadBook=(UnityEngine.RectTransform)Walk(unreadWindow.transform).First(t=>t.gameObject.name=="BHML_秘录外框");ClickNamed(unreadBook,"卷目2");
+        var flags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
+        var entriesField=typeof(BookView).GetField("martialEntries",flags);var selectedField=typeof(BookView).GetField("martialSelection",flags);var filterMethod=typeof(BookView).GetMethod("FilterMartials",flags);
+        typeof(BookView).GetField("martialEquippedOnly",flags).SetValue(unreadView,false);
+        var unreadA=new MartialEntry{Name="异常A",School="",ReadError="错误A",ReadPointer=new IntPtr(41),Type=MartialType.SkillLeft};
+        var unreadB=new MartialEntry{Name="异常B",School="",ReadError="错误B",ReadPointer=new IntPtr(42),Type=MartialType.SkillLeft};
+        entriesField.SetValue(unreadView,new List<MartialEntry>{unreadA,unreadB});selectedField.SetValue(unreadView,unreadB);filterMethod.Invoke(unreadView,null);
+        Check(ReferenceEquals(selectedField.GetValue(unreadView),unreadB),"filter keeps the selected unread record instead of matching the first null sole ID");
+        var refreshedB=new MartialEntry{Name="异常B",School="",ReadError="错误B",ReadPointer=new IntPtr(42),Type=MartialType.SkillLeft};
+        entriesField.SetValue(unreadView,new List<MartialEntry>{unreadA,refreshedB});filterMethod.Invoke(unreadView,null);
+        Check(ReferenceEquals(selectedField.GetValue(unreadView),refreshedB),"refresh retains unread record by original native pointer and category");
+        var movedB=new MartialEntry{Name="异常C",School="",ReadError="错误C",ReadPointer=new IntPtr(43),Type=MartialType.SkillLeft};
+        entriesField.SetValue(unreadView,new List<MartialEntry>{unreadA,movedB});filterMethod.Invoke(unreadView,null);
+        Check(ReferenceEquals(selectedField.GetValue(unreadView),unreadA),"replaced unread record never matches another null sole ID");
+        Check(CharacterMartials.Fingerprint(new List<MartialEntry>{refreshedB})!=CharacterMartials.Fingerprint(new List<MartialEntry>{new MartialEntry{Name="异常B",ReadError="错误B",ReadPointer=new IntPtr(44),Type=MartialType.SkillLeft}}),"unread record pointer replacement invalidates fingerprint despite identical error text");
+        unreadView.Dispose();
+
         var resetHost=FakeRes.MakeField();var resetField=resetHost.GetComponent<UnityEngine.UI.InputField>();
         var originalCaret=new UnityEngine.GameObject("source Input Caret");
         var orphan=new UnityEngine.GameObject("source Input Caret");orphan.transform.SetParent(resetHost.transform,false);

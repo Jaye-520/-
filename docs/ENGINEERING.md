@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.68 ｜ **最后更新**：2026-10-04
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.96 ｜ **最后更新**：2026-10-04
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -44,8 +44,10 @@
 | Services/ItemInventory.cs | 道具配置、背包快照、原生发放/逐件删除、境界药效补给与人物上下文预检 |
 | UI/BookView.Items.cs | 道具三栏、物品图鉴、背包网格与原生内容悬浮、绑定人物的添加/清空弹窗 |
 | UI/BookView.ItemMenu.cs | 背包右键菜单、按唯一ID修改/增加数量及移除单项、菜单释放 |
-| UI/BookView.Martials.cs | 已学/装备功法、五类秘籍弹窗、多选添加和有来源的搭配获取；修炼与词条编辑待接入 |
+| UI/BookView.Martials.cs | 背包秘籍/已学阶段切换、五类秘籍弹窗、多选添加和有来源的搭配获取 |
 | Services/CharacterMartials.cs | 基础/传承功法配置与拥有记录、奖励工厂/传承身份生成及背包预检/回读 |
+| Services/CharacterMartials.Operations.cs | 学习/修炼原生生命周期、动态词条容量/完整数组、候选草稿与保存回读 |
+| UI/BookView.MartialEditing.cs | 学习确认、直接装备/心法槽位下拉、详情内词条草稿与保存，目标绑定 |
 | Services/MartialBuilds.cs | 已核对攻略的搭配清单、出处/依赖说明、全套境界检查 |
 | Services/CharacterRealmChange.cs | 境界配置成长差额、品质/经验/瓶颈及降阶截断记录 |
 | UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
@@ -57,9 +59,30 @@
 
 07.28用partial分开编辑与布局，07.29再拆图鉴；新增文件须登记csproj。同一次窗口打开期间切页/切人物保留草稿；每次重新打开清空未应用草稿，世界失效清理。候选读取本机具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽真实type匹配。输入复制搜索控件须清空旧回调，及时Register/Unregister到WindowInputScope；Attach/Detach归窗口所有；Attach清空旧登记后，从当前承载重新登记BHML_前缀的本视图输入，避免Build期间登记的气运搜索丢失保护。07.29的CharacterSave负责全批预检、原生字段写入/缓存维护、保存回调及主线程Poll；CharacterFateOperations负责即时气运生命周期，不能和只读/草稿服务混淆。替身不证明IL2CPP、Windows IME或保存重载结果。
 
+### 功法生命周期接口（07.72）
+
+本机Mono.Cecil签名与GameAssembly调用链缓存见`.tools/martial-lifecycle-api.txt`、`martial-actions-api.txt`、`martial-lifecycle-native.txt`、`martial-action-native.txt`、`martial-prefix-job.txt`。
+
+- 学习：原生`StudyActionMartialProp`建立唯一ID索引与类型缓存，并`CostPropItem(soleID,1,true)`消耗原秘籍。调用前`GetStudyTip`检查境界/资质/已学格数；快捷学习跳过小游戏/时间/灵石，不自动装备或补经验。
+- 修炼：`GetItems(unit,martial)`按实际词条数量返回数量+1条修炼配置、超表长度钳到末条；末项`GetExp(item,martial.grade)`按功法境界读grade1～10，禁止传秘籍品质level。原生`AddMartialExp`同样按grade钳制差额；已装备重建WorldUnitEquipMartial并UpdateConf读取新解锁效果。
+- 装备：列表、提交前校验和结果回读统一读取skillLeft/skillRight/step/ultimate/abilitys。普通物品IsEquipProps取GetAllEquipPropsSoleID，并非功法槽位，不得混用；托管替身也不能把它模拟成功法判断。动作仍走IsCreateAction/CreateAction(UnitActionMartialEquip/Unequip)，维护道点、同类心法、境界与效果，禁止直接写ID冒充装备。
+- 词条候选：运行时_allConfList读全库，GetItems/GetItem读本招式通用/专属；multi与require校验整个最终集合，随机weight只影响生成。可修改项排前，不能修改仍显示原因；GetMinMaxLevel空/短数组先拒绝该候选。强度区间(minTier-1)*100+1至GetPrefixMaxLevel*100，PrefixLevelToLevel查询实际颜色；效果等价档可合并，原有未改值可能高于归一上限，必须保留而非错误拒绝。
+
+- 数量与品质：`GetGradeMin(type,baseID)`读真实招式最低境界；`GetPrefixCount(6,grade,minGrade)`给红秘籍容量。官方BattleSkillLevel的白～红基础2～7条，每相对境界加1，差值钳0～4；因此红容量7～11，当前品质由`GetLevel(grade,minGrade,prefixCount)`取满足阈值的最高档。不能把11槽或任何品质的数量当常量；追加会提升品质和修炼上限，经验保持原值。
+- 序列化：`PropsData.GetValues()`含六项头（前三公共项、martialType/baseID/grade），然后全部词条编号、-1、对应原始强度及可能尾数据。SetPrefixsID只重排当前数量，**不会扩容**；07.71替身错误模拟扩容掩盖数组越界。追加在克隆上重建数组（长度+2），保留头、旧强度与尾数据，调用SetValues使hash/原生Info缓存失效。SetPrefixID/Level只用于已有槽。先验证分隔符和对应长度；异常记录单独隔离。原生UIIconTool按新hash重新产生Info，品质不是手写字段。
+- 修改与保存：右侧详情显示原生效果及实际容量；选择只改克隆草稿，不MarkDirty。保存时重新验证世界/人物/快照/经验/装备、最终规则、六项头及附加尾；已装备原生卸下、写完整数组、回读身份/每项/经验/传承、UpdateConf，再原槽原生装备。重新装备被原生需求拒绝时功法保持卸下，明确提示已应用，Pending保留，不重试或假回滚。成功应用后调用既有SaveData；顶部保存同样处理草稿。切换清理未应用草稿。装备/卸下直接动作，未装备心法用紧凑槽位下拉。
+
+原生只读核查：`.tools/martial-0772-native.txt`、`martial-quality-0772.txt`、`martial-level-0772.txt`；本机Assembly-CSharp签名、GameAssembly指令与官方BattleSkillLevel/Mastery/PrefixValue表交叉核对。新增替身使用真实数量/品质/境界修炼表，SetPrefixsID不扩容，禁止再用固定600经验代替原生机制。Player.log只有07.71加载/打开，没有本次截图报错完整栈，不凭日志声称已定位全部异常；新增意外操作异常栈记录。
+
+07.73零词条边界：原生MartialInfoData.GetPrefixs从索引6循环至values.Length，长度恰为6返回空列表；不能硬性要求至少7项或至少一个词条。六项头和七项头后仅-1的空词条均可读取/添加；六项头追加需+3（编号、分隔符、强度），已有分隔符追加才是+2。尾数据比较须按有无词条区计算，避免遍历找-1越界。真正少于6项仍拒绝，不推测补全实际存档。异常详情不把未知境界当后期或未知上限当圆满。依据`.tools/martial-0772-native.txt` GetPrefixs索引6入口、`.tools/martial-0773-native.txt` GetValues直读原始数组及GetActionMartial类型过滤、`martial-0773-fields.txt` type/baseID/grade分别索引3/4/5。截图不足以确认实际记录长度；修复的是已确认的校验误判，实际重载仍单独验收。
+
+完整官方配置与中文效果模板索引：[martial-prefix-catalog.csv](reference/martial-prefix-catalog.csv)，由`docs/verification/export-martial-prefix-catalog.py`从本机官方BattleSkillPrefixValue/LocalText导出1657条，不作为运行时数据源。颜色与最终数值依功法计算，不能给配置行贴固定“金/红”标签。原生换算核查缓存：`.tools/prefix-quality-native.txt`、`quality-range.txt`、`quality-detail.txt`。
+
+托管替身验证控制流和身份边界，不能证明原生学习回调、效果重算、传承套装与存档重载；本轮不操作游戏或真实存档。
+
 ## 代码风格与结构约定
 
-- 文件与命名：一个文件一个职责；`partial`只用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）。新增源码必须登记csproj并在上文“代码导航”表登记职责——`run-all.ps1`会自检“csproj ↔ 磁盘源码 ↔ 代码导航表”三者一致，任何一处漏登记都直接门禁失败。若该文件会被某个harness编译（如`UI/BookView.cs`、`UI/WorkshopEntrances.cs`、`UI/WorkshopWindow.cs`、`ModMain.cs`），还必须在对应`run-*.ps1`的编译清单里加上它，否则该harness编译失败——2026-10-03新增`ModVersion.cs`时正是漏了这一步，被门禁当场拦下。
+- 文件与命名：一个文件一个职责；`partial`用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）；07.70的CharacterMartials按目录/读取与生命周期操作拆为两个服务切面，共用强类型记录校验，职责在代码导航分别登记。新增源码必须登记csproj并在上文“代码导航”表登记职责——`run-all.ps1`会自检“csproj ↔ 磁盘源码 ↔ 代码导航表”三者一致，任何一处漏登记都直接门禁失败。若该文件会被某个harness编译（如`UI/BookView.cs`、`UI/WorkshopEntrances.cs`、`UI/WorkshopWindow.cs`、`ModMain.cs`），还必须在对应`run-*.ps1`的编译清单里加上它，否则该harness编译失败——2026-10-03新增`ModVersion.cs`时正是漏了这一步，被门禁当场拦下。
 - 版本号唯一来源：`ModVersion.Current`（`ModVersion.cs`）。界面页脚与全部日志都引用它，升级只改这一处；`run-all.ps1`会检查当前版本字面量只出现在该文件，防止漏改造成“页脚显示旧版、日志显示新版”。**凡部署到调试包（即交付用户验证）的构建都升版**——纯内部重构只要交付也升版，否则两个内容不同的DLL会同名，用户无法据页脚判断游戏里加载的到底是哪一版。`WindowInputScope`中形如07.10/07.31的编号标记该诊断引入时的版本，属于历史事实，不随升级变动。
 - 命名不得遮蔽：方法内局部量不得与同类的static字段同名。2026-10-03`WindowInputScope.AlignCaret`中的`var input = __instance;`遮蔽了同名static字段`input`，已改名`field`；这类遮蔽会让后续维护者在方法内误以为在用字段。同时把该方法的“取字形上下边界”抽成`TryGetTextBounds`，主方法由63行降到约45行。
 - 方法规模以≤50行为准，但**不做机械拆分**：只有存在可分离阶段或重复逻辑时才抽方法——`CharacterActions.Execute`（133→38行）按操作拆分、`BookView.Build`（134→80行）抽出取字体、隐藏原生控件、建导航、滚到目标人物四段。纯粹的线性装配（如BookView的属性总览与搜索框克隆、CharacterReader的顺序读取）即使50–110行也保持单方法，拆成一堆5行助手反而更难读。`run-all.ps1`**刻意不**对方法长度设门禁，避免为了过闸而机械切割。拆分必须**保持分支顺序与报错语义**：`CharacterActions`的未知操作在原实现里会先校验NPC目标再报“未知快捷操作”，拆完仍要先校验。
@@ -416,3 +439,115 @@ RequireItem数量修改允许当前持有隐藏记录，保留世界/人物/sole
 ### 今日收尾与大数量交叉回归（07.68）
 
 大数量自定义开放后，必须检查旧快捷操作：满材料按配置ID汇总所有相关堆的补满后数量，使用long预检同类总数，超过int.MaxValue则整批拒绝，尚未写入或MarkDirty；精确边界允许，超过9999的堆不降低。显示指纹和单格键都包含Hidden，避免仅配置隐藏状态变化时复用旧颜色/菜单。Read在原生_allShowProps中也检查当前hide，includeHidden=false明确排除；即使可见缓存滞后也不能将资源加入清空。隐藏非叠加菜单标注数量固定，仍禁用删除。真实回调/装备/存档验证边界不因托管回归而缩小。
+
+### 保存回调身份与部分传送恢复（07.74）
+
+每次SaveData具有独立saveGeneration，saveGate只保护托管身份、去重与completion发布，不在锁内访问游戏/UI。旧请求回调和同请求第二次结果不可覆盖当前completion或修改Busy/Pending。派发抛错时，尚无结果则取消此请求身份、保留Pending供用户显式重试；已收到同步结果则继续Busy等待Poll，不能丢弃已接受结果。原生从未回调不强制超时重试，以免重放写入。100轮/40000次交错回调是托管竞争检查，不是游戏保存验证。
+
+“来”动作确认位置改变后立即在finally保留首次原位置和Pending，即使后续原生回调抛错，也支持用户显式“返”；未改变位置不创建记录，重复召回不覆盖首次原点，“返”成功才删除。证据及全范围剩余核查见[稳定性审计](STABILITY_AUDIT.md)。
+
+### 批写上下文与嵌套原生回调（07.75）
+
+ContextKey同时绑定玩家原生指针、人物ID和DataMgr指针；存档管理器缺失时不可编辑。CharacterSave.RequireCurrentTarget核对上下文、保存状态及重新解析的人物指针，每项Apply/Undo前后执行。切换世界后不再读取或回退旧对象，也不向新DataMgr派发旧批次保存；同世界对象失效/自动保存中断仍报告可能部分改变，保留Pending供明确核对。
+
+多步骤动作必须在内部每次可能触发原生回调的操作后校验，不能仅在外层返回后校验。境界SetGradeID/UpdateConf/成长setter/瓶颈运行类及兴趣Destroy/Init/GetHobbyItems按此规则保护。兴趣销毁使用快照，避免原生Destroy修改正在遍历的列表。此规则当前已接入上述属性保存流程，其余页面仍在审计，不把共用辅助方法存在当成全产品覆盖。
+
+### 快捷操作上下文与返回身份（07.76）
+
+快捷操作入口检查ContextKey及保存忙状态；Guard绑定人物指针与存档上下文，满状态/满材料每项写入、回读及回退都校验，满修为在原生AddExp后重新确认对象。MarkDirty(context)只能归入同一当前存档；世界切换仅同步，不将旧操作计入新存档。无法确认当前对象的部分操作保留可能生效提示，不再读取旧引用凑回读。
+
+返回原点同时绑定NPC ID及原生指针，人物替换不能继承旧位置；替换后重新“来”会建立新原点。好感度使用SetIntim维护关系缓存，预检有限数值及增量可表示性，第一侧回读实际增加后才写第二侧；原生包含浮点字符串格式化，不把传入浮点值当成最终精确结果。失败逆序回退，只恢复已尝试步骤，并再次校验双方。
+
+### 道具容器身份与气运回调后快照（07.77）
+
+道具Guard绑定上下文、人物原生指针和DataProps指针。原生调用后必须先校验，再刷新或读取旧容器；清空最后一次DelProps也需要后置校验。补给全部步骤绑定同一目标，禁止第二次重新解析同ID后默默转移到替换对象。CharacterSave.MarkDirty(expectedContext)用于原生部分执行的finally，只能计入同一当前存档；切换后同步而不污染新存档。
+
+气运CreateLuck执行虚拟初始化/创建，后续NewCreateLuck仍遵循原生LuckAdd顺序；每一步后置校验，不能因有拥有记录就假定运行对象成功。先天注销回调可能新增其他记录，应过滤回调后的当前bornLuck而非恢复旧快照；此处保留同存档可能部分执行的Pending，不宣称原生生命周期可完整事务回滚。
+
+### 功法对象身份及原槽恢复（07.78）
+
+ItemInventory.Guard供功法复用，绑定人物和背包指针；GuardLearned额外绑定ActionMartialData/PropsData指针，签名或经验相同也不能代替身份核查。获取、学习、圆满、装备、卸下与词条保存在原生步骤后先Guard再读旧对象，MarkDirty使用原上下文。圆满DestroyEquip后不能继续创建已失效人物的运行对象；已装备词条修改原生卸下后，恢复前及门禁后确认原槽仍为空，不覆盖回调中新装备。
+
+原生门禁IsCreateAction后也要确认对象和目标槽。获取生成过程尚未入包时不能MarkDirty；入包部分失败保留可能生效标记，不自动重复全套。此处验证只支持托管交错及本机原生只读顺序，不替代原生需求、解锁、套装或保存重载。
+
+### 单条读取保护与UI管理器消失（07.79）
+
+单条ReadError隔离必须覆盖初始化器及预读取：soleIDHashData/GetValues也是原生getter，不可在try之前执行。功法列表保留异常条目并拒绝操作，正常条目继续读取；未获得类别显示类别未读取，不映射为神通。当前隔离覆盖元数据getter，集合本身读取/遍历异常及实际失效原生对象仍需单独核查。
+
+UI管理器不存在时Close释放本视图及输入隔离；RefreshOwnership不能先解引用g.ui。世界已退出时即使旧地图UI仍活跃也关闭。仅UI暂不可用不等于当前存档失效，不能因此清Pending；保存Poll仍逐帧执行。重复释放、30次打开关闭和4小时模拟闲置通过只证明托管控制流。
+
+### UI隐藏与销毁分开尝试（07.80）
+
+清理已经清空字段时，SetActive(false)失败后不能跳过Destroy，否则对象不再可通过字段找回。ReleaseViewObject将两步独立Cleanup；各页浮层、列表子对象、提示与背包格内容均复用。介绍滚轮恢复失败也不阻断后续状态重置。若Destroy自身失败，记录日志而不宣称资源已释放。
+
+验证实际BookView源代码的24轮Build/页面/图鉴/Dispose，不使用LifecycleHarness中的BookView替身作为这组覆盖。Unity API仍是托管替身，Destroy即时移除模拟子树；结果证明代码调度及受观测资源计数，不证明真实延迟销毁/内存耗用或所有原生实例释放。
+
+### 入口未完成对象的清理（07.81）
+
+Create返回前，外层字段尚未拥有新入口；失败时不能依赖ClearEntries找回对象。隐藏和Destroy均应独立保护，并用原始throw保留初始化异常；清理失败单独记录。托管字体/隐藏故障注入验证该路径，不推导其他初始化阶段或Unity延迟销毁已经通过。
+
+### 分配与字段接管之间的资源（07.82）
+
+对象初始化器的native setter会在赋值给接管字段之前调用；失败时字段仍为空，外层Dispose无法回收该分配。先取得局部对象，再在try中配置并成功后交给长期字段。GameObject子对象挂载前仍由局部引用负责失败清理，不依赖销毁父级。入口21项阶段探针只覆盖入口；PaperSkin/NewRect同类路径仍须单独审查。
+
+满材料复用道具背包Guard；同人物与同存档不能证明背包仍是原容器。部分写入后背包替换，停止旧容器写入/回退，保留Scoped Pending供核对。
+
+### 共用工厂的分配失败（07.83）
+
+PaperSkin.NewTexture与BookView.NewRect均先局部接管native对象，再在保护区配置；配置或挂载失败时负责释放局部对象，原异常重抛。调用方根视图/缓存字段只接管成功返回的对象。12纹理阶段及2控件阶段替身覆盖，不将托管释放计数写为GPU或Unity原生长期验收。
+
+### 单条读取保护的边界（07.84）
+
+初始化器/过滤判定之前的原生getter同样属于记录读取。功法已学data/exp、背包propsType纳入单条保护，null记录不生成假条目。类型未取得时明确“物品类型未读取”且只读；不得将未知记录作为功法写入。集合自身失效与进程级native访问违规不由单条托管catch证明可恢复。
+
+### 无编号诊断条目的选择身份（07.85）
+
+null或空soleID不构成身份，不得用相等匹配多个异常记录。功法只读列表另记录原生对象指针，以同对象优先、有编号沿用编号、无编号仅同InBag/Type/非零指针匹配的方式保留选择；指纹包含指针。该字段仅供UI刷新，不是持久标识，不替代写入前真实编号/签名/上下文/容器校验。
+
+### 中断写入后的只读观察（07.86）
+
+移动finally不能以保存状态为由丢弃已生效操作的首次原点。单独按上下文、ID、原生指针与Resolve存活性确认只读目标，读位置后再确认，才更新进程内返回缓存；Scoped Pending保留不确定状态。该路径不调用写入API，后续写入/地图刷新仍受RequireCurrentTarget的Busy/isSaveData限制；不把只读目标校验作为写入门禁替代品。
+
+### 气运初始化失败的状态归属（07.87）
+
+本机CreateLuck把运行对象加入列表后才执行初始化虚方法；失败不意味着未注册。兼容层返回null也不能证明没有运行对象或其他回调新增记录。不得恢复整个旧bornLuck快照；保留可能已生效的拥有记录与Pending、报告未完成和部分效果。未核实运行类Destroy依赖前不自动注销未知半初始化对象，重读后重复添加依然拒绝。
+
+### 差额运算的最终范围（07.88）
+
+基础值+目标显示值-当前显示值的中间相加可能超int，最终基础值仍可能合法。用long完成完整表达式，再checked转换int并核对DynInt的min/max；不要因中间溢出拒绝合法结果，也不能截断真正越界结果。满状态及境界资源补满按此规则，回读和原有失败路径保留。
+
+### 成长差额的持久格式（07.89）
+
+BHML.realm.debt为ideal-after，正常写入仅为非正数；零删除、负值用InvariantCulture持久化。读取也必须使用Integer/InvariantCulture，存在键而值null、非数值或正值均拒绝；减法必须checked，不得把长整数下溢写成正补偿。区域/非法记录/极值替身检查不扩大为原生历史或DLC验收。
+
+### 同品质境界成长来源（07.90）
+
+GetGradeItem的品质键为(grade*10+phase)*100+quality；OnInit遇到已有键跳过，不能区分同键的多条成长配置。GradeData历史只有quality/luck。当前gradeID为已知来源；离开初期前保留配置ID到objData，历史初期累计优先用经grade/phase/quality校验的来源。新来源、品质历史、成长和截断差额必须同步处理与回读，Undo恢复键原来的存在性，不用首条配置替代已知来源。未知自然历史不能凭基础属性倒推，不宣称完整恢复自然突破材料/随机奖励。
+
+本机只读证据：.tools/audit-realm-branches-native.txt、audit-realm-config-native.txt、audit-realm-complete-native.txt；官方表形状audit-realm-config-shape.json，修复前数值复现audit-realm-branch-before.txt，维护检查CharacterSaveHarness与audit-0790-all.txt。这些不是运行时配置/实际存档与DLC兼容验收。
+
+### 境界数据容器的所有权（07.91）
+
+同一WorldUnitBase不能证明内部数据容器仍相同。境界Plan捕获WorldUnitData、UnitInfoData、WorldUnitDynData、PropertyData、DataObjectData及实际玩家/NPC突破历史的Pointer；每步调用前后及Undo都从当前人物重新解析并核对。包装getter可能返回新的托管对象，禁止ReferenceEquals代替原生指针。容器替换后停止旧引用写入/回退、保留不确定状态，不自动保存；Pointer一致仍不能证明内容/字段/回调未改变，这些依赖继续审计。
+
+### 突破历史的内容冲突（07.92）
+
+字典Pointer相同不证明内容相同；保存GradeData引用的浅快照也不能检测其quality/luck被改。准备阶段用独立不可变戳保存记录Pointer、quality、luck和空记录身份，每步检查键集合与戳。预期状态只随着自己成功执行的按键删除/赋值推进；不要Clear重建整个历史。外部新增/删除/替换/原位修改发生后，Undo同样必须拒绝盲快照恢复，保留Pending提示核对。记录实际字段以本机IL2CPP包装签名为依据，不把托管对象引用相等当原生身份；SetGradeID本机指令会Emit事件，不能假定调用期间没有第三方监听器。
+
+### 动态属性字段身份（07.93）
+
+动态数据容器相同不代表其中DynInt字段未被替换。境界累计用GetValues重新解析字段数量/顺序/Pointer，补满及境界设置另外绑定gradeID、hp/mp/sp与hpMax/mpMax/spMax；普通数字保存用CharacterEditData.Number重新解析。写入前后及Undo都必须校验；不能从缓存旧字段回读成功就报告当前人物修改成功。GetValues的返回集合可由原生委托生成，不校验集合身份。此保护只确认字段归属，不等于校验所有倍率/锁/固定效果与内容竞争；后者及其他属性类别仍在审计。
+
+### 普通属性的父容器归属（07.94）
+
+姓名/性别/性格持有PropertyData、兴趣运行类重建跨原生Destroy/Init，都需要确认WorldUnitData、UnitInfoData、PropertyData未被替换。共用普通保存ensure按原生Pointer绑定这三层，Apply/Undo及兴趣合并空步骤均使用；性格赋值后、权重查询前后分别检查。GetCharacterWeight真实返回int[]并缓存结果；故障替身返回值只对齐调用签名，不模拟真实权重，AfterWeight仅为注入钩子。归属保护不能代替姓名/性格派生效果、兴趣集合内容变化和长期运行验证。
+
+### 兴趣运行集合与失败回退（07.95）
+
+Destroy回调可改变allHobby，不能对旧快照销毁后Clear当前列表。绑定集合和记录Pointer/顺序，只逐项移除自己拥有的旧记录；允许当前Destroy自行移除自己，其他增删/替换均为冲突。新记录加入后Init，失败保留拥有记录、停止同次提交Undo自动重建；成功Apply之后的Undo也先验证运行集合未被外部改变。
+
+Unhollower包装方法的Cecil.IsVirtual可为false，但IL中il2cpp_object_get_virtual_method才是实际原生派发依据。WorldUnitHobbyBase.Destroy为空，Action子类Destroy则注销事件；禁止用基类指令推导所有兴趣无副作用。托管钩子只验证调度和保留，不证明原生部分初始化可安全Destroy或手动重复修改，后续隔离仍待核查。
+
+## 兴趣修改异常后的再次操作（07.96）
+
+原生兴趣修改一旦开始，集合冲突或初始化失败后保留Pending与未知运行对象，并按世界/人物运行身份隔离再次修改。UI短暂退出或保存管理器替换不得清除该隔离；新世界身份可清除，其他人物不继承。写入前校验失败未开始原生修改，不隔离、不做盲Undo，允许纠正后重试。托管检查只覆盖这些控制路径，不能代替原生保存重载验证。

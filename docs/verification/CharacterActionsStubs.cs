@@ -9,13 +9,14 @@ public class DataWorld
         public PlayerLogData playerLog = new PlayerLogData();
         public class PlayerLogData
         {
-            public Dictionary<int, GradeData> upGrade = new Dictionary<int, GradeData>();
-            public class GradeData { public int quality, luck; }
+            public NativeDictionary<int, GradeData> upGrade = new NativeDictionary<int, GradeData>();
+            public class GradeData { public IntPtr Pointer {get{return new IntPtr(GetHashCode());}} public int quality, luck; }
         }
     }
 }
 public partial class DataProps
 {
+    public IntPtr Pointer { get { return new IntPtr(GetHashCode()); } }
     public List<PropsData> allProps = new List<PropsData>();
     public List<PropsData> ShowOverride;
     public List<PropsData> _allShowProps { get { return ShowOverride ?? allProps.Where(p=>p.propsCount>0 && (p.propsItem==null || p.propsItem.hide!=1) && !p.Equipped).ToList(); } }
@@ -38,9 +39,9 @@ public partial class DataProps
     public bool IsHasProps(string sole){return GetProps(sole)!=null;}
     public PropsData GetProps(string sole){return allProps.FirstOrDefault(p=>p.soleID==sole);}
     public int GetPropsNum(int id){return allProps.Where(p=>p.propsID==id).Sum(p=>p.propsCount);}
-    public void UpdateAllShowProps() { }
+    public int RefreshCalls; public Action AfterRefresh; public void UpdateAllShowProps() { RefreshCalls++; if(AfterRefresh!=null)AfterRefresh(); }
     public enum PropsDataType { Props = 1, Martial = 2 }
-    public partial class PropsData { public PropsDataType propsType = PropsDataType.Props; public MartialData Martial; public T To<T>() where T:class { return Martial as T; } public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public string soleIDHashData { get { return soleID+":"+propsID+":"+propsCount+":"+ExtraData+":"+propsType; } } public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
+    public partial class PropsData { public IntPtr Pointer {get{return new IntPtr(GetHashCode());}} public bool ThrowPropsType;private PropsDataType nativePropsType=PropsDataType.Props;public PropsDataType propsType {get{if(ThrowPropsType)throw new InvalidOperationException("native props type getter failed");return nativePropsType;}set{nativePropsType=value;}} public MartialData Martial; public T To<T>() where T:class { return Martial as T; } public ConfItemPropsItem propsItem; public int propsCount,propsID; public string soleID="item",ExtraData=""; public bool ThrowHash; public string soleIDHashData { get { if(ThrowHash)throw new InvalidOperationException("native signature getter failed");return soleID+":"+propsID+":"+propsCount+":"+ExtraData+":"+propsType; } } public bool Equipped; public T TryCast<T>() where T:class{return this as T;} public UIIconTool.PropsInfoDataBase propsInfoBase { get { return new UIIconTool.PropsInfoDataBase { name=propsItem==null?"物品":propsItem.name }; } } }
     public partial class MartialData { public string ExtraData; }
 }
 public class ConfItemPropsItem { public int drop=1,dieDrop=1;public int isOverlay,id,hide,level;public string name,desc; }
@@ -50,6 +51,7 @@ public class ItemPillConfig { public List<ConfItemPillItem> _allConfList=new Lis
 public static partial class UIIconTool { public class PropsInfoDataBase { public string name,typeSuffix; public int sale; } }
 public class DataObjectData
 {
+    public IntPtr Pointer {get{return new IntPtr(GetHashCode());}}
     private Dictionary<string,string> data=new Dictionary<string,string>();
     public bool ContainsKey(string key){return data.ContainsKey(key);}
     public string GetString(string key){return data[key];}

@@ -89,6 +89,20 @@ namespace MOD_YtxSQ1.Services
             if (unit == null || unit.data.unitData.unitID != unitId) throw new InvalidOperationException("当前人物已失效");
             return unit;
         }
+        internal static Action Guard(string context, WorldUnitBase unit)
+        {
+            var id = unit.data.unitData.unitID; var pointer = unit.Pointer;
+            var bag = unit.data.unitData.propData;
+            if (bag == null) throw new InvalidOperationException("背包尚未就绪");
+            var bagPointer = bag.Pointer;
+            Action ensure = () =>
+            {
+                var current = CharacterSave.RequireCurrentTarget(context, id, pointer);
+                if (current.data.unitData.propData == null || current.data.unitData.propData.Pointer != bagPointer)
+                    throw new InvalidOperationException("背包对象已变化，请重新读取");
+            };
+            ensure(); return ensure;
+        }
         internal static string Give(string context, string unitId, int id, int amount)
         {
             var unit = RequireTarget(context, unitId);
@@ -96,11 +110,12 @@ namespace MOD_YtxSQ1.Services
             if (conf == null) throw new InvalidOperationException("道具配置不可发放");
             if (amount < 1 || (conf.isOverlay != 1 && amount != 1))
                 throw new InvalidOperationException(conf.isOverlay == 1 ? "请输入正整数数量（最大2147483647）" : "不可叠加道具每次发放1个");
-            Add(unit, id, amount);
+            Add(context, unit, id, amount);
             return LocalText(conf.name, "道具 #" + id) + "已增加" + amount + "个；请点击保存";
         }
-        private static void Add(WorldUnitBase unit, int id, int amount)
+        private static void Add(string context, WorldUnitBase unit, int id, int amount)
         {
+            var ensure = Guard(context, unit);
             var bag = unit.data.unitData.propData;
             var conf = g.conf.itemProps.GetItem(id);
             // 与原生AddProps相同：满格拒绝新记录，已有叠加记录不再占格。
@@ -111,12 +126,12 @@ namespace MOD_YtxSQ1.Services
             if (current < 0 || amount > int.MaxValue - current) throw new InvalidOperationException("增加后的总数量超过游戏整数范围（2147483647），未添加");
             var expected = current + amount;
             // 新建唯一ID、叠加、原生子类回调均由工厂维护；失败不假装复杂回调可回滚。
-            CharacterSave.Sync(CharacterReader.ContextKey());
+            CharacterSave.Sync(context);
             try
             {
                 // 原生代码以customSoleID != ""判断是否覆盖工厂编号；null也会进入
                 // 覆盖分支，随后唯一ID字典拒绝空key。空字符串才是自动生成的约定。
-                var added = bag.AddProps(id, amount, ""); bag.UpdateAllShowProps();
+                ensure(); var added = bag.AddProps(id, amount, ""); ensure(); bag.UpdateAllShowProps(); ensure();
                 if (bag.GetPropsNum(id) != expected) throw new InvalidOperationException("发放数量回读不一致，请核对背包");
                 if (added == null || added.Count == 0) throw new InvalidOperationException("发放结果未返回物品记录");
                 for (int i = 0; i < added.Count; i++)
@@ -129,7 +144,7 @@ namespace MOD_YtxSQ1.Services
                 }
             }
             catch (Exception ex) { throw new InvalidOperationException("发放未完整确认：" + ex.Message + "；已发生的变化仍在内存，请核对背包后保存"); }
-            finally { CharacterSave.MarkDirty(); }
+            finally { CharacterSave.MarkDirty(context); }
         }
         private static DataProps.PropsData RequireItem(WorldUnitBase unit, InventoryItem expected, bool includeHidden = true)
         {
@@ -155,6 +170,7 @@ namespace MOD_YtxSQ1.Services
             if (item.propsItem == null || item.propsItem.isOverlay != 1) throw new InvalidOperationException("不可叠加物品不能修改数量");
             if (count == item.propsCount) return "数量未改变";
             if (count < 1) throw new InvalidOperationException("请输入正整数数量；清除物品请使用移除操作");
+            var ensure = Guard(context, unit);
             var bag = unit.data.unitData.propData;
             var total = (long)bag.GetPropsNum(item.propsID) - item.propsCount + count;
             if (total < 1 || total > int.MaxValue) throw new InvalidOperationException("同类物品总数量超过游戏整数范围（2147483647），未修改");
@@ -163,26 +179,27 @@ namespace MOD_YtxSQ1.Services
             {
                 // 原生AddProps/DelProps也使用此setter更新values[2]并失效哈希缓存。
                 // 仅改指定唯一ID的正数量，保留品质、词条等values和所有背包索引。
-                item.propsCount = count; bag.UpdateAllShowProps();
+                ensure(); item.propsCount = count; ensure(); bag.UpdateAllShowProps(); ensure();
                 var stored = bag.GetProps(expected.SoleId);
                 if (stored == null || stored.propsID != expected.Id || stored.propsCount != count)
                     throw new InvalidOperationException("数量回读不一致");
             }
             catch (Exception ex) { throw new InvalidOperationException("数量修改未完整确认：" + ex.Message + "；请核对背包", ex); }
-            finally { CharacterSave.MarkDirty(); }
+            finally { CharacterSave.MarkDirty(context); }
             return expected.Name + "的数量已改为" + count + "；请点击保存";
         }
         internal static string Remove(string context, string unitId, InventoryItem expected)
         {
             var unit = RequireTarget(context, unitId); RequireItem(unit, expected, false);
+            var ensure = Guard(context, unit);
             var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
             try
             {
-                bag.DelProps(expected.SoleId); bag.UpdateAllShowProps();
+                ensure(); bag.DelProps(expected.SoleId); ensure(); bag.UpdateAllShowProps(); ensure();
                 if (bag.IsHasProps(expected.SoleId)) throw new InvalidOperationException("物品仍在背包中");
             }
             catch (Exception ex) { throw new InvalidOperationException("移除未完整确认：" + ex.Message + "；请核对背包", ex); }
-            finally { CharacterSave.MarkDirty(); }
+            finally { CharacterSave.MarkDirty(context); }
             return "已移除" + expected.Name + "这一项；请点击保存";
         }
         internal static string Clear(string context, string unitId, string expectedFingerprint)
@@ -190,20 +207,21 @@ namespace MOD_YtxSQ1.Services
             var unit = RequireTarget(context, unitId); var items = Read(unitId, false);
             if (Fingerprint(items) != expectedFingerprint) throw new InvalidOperationException("背包内容已变化，请重新确认清空");
             if (items.Count == 0) return "背包已经为空";
+            var ensure = Guard(context, unit);
             var bag = unit.data.unitData.propData; CharacterSave.Sync(context);
             try
             {
                 foreach (var item in items)
                 {
                     // 上一件的原生删除回调可能改变下一件或世界；逐件再次核对。
-                    var current = RequireTarget(context, unitId); RequireItem(current, item, false);
-                    current.data.unitData.propData.DelProps(item.SoleId);
+                    ensure(); var current = RequireTarget(context, unitId); RequireItem(current, item, false);
+                    current.data.unitData.propData.DelProps(item.SoleId); ensure();
                 }
-                bag.UpdateAllShowProps();
+                ensure(); bag.UpdateAllShowProps(); ensure();
                 foreach (var item in items) if (bag.IsHasProps(item.SoleId)) throw new InvalidOperationException("部分物品未清除，请核对背包");
             }
             catch (Exception ex) { throw new InvalidOperationException("清空未全部完成：" + ex.Message + "；已删除的物品未恢复，请核对背包后保存"); }
-            finally { CharacterSave.MarkDirty(); }
+            finally { CharacterSave.MarkDirty(context); }
             return "已清空" + items.Count + "项背包物品；请点击保存";
         }
         internal static int BestMedicine(WorldUnitBase unit, string resource)
@@ -229,6 +247,7 @@ namespace MOD_YtxSQ1.Services
         internal static string Supply(string context, string unitId)
         {
             var unit = RequireTarget(context, unitId);
+            var ensure = Guard(context, unit);
             int hp = BestMedicine(unit, "hp"), mp = BestMedicine(unit, "mp");
             var bag = unit.data.unitData.propData;
             checked { _ = bag.GetPropsNum(hp) + (hp == mp ? 40 : 20); _ = bag.GetPropsNum(mp) + 20; }
@@ -243,8 +262,8 @@ namespace MOD_YtxSQ1.Services
                     if (conf.drop != 0 || conf.dieDrop != 0) simulatedUsed++;
                 }
             }
-            Add(unit, hp, 20);
-            try { Add(RequireTarget(context, unitId), mp, 20); }
+            ensure(); Add(context, unit, hp, 20);
+            try { ensure(); Add(context, unit, mp, 20); ensure(); }
             catch (Exception ex) { throw new InvalidOperationException("回血药已增加20个，回蓝药未确认完成：" + ex.Message); }
             return LocalText(g.conf.itemProps.GetItem(hp).name, "回血药") + "、" + LocalText(g.conf.itemProps.GetItem(mp).name, "回蓝药") + "各增加20个；请点击保存";
         }

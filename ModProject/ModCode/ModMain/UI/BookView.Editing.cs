@@ -281,7 +281,7 @@ namespace MOD_YtxSQ1.UI
         {
             HideFateTips();
             var previous = dropdownLayer; dropdownLayer = null;
-            if (previous != null) { previous.SetActive(false); UnityEngine.Object.Destroy(previous); }
+            ReleaseViewObject(previous, "选择浮层");
         }
         private void TickEditing()
         {
@@ -310,6 +310,7 @@ namespace MOD_YtxSQ1.UI
         }
         private void SaveEdits()
         {
+            if (selectedIndex == 2 && martialDraftChanged) { SaveMartialDraft(); return; }
             if (!FinishInlineEdit(false)) return;
             CloseDropdown();
             if (CharacterSave.Busy) { SetEditStatus("正在保存，请稍候"); return; }

@@ -125,6 +125,10 @@ internal static class LifecycleHarness
         for (int i = 0; i < 30; i++) { cycles.Toggle(); if (!cycles.IsOpen || !WindowInputScope.Active) throw new Exception("open cycle " + i); cycles.Close(); if (cycles.IsOpen || WindowInputScope.Active) throw new Exception("close cycle " + i); }
         Check(g.ui.Closes == 30 && BookView.Disposals == 30, "30 open-close cycles release each view and input patch");
 
+        Reset();var lostUi=new WorkshopWindow();lostUi.Open(null);g.ui=null;bool lostUiFailed=false;
+        try{lostUi.RefreshOwnership();}catch{lostUiFailed=true;}
+        Check(!lostUiFailed && !lostUi.IsOpen && !WindowInputScope.Active && BookView.Disposals==1,"UI manager loss releases ownership and input once without throwing");
+        lostUi.RefreshOwnership();lostUi.Close();Check(BookView.Disposals==1,"UI manager loss cleanup is repeatable");
         Reset(); g.ui.ThrowOpen = true; var failed = new WorkshopWindow(); failed.Toggle();
         Check(!failed.IsOpen && !WindowInputScope.Active, "native open exception is contained locally");
         g.ui.ThrowOpen = false; failed.Toggle(); Check(failed.IsOpen, "F8 can retry after native open failure"); failed.Close();

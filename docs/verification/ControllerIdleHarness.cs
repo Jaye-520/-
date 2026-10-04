@@ -80,6 +80,10 @@ internal static class ControllerIdleHarness {
         window.Close(); g.world.isIntoWorld = false; controller.OpenFromEntrance("npc-panel"); Check(!window.IsOpen, "entrance rejects exited world");
         g.world.isIntoWorld = true; g.ui.Map.gameObject.activeInHierarchy = false; controller.OpenFromEntrance(null); Check(!window.IsOpen, "entrance rejects unsupported scene");
         controller.Dispose();
+        g.ui=new UI();g.world.isIntoWorld=true;controller=new WorkshopController();window=WorkshopWindow.Last;window.IsOpen=true;g.ui=null;
+        controller.Update();Check(!window.IsOpen && window.Closes==1,"UI manager loss closes active view instead of leaving input attached");
+        g.ui=new UI();g.world.isIntoWorld=false;window.IsOpen=true;
+        controller.Update();Check(!window.IsOpen,"world exit closes view even when stale map UI still appears active");
         Console.WriteLine("TOTAL: " + passed);
     }
 }

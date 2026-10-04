@@ -272,8 +272,7 @@ namespace MOD_YtxSQ1.UI
             for (int i = content.childCount - 1; i >= 0; i--)
             {
                 var old = content.GetChild(i).gameObject;
-                old.SetActive(false);
-                UnityEngine.Object.Destroy(old);
+                ReleaseViewObject(old, "旧页面");
             }
             for (int i = 0; i < tabImages.Count; i++)
             {
@@ -304,7 +303,7 @@ namespace MOD_YtxSQ1.UI
             }
             if (index == 2)
             {
-                editStatus.text = "读取已学与装备功法；秘籍库和搭配库可获取原生秘籍到背包";
+                editStatus.text = "获取秘籍 → 学习 → 修炼与装备 → 参悟；操作当前选中人物";
                 BuildMartials(); RefreshCharacter(true); return;
             }
             if (index != 0)
@@ -882,7 +881,7 @@ namespace MOD_YtxSQ1.UI
                 for (int child = page.childCount - 1; child >= 0; child--)
                 {
                     var old = page.GetChild(child).gameObject;
-                    old.SetActive(false); UnityEngine.Object.Destroy(old);
+                    ReleaseViewObject(old, "气运行");
                 }
                 var items = FilterFates(i);
                 var rowPitch = Mathf.Min(36, Mathf.Max(24, column.viewport.sizeDelta.y / 3));
@@ -925,13 +924,12 @@ namespace MOD_YtxSQ1.UI
         private void HideFateTips()
         {
             var previous = fateTip;
-            if (itemTipSourceScroll != null) itemTipSourceScroll.scrollSensitivity = itemBagWheelSensitivity;
+            if (itemTipSourceScroll != null) Cleanup(() => itemTipSourceScroll.scrollSensitivity = itemBagWheelSensitivity, "提示滚轮状态");
             itemTipScroll = itemTipSourceScroll = null;
             fateTip = fateTipOwner = null;
             fateTipCloseAt = 0;
             if (previous == null) return;
-            previous.gameObject.SetActive(false);
-            UnityEngine.Object.Destroy(previous.gameObject);
+            ReleaseViewObject(previous.gameObject, "介绍浮层");
         }
 
         private static void BindFateHover(GameObject target, Action enter, Action exit)
@@ -1073,10 +1071,18 @@ namespace MOD_YtxSQ1.UI
         private RectTransform NewRect(string name, Transform parent)
         {
             var go = new GameObject("BHML_" + name);
-            go.layer = parent.gameObject.layer;
-            var rect = go.AddComponent<RectTransform>();
-            rect.SetParent(parent, false);
-            return rect;
+            try
+            {
+                go.layer = parent.gameObject.layer;
+                var rect = go.AddComponent<RectTransform>();
+                rect.SetParent(parent, false);
+                return rect;
+            }
+            catch
+            {
+                ReleaseViewObject(go, "未挂载控件");
+                throw;
+            }
         }
 
         // 所有内容统一采用左上角坐标，尺寸与安全区同源；越界直接触发原生回退。
@@ -1236,6 +1242,14 @@ namespace MOD_YtxSQ1.UI
             selectedUnitId = null; contextKey = null;
             lastReadFailure = null; nextCharacterRefresh = 0;
             selectedIndex = -1;
+        }
+
+        private static void ReleaseViewObject(GameObject previous, string part)
+        {
+            if (previous == null) return;
+            // 隐藏触发原生回调可能抛错，销毁仍须独立尝试。
+            Cleanup(() => previous.SetActive(false), "隐藏" + part);
+            Cleanup(() => UnityEngine.Object.Destroy(previous), "销毁" + part);
         }
 
         private static void Cleanup(Action action, string part)

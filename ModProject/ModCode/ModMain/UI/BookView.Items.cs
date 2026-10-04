@@ -300,7 +300,7 @@ namespace MOD_YtxSQ1.UI
                 var child = slot.GetChild(j).gameObject;
                 var icon = child.GetComponent<UIIconItemBase>();
                 if (icon != null) try { icon.CloseIconInfo(); } catch (Exception ex) { Debug.LogWarning("[八荒秘录] 图标提示清理失败：" + ex.Message); }
-                child.SetActive(false); UnityEngine.Object.Destroy(child);
+                ReleaseViewObject(child, "背包格内容");
             }
         }
         private RectTransform ItemDialog(string title, out string unitId, out string context, bool primaryLeft = false)
@@ -385,13 +385,13 @@ namespace MOD_YtxSQ1.UI
         {
             HideFateTips(); if (itemLibrarySearch != null) WindowInputScope.Unregister(itemLibrarySearch);
             itemLibrarySearch = null; itemLibraryScroll = null; itemLibraryCount = null; itemLibraryRows.Clear(); itemLibraryResults.Clear();
-            var old = itemLibrary; itemLibrary = null; if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
+            var old = itemLibrary; itemLibrary = null; ReleaseViewObject(old, "道具浮层");
         }
         private void CloseItemDialog()
         {
             CloseItemMenu();
             if (itemAmount != null) WindowInputScope.Unregister(itemAmount); itemAmount = null; itemDialogStatus = null;
-            var old = itemDialog; itemDialog = null; if (old != null) { old.SetActive(false); UnityEngine.Object.Destroy(old); }
+            var old = itemDialog; itemDialog = null; ReleaseViewObject(old, "道具浮层");
         }
         private void ClearItemsView()
         {

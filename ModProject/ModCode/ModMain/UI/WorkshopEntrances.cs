@@ -95,10 +95,11 @@ namespace MOD_YtxSQ1.UI
         {
             EnsureTexture();
             var go = new GameObject(player ? "BHML_MapEntrance" : "BHML_NPCEntrance");
-            go.layer = owner.gameObject.layer;
+            GameObject tip = null, label = null;
             var entry = new Entry { Owner = owner, Context = context, Player = player };
             try
             {
+                go.layer = owner.gameObject.layer;
                 entry.Rect = go.AddComponent<RectTransform>();
                 entry.Rect.SetParent(owner.transform, false);
                 entry.Rect.anchorMin = entry.Rect.anchorMax = entry.Rect.pivot = new Vector2(.5f, .5f);
@@ -116,7 +117,7 @@ namespace MOD_YtxSQ1.UI
                 entry.Button.colors = colors;
                 entry.Button.navigation = new Navigation { mode = Navigation.Mode.None };
                 entry.Button.onClick.AddListener((UnityAction)(new Action(() => Click(entry, player))));
-                var tip = new GameObject("BHML_EntranceTip");
+                tip = new GameObject("BHML_EntranceTip");
                 tip.layer = go.layer;
                 entry.Tip = tip;
                 var tipRect = tip.AddComponent<RectTransform>();
@@ -127,7 +128,7 @@ namespace MOD_YtxSQ1.UI
                 var background = tip.AddComponent<Image>();
                 background.color = new Color(.08f, .085f, .075f, .96f);
                 background.raycastTarget = false;
-                var label = new GameObject("文字");
+                label = new GameObject("文字");
                 label.layer = go.layer;
                 var labelRect = label.AddComponent<RectTransform>();
                 labelRect.SetParent(tipRect, false);
@@ -147,7 +148,23 @@ namespace MOD_YtxSQ1.UI
                 Debug.Log("[八荒秘录] " + ModVersion.Current + "已挂载" + (player ? "主界面" : "NPC面板") + "玉简入口。");
                 return entry;
             }
-            catch { go.SetActive(false); UnityEngine.Object.Destroy(go); throw; }
+            catch
+            {
+                // Children may fail before parenting, so the root alone cannot own cleanup.
+                ReleaseIncompleteObject(label);
+                ReleaseIncompleteObject(tip);
+                ReleaseIncompleteObject(go);
+                throw;
+            }
+        }
+
+        private static void ReleaseIncompleteObject(GameObject previous)
+        {
+            if (previous == null) return;
+            try { previous.SetActive(false); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 隐藏未完成入口失败：" + ex.Message); }
+            try { UnityEngine.Object.Destroy(previous); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 销毁未完成入口失败：" + ex.Message); }
         }
 
         private void Click(Entry entry, bool player)
@@ -181,9 +198,21 @@ namespace MOD_YtxSQ1.UI
             {
                 if (stream == null) throw new InvalidOperationException("缺少玉简入口资源。");
                 stream.CopyTo(buffer);
-                var loaded = new Texture2D(2, 2, TextureFormat.RGBA32, true) { filterMode = FilterMode.Trilinear, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.HideAndDontSave };
-                try { if (!ImageConversion.LoadImage(loaded, buffer.ToArray(), true)) throw new InvalidOperationException("玉简图片解码失败。"); texture = loaded; }
-                catch { UnityEngine.Object.Destroy(loaded); throw; }
+                var loaded = new Texture2D(2, 2, TextureFormat.RGBA32, true);
+                try
+                {
+                    loaded.filterMode = FilterMode.Trilinear;
+                    loaded.wrapMode = TextureWrapMode.Clamp;
+                    loaded.hideFlags = HideFlags.HideAndDontSave;
+                    if (!ImageConversion.LoadImage(loaded, buffer.ToArray(), true)) throw new InvalidOperationException("玉简图片解码失败。");
+                    texture = loaded;
+                }
+                catch
+                {
+                    try { UnityEngine.Object.Destroy(loaded); }
+                    catch (Exception ex) { Debug.LogWarning("[八荒秘录] 销毁未完成入口纹理失败：" + ex.Message); }
+                    throw;
+                }
             }
         }
         private void UpdateCaption(Entry entry, bool allowed)

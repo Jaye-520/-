@@ -8,16 +8,18 @@ namespace MOD_YtxSQ1.Services
     internal sealed class MartialEntry
     {
         internal int Id, Category, GradeMin, GradeMax, Grade, Level, Exp, SuitId;
-        internal string Name, School, SoleId, Signature;
-        internal bool Equipped, SuitGradeUnknown;
+        internal string Name, School, SoleId, Signature, ReadError;
+        internal bool Equipped, SuitGradeUnknown, InBag;
+        internal int MaxExp;
         internal MartialType Type;
+        internal IntPtr ReadPointer;
     }
-    internal static class CharacterMartials
+    internal static partial class CharacterMartials
     {
         internal static readonly string[] Categories = { "武技 / 灵技", "绝技", "身法", "心法", "神通" };
         internal static string Plain(string text) { return Regex.Replace(text ?? "", "<[^>]+>", ""); }
         private static string Local(string key) { return Plain(GameTool.LS(key)); }
-        internal static string Realm(int grade) { return g.conf.roleGrade.GetGradeName(grade, 1); }
+        internal static string Realm(int grade) { return grade > 0 ? g.conf.roleGrade.GetGradeName(grade, 1) : "境界未读取"; }
         internal static int Grade(string unitId)
         {
             var unit = CharacterReader.Resolve(unitId);
@@ -135,17 +137,27 @@ namespace MOD_YtxSQ1.Services
             foreach (var type in new[] { MartialType.SkillLeft, MartialType.SkillRight, MartialType.Step, MartialType.Ability, MartialType.Ultimate })
             {
                 var items = info.GetActionMartial(type);
+                if (items == null) continue;
                 for (int i = 0; i < items.Count; i++)
                 {
-                    var data = items[i]; var props = data.data;
-                    if (props == null) continue;
-                    var martial = props.To<DataProps.MartialData>(); var value = martial.martialInfo;
-                    bool equipped = props.soleID == info.skillLeft || props.soleID == info.skillRight || props.soleID == info.step || props.soleID == info.ultimate;
-                    if (info.abilitys != null) foreach (var id in info.abilitys) if (id == props.soleID) equipped = true;
-                    result.Add(new MartialEntry { Id = martial.baseID, Name = Plain(value.name), School = School(value.basType), Type = type,
-                        Category = type == MartialType.SkillLeft ? 0 : type == MartialType.SkillRight ? 1 : type == MartialType.Step ? 2 : type == MartialType.Ability ? 3 : 4,
-                        SuitId = type == MartialType.Ability ? props.To<DataProps.PropsAbilityData>().suitID : 0,
-                        SoleId = props.soleID, Signature = props.soleIDHashData, Grade = martial.grade, Level = value.level, Exp = data.exp, Equipped = equipped });
+                    var data = items[i];
+                    if (data == null) continue;
+                    DataProps.PropsData props = null;
+                    IntPtr readPointer = IntPtr.Zero;
+                    try
+                    {
+                        readPointer = data.Pointer;
+                        props = data.data;
+                        if (props == null) continue;
+                        var entry = ReadMartialEntry(unit, props, type, data.exp, false);
+                        entry.ReadPointer = readPointer; result.Add(entry);
+                    }
+                    catch (Exception ex)
+                    {
+                        var unread = props == null ? UnreadMartialEntry(type, false) : ReadMartialEntry(unit, props, type, 0, false);
+                        unread.ReadError = ex.Message; unread.ReadPointer = readPointer;
+                        result.Add(unread);
+                    }
                 }
             }
             result.Sort((a, b) => a.Equipped != b.Equipped ? (a.Equipped ? -1 : 1) : a.Category.CompareTo(b.Category));
@@ -154,16 +166,14 @@ namespace MOD_YtxSQ1.Services
         internal static string Fingerprint(List<MartialEntry> entries)
         {
             var text = new StringBuilder();
-            foreach (var entry in entries) text.Append(entry.SoleId).Append(':').Append(entry.Signature).Append(':').Append(entry.Exp).Append(':').Append(entry.Equipped).Append(';');
+            foreach (var entry in entries) text.Append(entry.ReadPointer).Append(':').Append(entry.Type).Append(':').Append(entry.SoleId).Append(':').Append(entry.Signature).Append(':').Append(entry.MaxExp).Append(':').Append(entry.InBag).Append(':').Append(entry.Exp).Append(':').Append(entry.Equipped).Append(':').Append(entry.ReadError).Append(';');
             return text.ToString();
         }
         internal static string Description(string unitId, MartialEntry entry)
         {
             var unit = CharacterReader.Resolve(unitId);
             if (unit == null) throw new InvalidOperationException("当前人物已失效");
-            var action = unit.data.unitData.GetActionMartial(entry.SoleId);
-            if (action == null || action.data.soleIDHashData != entry.Signature) throw new InvalidOperationException("这本功法已变化，请重新选择");
-            var martial = action.data.To<DataProps.MartialData>();
+            var martial = Record(unit, entry).To<DataProps.MartialData>();
             return Plain(UIMartialInfoTool.GetDescRichText(UIMartialInfoTool.GetDesc(martial), new BattleSkillValueData(martial), 2));
         }
         private static DataProps.PropsData Generate(MartialEntry entry, int grade)
@@ -206,19 +216,20 @@ namespace MOD_YtxSQ1.Services
         internal static string Give(string context, string unitId, IList<MartialEntry> entries, int expectedGrade)
         {
             var unit = ItemInventory.RequireTarget(context, unitId);
+            var ensure = ItemInventory.Guard(context, unit);
             if (entries == null || entries.Count == 0) throw new InvalidOperationException("请先选择秘籍");
             if (unit.data.dynUnitData.GetGrade() != expectedGrade) throw new InvalidOperationException("人物境界已变化，请重新选择");
             int used, total; ItemInventory.ReadCapacity(unitId, out used, out total);
             if (total - used < entries.Count) throw new InvalidOperationException("需要" + entries.Count + "个空格，背包仅剩" + Math.Max(0, total - used) + "格；未发放");
             // 全批生成、核对成功才开始入包；前缀与唯一ID由原生奖励/物品工厂负责。
             var props = new List<DataProps.PropsData>();
-            foreach (var entry in entries) props.Add(Generate(entry, expectedGrade));
+            foreach (var entry in entries) { ensure(); props.Add(Generate(entry, expectedGrade)); ensure(); }
             int completed = 0; CharacterSave.Sync(context);
             try
             {
                 foreach (var item in props)
                 {
-                    unit = ItemInventory.RequireTarget(context, unitId);
+                    ensure();
                     if (unit.data.dynUnitData.GetGrade() != expectedGrade) throw new InvalidOperationException("人物境界已变化");
                     ItemInventory.ReadCapacity(unitId, out used, out total);
                     if (used >= total) throw new InvalidOperationException("背包空间已变化");
@@ -226,8 +237,8 @@ namespace MOD_YtxSQ1.Services
                     var source = entries[completed];
                     try
                     {
-                        unit.data.unitData.propData.AddProps(item);
-                        unit.data.unitData.propData.UpdateAllShowProps();
+                        ensure(); unit.data.unitData.propData.AddProps(item); ensure();
+                        unit.data.unitData.propData.UpdateAllShowProps(); ensure();
                         var stored = unit.data.unitData.propData.GetProps(soleId);
                         if (stored == null || stored.propsType != DataProps.PropsDataType.Martial || stored.soleIDHashData != signature)
                             throw new InvalidOperationException("入包记录回读不一致");
@@ -235,7 +246,7 @@ namespace MOD_YtxSQ1.Services
                             throw new InvalidOperationException("入包传承身份回读不一致");
                         completed++;
                     }
-                    finally { CharacterSave.MarkDirty(); }
+                    finally { CharacterSave.MarkDirty(context); }
                 }
             }
             catch (Exception ex) { throw new InvalidOperationException("已确认添加" + completed + "本，后续未完整确认：" + ex.Message + "；请核对背包，勿直接重复整套添加", ex); }

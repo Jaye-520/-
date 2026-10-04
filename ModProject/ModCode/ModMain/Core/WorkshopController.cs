@@ -24,6 +24,12 @@ namespace MOD_YtxSQ1.Core
         public void Update()
         {
             CharacterSave.Poll();
+            if (g.isDestroy || g.ui == null)
+            {
+                window.Close();
+                if (g.isDestroy) { CharacterEditSession.Shared.Sync(null); CharacterSave.Sync(null); }
+                return;
+            }
             var togglePressed = Input.GetKeyDown(KeyCode.F8);
             // 关闭时只做低频世界状态检查；按键仍逐帧检测，不增加打开延迟。
             if (!window.IsOpen && !togglePressed)
@@ -31,12 +37,12 @@ namespace MOD_YtxSQ1.Core
                 if (Time.unscaledTime < nextIdleCheck) return;
                 nextIdleCheck = Time.unscaledTime + .5f;
                 if (g.isDestroy || g.world == null || g.world.isDestroy || !g.world.isIntoWorld)
-                { CharacterEditSession.Shared.Sync(null); CharacterSave.Sync(null); }
+                { CharacterEditSession.Shared.Sync(null); CharacterSave.Sync(null); window.Close(); }
                 window.RefreshOwnership();
                 return;
             }
             if (g.isDestroy || g.world == null || g.world.isDestroy || !g.world.isIntoWorld)
-            { CharacterEditSession.Shared.Sync(null); CharacterSave.Sync(null); }
+            { CharacterEditSession.Shared.Sync(null); CharacterSave.Sync(null); window.Close(); return; }
             if (g.isDestroy || g.ui == null) return;
             window.RefreshOwnership();
             var map = g.ui.GetUI(UIType.MapMain);

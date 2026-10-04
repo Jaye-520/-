@@ -83,17 +83,22 @@ namespace MOD_YtxSQ1.UI
                             throw new InvalidOperationException("图片解码失败：" + resourceName);
                         return texture;
                     }
-                    catch { UnityEngine.Object.Destroy(texture); throw; }
+                    catch { Release(texture); throw; }
                 }
             }
         }
 
         private static Texture2D NewTexture(int width, int height, TextureWrapMode wrap)
         {
-            return new Texture2D(width, height, TextureFormat.RGBA32, false)
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            try
             {
-                wrapMode = wrap, filterMode = FilterMode.Bilinear, hideFlags = HideFlags.HideAndDontSave
-            };
+                texture.wrapMode = wrap;
+                texture.filterMode = FilterMode.Bilinear;
+                texture.hideFlags = HideFlags.HideAndDontSave;
+                return texture;
+            }
+            catch { Release(texture); throw; }
         }
 
         public void Dispose()

@@ -88,7 +88,7 @@ namespace MOD_YtxSQ1.UI
         public void RefreshOwnership()
         {
             // 原生返回/关闭也可能结束窗口；及时移除布局，避免共享窗口复用时残留。
-            if (ownedWindow != null && (!ownedWindow.gameObject.activeInHierarchy ||
+            if (ownedWindow != null && (g.ui == null || !ownedWindow.gameObject.activeInHierarchy ||
                 g.ui.GetUI(UIType.TextInfoLong) != ownedWindow))
             {
                 ReleaseView();
