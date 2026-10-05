@@ -488,8 +488,38 @@ internal static class CharacterSaveHarness
         Check(!CharacterSave.Busy&&CharacterSave.Pending>0&&message.Contains("失败"),"failed disk save preserves dirty memory for retry");
         Commit();Check(g.data.Calls==2&&g.world.playerUnit.data.dynUnitData.hp.value==100,"retry saves current memory without replaying drafts");g.data.Complete(true);CharacterSave.Poll();
         Check(CharacterSave.Pending==0&&message=="修改已保存","only successful callback clears dirty marker");
-        Reset();Stage(0,4,"100");Stage(1,0,"90");g.world.playerUnit.data.dynUnitData.attack.allMulCall.Add(new object());Commit();
+        Reset();Stage(0,4,"100");Stage(1,0,"90");g.world.playerUnit.data.dynUnitData.attack.allEqualCall.Add(new object());Commit();
         Check(g.data.Calls==0&&g.world.playerUnit.data.dynUnitData.hp.value==123&&session.Count==2,"unsupported modifier rejects entire batch during preflight");
+        foreach(var addition in new[]{false,true})
+        foreach(var targetValue in new[]{5000,300})
+        {
+            Reset();var maximum=g.world.playerUnit.data.dynUnitData.hpMax;maximum.Bonus=20;
+            if(addition)maximum.allMulAddCall.Add(()=>.2f);else maximum.allMulCall.Add(()=>.2f);
+            var previous=maximum.Stored;int writes=0;maximum.AfterWrite=()=>writes++;
+            Stage(0,4,targetValue.ToString(),1);Commit();
+            Check(maximum.value==targetValue && maximum.Stored!=previous && writes==1 && g.data.Calls==1,
+                "resource maximum with native multiplier inverses display without probing live setter: MulAdd="+addition+" target="+targetValue);
+            g.data.Complete(true);CharacterSave.Poll();
+        }
+        Reset();var impossible=g.world.playerUnit.data.dynUnitData.hpMax;impossible.allMulCall.Add(()=>1f);int impossibleWrites=0;impossible.AfterWrite=()=>impossibleWrites++;
+        Stage(0,4,"100");Stage(0,4,"5001",1);Commit();
+        Check(g.data.Calls==0 && impossibleWrites==0 && impossible.Stored==456 && g.world.playerUnit.data.dynUnitData.hp.value==123 && session.Count==2,
+            "unreachable rounded multiplier result rejects whole batch with no live writes");
+        Reset();var combined=g.world.playerUnit.data.dynUnitData.hpMax;combined.Bonus=20;combined.allMulCall.Add(()=>.1f);combined.allMulCall.Add(()=>.1f);combined.allMulAddCall.Add(()=>.1f);combined.allMulAddCall.Add(()=>.2f);
+        Stage(0,4,"5000",1);Commit();Check(combined.value==5000 && g.data.Calls==1,"combined additive and multiplicative modifiers use staged native rounding");g.data.Complete(true);CharacterSave.Poll();
+        Reset();var inert=g.world.playerUnit.data.dynUnitData.hpMax;inert.allMulCall.Add(()=>0f);Stage(0,4,"5000",1);Commit();
+        Check(inert.value==5000 && g.data.Calls==1,"registered zero multiplier does not block resource editing");g.data.Complete(true);CharacterSave.Poll();
+        Reset();var zeroMultiplier=g.world.playerUnit.data.dynUnitData.hpMax;zeroMultiplier.allMulCall.Add(()=>-1f);Stage(0,4,"5000",1);Commit();
+        Check(zeroMultiplier.Stored==456 && g.data.Calls==0 && session.Count==1,"zero effective multiplier rejects unattainable target without writes");
+        Reset();var changing=g.world.playerUnit.data.dynUnitData.hpMax;float changingRate=.2f;changing.allMulCall.Add(()=>changingRate);
+        var changingField=new CharacterField(0,4,1);var changingChange=new CharacterEditSession.Change{UnitId="player",Field=changingField,Original=CharacterEditData.Read(g.world.playerUnit,changingField),Value="5000"};
+        var prepareNumber=typeof(CharacterSave).GetMethod("PrepareForUnit",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+        var preparedNumber=prepareNumber.Invoke(null,new object[]{changingChange,new System.Collections.Generic.List<CharacterEditSession.Change>{changingChange},g.world.playerUnit});
+        var applyNumber=(Action)preparedNumber.GetType().GetField("Apply",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(preparedNumber);
+        var undoNumber=(Action)preparedNumber.GetType().GetField("Undo",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(preparedNumber);
+        changingRate=.5f;int changedWrites=0;changing.AfterWrite=()=>changedWrites++;bool changedRejected=false;
+        try{applyNumber();}catch(InvalidOperationException){changedRejected=true;}undoNumber();
+        Check(changedRejected && changedWrites==0 && changing.Stored==456,"changed multiplier between prepare and apply rejects without setter or needless rollback");
         Reset();Stage(0,4,"100");g.world.playerUnit.data.dynUnitData.hp.Stored=122;Commit();
         Check(g.data.Calls==0&&g.world.playerUnit.data.dynUnitData.hp.value==122,"external value change cannot overwrite newer game data");
         Reset();Stage(0,4,"100");Stage(1,0,"90");g.world.playerUnit.data.dynUnitData.attack.RejectWrite=true;Commit();

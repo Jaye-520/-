@@ -24,10 +24,12 @@ namespace MOD_YtxSQ1.UI
         private readonly HashSet<int> itemPicks = new HashSet<int>(), itemLibraryPicks = new HashSet<int>();
         private readonly List<ItemRow> itemRows = new List<ItemRow>(), itemLibraryRows = new List<ItemRow>();
         private readonly List<RectTransform> bagSlots = new List<RectTransform>();
+        private readonly List<Image[]> bagSlotBackgrounds = new List<Image[]>();
         private List<InventoryItem> bagItems = new List<InventoryItem>();
         private string bagOwner, bagFingerprint, itemCatalogContext;
         private const float ItemRowPitch = 42, BagPitch = 86;
         private int bagColumns, bagFreeSlots;
+        private int bagRenderFirst = -1;
 
         private ScrollRect ItemScroll(RectTransform parent, string name, float x, float y, float width, float height)
         {
@@ -72,7 +74,15 @@ namespace MOD_YtxSQ1.UI
             bagBar.direction = Scrollbar.Direction.BottomToTop; itemBagScroll.verticalScrollbar = bagBar;
             bagColumns = Math.Max(1, (int)(itemBagScroll.content.sizeDelta.x / BagPitch));
             var pool = ((int)Math.Ceiling(itemBagScroll.viewport.sizeDelta.y / BagPitch) + 1) * bagColumns;
-            for (int i = 0; i < pool; i++) bagSlots.Add(Box("背包格" + i, itemBagScroll.content, 0, 0, 78, 78));
+            for (int i = 0; i < pool; i++)
+            {
+                var slot = Box("背包格" + i, itemBagScroll.content, 0, 0, 78, 78);
+                bagSlots.Add(slot);
+                bagSlotBackgrounds.Add(new[] {
+                    Fill(slot, "背包格底", 0, 0, 78, 78, new Color(.52f, .53f, .51f, .14f)),
+                    Fill(slot, "格上沿", 0, 0, 78, 1, Gold), Fill(slot, "格下沿", 0, 77, 78, 1, Gold),
+                    Fill(slot, "格左沿", 0, 0, 1, 78, Gold), Fill(slot, "格右沿", 77, 0, 1, 78, Gold) });
+            }
             itemBagScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => { CloseItemMenu(); HideFateTips(); RenderBagSlots(); })));
             FilterItems(false);
         }
@@ -168,38 +178,44 @@ namespace MOD_YtxSQ1.UI
                     Mathf.Max(itemBagScroll.viewport.sizeDelta.y, (float)Math.Ceiling(((double)items.Count + bagFreeSlots) / bagColumns) * BagPitch));
                 var position = itemBagScroll.content.anchoredPosition;
                 itemBagScroll.content.anchoredPosition = new Vector2(0, Mathf.Clamp(position.y, 0, itemBagScroll.content.sizeDelta.y - itemBagScroll.viewport.sizeDelta.y));
-                RenderBagSlots();
+                RenderBagSlots(true);
             }
             catch (Exception ex)
             {
                 CloseItemMenu(); HideFateTips();
-                bagItems.Clear(); bagFreeSlots = 0; bagOwner = null; bagFingerprint = null; itemBagCapacity.text = ""; RenderBagSlots();
+                bagItems.Clear(); bagFreeSlots = 0; bagOwner = null; bagFingerprint = null; itemBagCapacity.text = ""; RenderBagSlots(true);
                 itemBagTitle.text = "背包读取失败"; SetEditStatus(ex.Message, true);
             }
         }
-        private void RenderBagSlots()
+        private void RenderBagSlots(bool force = false)
         {
             if (itemBagScroll == null) return;
             var first = (int)(Mathf.Max(0, itemBagScroll.content.anchoredPosition.y) / BagPitch) * bagColumns;
+            if (!force && first == bagRenderFirst) return;
+            bagRenderFirst = first;
             var unit = CharacterReader.Resolve(selectedUnitId);
             for (int i = 0; i < bagSlots.Count; i++)
             {
-                var slot = bagSlots[i]; var index = first + i;
-                slot.gameObject.SetActive(index < (long)bagItems.Count + bagFreeSlots && unit != null);
-                slot.anchoredPosition = new Vector2(index % bagColumns * BagPitch, -(index / bagColumns) * BagPitch);
+                var index = first + i;
+                // 按绝对索引循环复用，重叠行仍由原格子承载；跨一行只换一行图标。
+                var poolIndex = index % bagSlots.Count;
+                var slot = bagSlots[poolIndex];
+                var active = index < (long)bagItems.Count + bagFreeSlots && unit != null;
                 var key = index < bagItems.Count ? bagOwner + ":" + bagItems[index].SoleId + ":" + bagItems[index].DataSignature + ":hidden:" + bagItems[index].Hidden : bagOwner + ":empty:" + index;
-                key += slot.gameObject.activeSelf ? ":on" : ":off";
+                key += active ? ":on" : ":off";
                 if (slot.gameObject.name == key) continue;
+                if (slot.gameObject.activeSelf != active) slot.gameObject.SetActive(active);
+                slot.anchoredPosition = new Vector2(index % bagColumns * BagPitch, -(index / bagColumns) * BagPitch);
                 slot.gameObject.name = key;
-                ClearBagSlot(slot);
+                ClearBagSlot(slot, 5);
                 if (!slot.gameObject.activeSelf || unit == null) continue;
                 var empty = index >= bagItems.Count;
                 var resource = !empty && bagItems[index].Hidden;
-                Fill(slot, resource ? "隐藏资源格底" : empty ? "空背包格底" : "背包格底", 0, 0, 78, 78,
-                    resource ? new Color(.66f, .22f, .18f, .25f) : new Color(.52f, .53f, .51f, .14f));
+                var backgrounds = bagSlotBackgrounds[poolIndex];
+                backgrounds[0].gameObject.name = resource ? "BHML_隐藏资源格底" : empty ? "BHML_空背包格底" : "BHML_背包格底";
+                backgrounds[0].color = resource ? new Color(.66f, .22f, .18f, .25f) : new Color(.52f, .53f, .51f, .14f);
                 var edge = resource ? new Color(.65f, .24f, .20f, .6f) : new Color(.40f, .42f, .39f, .20f);
-                Fill(slot, "格上沿", 0, 0, 78, 1, edge); Fill(slot, "格下沿", 0, 77, 78, 1, edge);
-                Fill(slot, "格左沿", 0, 0, 1, 78, edge); Fill(slot, "格右沿", 77, 0, 1, 78, edge);
+                for (int j = 1; j < backgrounds.Length; j++) backgrounds[j].color = edge;
                 if (empty) continue;
                 var backgroundCount = slot.childCount;
                 try
@@ -399,7 +415,8 @@ namespace MOD_YtxSQ1.UI
             if (itemSearch != null) WindowInputScope.Unregister(itemSearch);
             foreach (var slot in bagSlots) ClearBagSlot(slot);
             itemSearch = null; itemResultsScroll = null; itemBagScroll = null; itemBagTitle = itemBagCapacity = null; bagFreeSlots = 0;
-            itemRows.Clear(); bagSlots.Clear(); itemResults.Clear(); bagItems.Clear(); bagOwner = null; bagFingerprint = null;
+            itemRows.Clear(); bagSlots.Clear(); bagSlotBackgrounds.Clear(); itemResults.Clear(); bagItems.Clear(); bagOwner = null; bagFingerprint = null;
+            bagRenderFirst = -1;
         }
     }
 }

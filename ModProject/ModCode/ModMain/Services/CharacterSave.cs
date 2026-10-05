@@ -279,8 +279,8 @@ namespace MOD_YtxSQ1.Services
             var number = CharacterEditData.Number(unit, f);
             if (number == null || number.lockValue || number.onBaseValueSetCall == null)
                 throw new InvalidOperationException("该属性缺少可持久化的原生写入入口");
-            if (number.allMulCall.Count > 0 || number.allMulAddCall.Count > 0 || number.allEqualCall.Count > 0)
-                throw new InvalidOperationException("该属性受倍率或固定效果控制，请先移除相关效果再修改");
+            if (number.allEqualCall.Count > 0)
+                throw new InvalidOperationException("该属性被固定效果覆盖，请先移除相关效果再修改");
             var numberPointer = number.Pointer;
             var ensureTarget = ensure;
             ensure = () =>
@@ -293,15 +293,72 @@ namespace MOD_YtxSQ1.Services
             var before = number.baseValue;
             long target = value;
             if (f.Group == 0 && f.Index == 0) target = (long)value * 12 + number.value % 12;
-            var adjusted = checked((int)(before + target - number.value));
+            var multiplied = number.allMulCall.Count > 0 || number.allMulAddCall.Count > 0;
+            var adjusted = multiplied ? FindNumberBase(number, before, checked((int)target), ensure)
+                : checked((int)(before + target - number.value));
             if (adjusted < number.minValue || adjusted > number.maxValue || target < number.minValue || target > number.maxValue)
                 throw new InvalidOperationException("数值超出游戏允许范围（" + number.minValue + "–" + number.maxValue + "）");
+            bool numberStarted = false;
             return new Write
             {
                 Order = f.Group == 0 && f.Index >= 1 && f.Index <= 6 && f.Slot == 1 ? -1 : 0,
-                Apply = () => { ensure(); number.baseValue = adjusted; ensure(); if (number.value != target) throw new InvalidOperationException("属性效果导致结果不匹配"); },
-                Undo = () => { ensure(); number.baseValue = before; ensure(); }
+                Apply = () =>
+                {
+                    ensure();
+                    if (multiplied && FindNumberBase(number, before, checked((int)target), ensure) != adjusted)
+                        throw new InvalidOperationException("属性倍率已变化，请重新确认修改");
+                    numberStarted = true; number.baseValue = adjusted; ensure();
+                    if (number.value != target) throw new InvalidOperationException("属性效果导致结果不匹配");
+                },
+                Undo = () => { if (!numberStarted) return; ensure(); number.baseValue = before; ensure(); }
             };
+        }
+        private static int FindNumberBase(DynInt source, int before, int target, Action ensure)
+        {
+            // 独立DynInt仅用于原生计算，不复制持久setter/事件，不探写真实人物。
+            ensure();
+            if (source.baseValue != before || source.lockValue || source.allEqualCall.Count > 0)
+                throw new InvalidOperationException("属性基础值或固定效果已变化，请重新确认修改");
+            var original = source.value;
+            var model = new DynInt(before) {
+                mMinValue = source.minValue, mMaxValue = source.maxValue,
+                scaleGetValue = source.scaleGetValue, isOverflow = source.isOverflow,
+                isValViewOut = source.isValViewOut, changeRate = source.changeRate,
+                effectiveRate = source.effectiveRate, offestFixValue = source.offestFixValue,
+                _allAddCall = source.allAddCall, _allMulCall = source.allMulCall,
+                _allMulAddCall = source.allMulAddCall };
+            Func<int, int> evaluate = candidate => {
+                ensure(); model.mBaseValue = candidate; var result = model.value; ensure(); return result;
+            };
+            if (evaluate(before) != original)
+                throw new InvalidOperationException("属性计算无法独立复现，未修改");
+            if (original == target) return before;
+            bool increasing = target > original;
+            int edge = before, edgeValue = original, low = before, high = before;
+            long step = Math.Max(1L, Math.Abs((long)target - original));
+            bool bracketed = false;
+            for (int i = 0; i < 32; i++)
+            {
+                var next = (int)Math.Max(source.minValue, Math.Min(source.maxValue,
+                    increasing ? (long)edge + step : (long)edge - step));
+                if (next == edge) break;
+                var result = evaluate(next);
+                if (increasing ? result < edgeValue : result > edgeValue)
+                    throw new InvalidOperationException("倍率计算非单调或溢出，未修改");
+                low = Math.Min(edge, next); high = Math.Max(edge, next);
+                if (increasing ? result >= target : result <= target) { bracketed = true; break; }
+                edge = next; edgeValue = result; step = Math.Min((long)int.MaxValue * 2, step * 2);
+            }
+            if (bracketed)
+                while (low <= high)
+                {
+                    var candidate = (int)(low + ((long)high - low) / 2);
+                    var result = evaluate(candidate);
+                    if (result == target) return candidate;
+                    if (result < target) { if (candidate == int.MaxValue) break; low = candidate + 1; }
+                    else { if (candidate == int.MinValue) break; high = candidate - 1; }
+                }
+            throw new InvalidOperationException("输入值在当前倍率及取整规则下无法达到，请调整数值");
         }
         private static Write PrepareRealm(WorldUnitBase unit, int id)
         {

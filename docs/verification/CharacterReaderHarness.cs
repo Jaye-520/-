@@ -1,4 +1,4 @@
-// 运行真实 CharacterReader，替代游戏依赖；不模拟 IL2CPP 属性计算。
+// 运行真实 CharacterReader，替代游戏依赖；DynInt仅模拟检查所需的分段取整，不证明IL2CPP行为。
 using System;
 using MOD_YtxSQ1.Services;
 
@@ -6,17 +6,38 @@ public sealed class NativeList<T> : System.Collections.Generic.List<T> { public 
 public sealed class NativeDictionary<K,V> : System.Collections.Generic.Dictionary<K,V> { public IntPtr Pointer {get{return new IntPtr(GetHashCode());}} }
 public sealed class DynInt
 {
+    public DynInt() : this(0) { }
+    public DynInt(int stored) { Stored=stored; _allAddCall.Add(()=>Bonus); }
     public IntPtr Pointer {get{return new IntPtr(GetHashCode());}}
     public int Stored;
     public bool Throw;
     public Action AfterWrite;
     public float Scale = 1f;
-    public int Bonus, minValue=0,maxValue=int.MaxValue;
+    public int Bonus, mMinValue=0,mMaxValue=int.MaxValue, scaleGetValue=1, offestFixValue;
+    public int minValue { get {return mMinValue;} set {mMinValue=value;} }
+    public int maxValue { get {return mMaxValue;} set {mMaxValue=value;} }
+    public bool isOverflow,isValViewOut;
+    public float changeRate=100,effectiveRate=100;
     public bool lockValue,RejectWrite;
     public object onBaseValueSetCall=new object();
-    public System.Collections.Generic.List<object> allMulCall=new System.Collections.Generic.List<object>(),allMulAddCall=new System.Collections.Generic.List<object>(),allEqualCall=new System.Collections.Generic.List<object>();
+    public System.Collections.Generic.List<Func<int>> _allAddCall=new System.Collections.Generic.List<Func<int>>();
+    public System.Collections.Generic.List<Func<float>> _allMulCall=new System.Collections.Generic.List<Func<float>>(),_allMulAddCall=new System.Collections.Generic.List<Func<float>>();
+    public System.Collections.Generic.List<Func<int>> allAddCall {get{return _allAddCall;}}
+    public System.Collections.Generic.List<Func<float>> allMulCall {get{return _allMulCall;}}
+    public System.Collections.Generic.List<Func<float>> allMulAddCall {get{return _allMulAddCall;}}
+    public System.Collections.Generic.List<object> allEqualCall=new System.Collections.Generic.List<object>();
+    public int mBaseValue {get{return Stored;} set{Stored=value;}}
     public int baseValue { get { return Stored; } set { Stored=value; if(AfterWrite!=null)AfterWrite(); if(RejectWrite){RejectWrite=false;throw new Exception("injected setter failure");} } }
-    public int value { get { if (Throw) throw new InvalidOperationException("injected failure"); return Stored+Bonus; } }
+    public int value { get {
+        if (Throw) throw new InvalidOperationException("injected failure");
+        var result=Stored*scaleGetValue;
+        foreach(var call in allAddCall)result+=(int)Math.Round((float)(call()*scaleGetValue)*changeRate*.01f);
+        float factor=1; foreach(var call in allMulCall)factor+=call();
+        if(Math.Abs(factor-1)>.000001f)result=(int)Math.Round((float)result*factor*changeRate*.01f);
+        factor=1; foreach(var call in allMulAddCall)factor*=1+call();
+        if(Math.Abs(factor-1)>.000001f)result=(int)Math.Round((float)result*factor*changeRate*.01f);
+        return result+offestFixValue;
+    } }
     public float valueFloat { get { return value * Scale; } }
 }
 public enum UnitSexType { None, Man, Woman }

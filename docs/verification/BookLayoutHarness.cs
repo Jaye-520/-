@@ -271,9 +271,11 @@ public static class UIMartialInfoTool
 public static partial class UIIconTool
 {
     public static bool FailAfterCreate;
+    public static int PropsIconCreates;
     public static UIIconItemBase CreatePropsIcon(WorldUnitBase unit,DataProps.PropsData props,UnityEngine.Transform parent,float size,bool destroy,bool operation,bool equip)
     {
         if(operation || equip)throw new Exception("unexpected native operations");
+        PropsIconCreates++;
         var go=new UnityEngine.GameObject("native item icon");go.transform.SetParent(parent,false);go.transform.sizeDelta=new UnityEngine.Vector2(72,72);
         var image=go.AddComponent<UnityEngine.UI.Image>();image.color=new UnityEngine.Color(.8f,.77f,.67f,1);
         var label=go.AddComponent<UnityEngine.UI.Text>();label.color=new UnityEngine.Color(.2f,.2f,.17f,1);label.font=new UnityEngine.Font();label.fontSize=14;label.text=ConfLocalText.GetText(props.propsInfoBase.name)+"\n"+props.propsCount;
@@ -984,6 +986,20 @@ internal static class BookLayoutHarness
         bookIcon.uiEvent.OnPointerExit(null);UnityEngine.Time.unscaledTime+=.2f;view.RefreshCharacter();bag.allProps.Remove(martial);UnityEngine.Object.Destroy(bookHover);
         var extraBag=Enumerable.Range(0,100).Select(i=>new DataProps.PropsData{propsItem=unique,propsID=unique.id,propsCount=1,soleID="scroll-extra-"+i}).ToList();bag.allProps.AddRange(extraBag);bag.gridMaxNum=bag.GetGridCurNum(true);view.RefreshCharacter(true);
         Check(bagWheel.content.sizeDelta.y>bagWheel.viewport.sizeDelta.y,"large backpack grows scroll content beyond viewport");
+        bagWheel.content.anchoredPosition=UnityEngine.Vector2.zero;bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
+        var performanceColumns=(int)typeof(BookView).GetField("bagColumns",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view);
+        var performancePool=(List<UnityEngine.RectTransform>)typeof(BookView).GetField("bagSlots",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view);
+        var retainedIcons=Walk(bagWheel.content).Where(t=>t.gameObject.name=="native item icon").ToArray();
+        var retainedBackgrounds=performancePool.Select(t=>t.GetChild(0)).ToArray();
+        var performanceCreates=UIIconTool.PropsIconCreates;
+        for(int pixel=1;pixel<86;pixel++) {bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,pixel);bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);}
+        Check(UIIconTool.PropsIconCreates==performanceCreates && retainedIcons.All(t=>!t.gameObject.Destroyed),"85 within-row scroll events create no icons and retain originals");
+        bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,86);bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
+        Check(UIIconTool.PropsIconCreates-performanceCreates==performanceColumns,"crossing one row creates only one row of native icons instead of entire viewport");
+        Check(retainedIcons.Count(t=>!t.gameObject.Destroyed)==retainedIcons.Length-performanceColumns && performancePool.Select(t=>t.GetChild(0)).SequenceEqual(retainedBackgrounds),"overlapping icons and all cell backgrounds retain object identity on row scroll");
+        var afterRowCreates=UIIconTool.PropsIconCreates;view.RefreshCharacter(true);
+        Check(UIIconTool.PropsIconCreates==afterRowCreates,"unchanged forced refresh reuses icons at current scroll offset");
+        Console.WriteLine("PERF bag columns="+performanceColumns+" pool="+performancePool.Count+" new icons per row="+(afterRowCreates-performanceCreates));
         bagWheel.content.anchoredPosition=new UnityEngine.Vector2(0,bagWheel.content.sizeDelta.y-bagWheel.viewport.sizeDelta.y);bagWheel.verticalNormalizedPosition=0;bagWheel.onValueChanged.Invoke(UnityEngine.Vector2.zero);
         Check(Walk(book).Any(t=>t.gameObject.activeInHierarchy && t.gameObject.name.Contains("scroll-extra-99")),"backpack pool renders final item when scrolled to bottom");
         var refreshBag=typeof(BookView).GetMethod("RefreshBag",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);

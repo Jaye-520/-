@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.97 ｜ **最后更新**：2026-10-04
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.98 ｜ **最后更新**：2026-10-05
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -323,7 +323,7 @@ WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView�
 ### 持久写入与配置依据
 
 - 用户明确唯一存档是开发测试存档，授权本轮接入真实写入；不终止游戏。使用本机Managed程序集、官方CHM的WorldUnitBase.CreateAction/DataMgr.SaveData和官方RoleCreateFeature/RoleGrade表头及JSON核实接口。新增引用保持Private=False。
-- DynInt.value只读。baseValue setter负责钳制及原生变化回调；加法效果保留，目标显示值换算基础差值，年份保存时保留月余数。倍率/固定效果、缺持久setter、范围异常目前拒绝，不通过试写猜系数。全批先准备，应用顺序资源上限优先；异常逆序回退可回退字段并读回原值。不声称游戏原生复杂动作可事务回退。
+- DynInt.value只读。baseValue setter负责钳制及原生变化回调；加法效果保留，目标显示值换算基础差值，年份保存时保留月余数。07.98倍率效果用独立原生DynInt复现当前值，再在其基础值范围内括区间/二分求解；只复制计算列表、倍率/偏移/缩放和钳制，不复制持久setter或变化事件，不试写实际人物。求不到精确显示整数、非单调/溢出、固定覆盖、锁定及缺持久setter仍拒绝。应用前重新求值核对，写回一次后回读；尚未开始写入的步骤不做无谓Undo。全批先准备，应用顺序资源上限优先；异常逆序回退可回退字段并读回原值。不声称游戏原生复杂动作可事务回退。原生只读依据`.tools/dynint-0798-native.txt`、`dynint-0798-api.txt`；托管替身仅覆盖分段取整与保存控制流，真实效果/重载仍待验证。
 - 名字原GetName只拼二段数组，保持二段结构；兴趣三个ID合并一次写入，重复拒绝；Destroy旧allHobby、按配置item的竖线/下划线拆分调用WorldFactory.CreateUnitHobby/Init重建，GetHobbyItems比较ID更新缓存。不可直接把cacheHobbyItems设null（原生路径会访问它）。性格按真实配置type候选，写入三个原字段并GetCharacterWeight更新。
 - UnitActionRoleUpGrade原生路径修改能力点、寿命、成长属性、资源、品质/日志和相关逆天气运。SetGradeID不能替代完整突破。07.29仅下一阶段CreateAction的方案已被07.30的CharacterRealmChange成长差额编辑替换：允许升降配置行及品质，不执行材料/突破剧情/随机奖励；境界不可和数字草稿混批。此处保留原生研究依据，不作为旧实现指令。
 - 气运：官方表头type=1先天、2后天、3逆天、4仙人恩赐、5战前（后天）、6壶妖先天、11扩展先天。全库来自roleCreateFeature._allConfList，conceal=1不作为可见配置。原UINPCInfoProperty对type=2且conceal=1过滤，与敖瑶日志8012523/231125吻合；不能转而读取其他玩法DLCUnitData填世界人物。
@@ -444,7 +444,7 @@ RequireItem数量修改允许当前持有隐藏记录，保留世界/人物/sole
 
 每次SaveData具有独立saveGeneration，saveGate只保护托管身份、去重与completion发布，不在锁内访问游戏/UI。旧请求回调和同请求第二次结果不可覆盖当前completion或修改Busy/Pending。派发抛错时，尚无结果则取消此请求身份、保留Pending供用户显式重试；已收到同步结果则继续Busy等待Poll，不能丢弃已接受结果。原生从未回调不强制超时重试，以免重放写入。100轮/40000次交错回调是托管竞争检查，不是游戏保存验证。
 
-“来”动作确认位置改变后立即在finally保留首次原位置和Pending，即使后续原生回调抛错，也支持用户显式“返”；未改变位置不创建记录，重复召回不覆盖首次原点，“返”成功才删除。证据及全范围剩余核查见[稳定性审计](STABILITY_AUDIT.md)。
+“来”动作确认位置改变后立即在finally保留首次原位置和Pending，即使后续原生回调抛错，也支持用户显式“返”；未改变位置不创建记录，重复召回不覆盖首次原点，“返”成功才删除。历史证据见[审计归档](archive/documentation-closeout-2026-10-05.zip)，当前范围见项目记忆；不自动续跑旧矩阵。
 
 ### 批写上下文与嵌套原生回调（07.75）
 
