@@ -306,6 +306,11 @@ namespace MOD_YtxSQ1.UI
                 editStatus.text = "获取秘籍 → 学习 → 修炼与装备 → 参悟；操作当前选中人物";
                 BuildMartials(); RefreshCharacter(true); return;
             }
+            if (index == 3)
+            {
+                editStatus.text = "以左侧人物为中心；点击关系人物查看、展开或修改";
+                BuildRelations(); RefreshCharacter(true); return;
+            }
             if (index != 0)
             {
                 var blank = Card(content, "待编纂", 0, 76, contentWidth, contentHeight - 76);
@@ -511,7 +516,7 @@ namespace MOD_YtxSQ1.UI
         public void FocusTarget(string unitId)
         {
             if (string.IsNullOrEmpty(unitId) || !FinishInlineEdit(false)) return;
-            CloseDropdown(); HideFateTips(); CloseItemDialog(); CloseItemLibrary(); CloseFateLibrary(); CloseMartialOverlay();
+            CloseDropdown(); HideFateTips(); CloseItemDialog(); CloseItemLibrary(); CloseFateLibrary(); CloseMartialOverlay(); CloseRelationOverlay();
             selectedUnitId = unitId;
             ReleasePortrait();
             RefreshCharacter(true);
@@ -784,6 +789,7 @@ namespace MOD_YtxSQ1.UI
             TickItemTipWheel();
             TickEditing();
             if (root == null) return;
+            TickRelations();
             if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
             if (root == null || characterName == null) return;
             var now = Time.unscaledTime;
@@ -815,6 +821,7 @@ namespace MOD_YtxSQ1.UI
                 UpdateFates(new CharacterFate[0], reason);
                 if (selectedIndex == 1) RefreshBag(true);
                 if (selectedIndex == 2) RefreshMartials(true);
+                if (selectedIndex == 3) RefreshRelations(true);
                 var failure = CharacterReader.LastFailure;
                 if (failure != null && failure != lastReadFailure)
                     Debug.LogWarning("[八荒秘录] 角色读取失败：" + failure);
@@ -833,6 +840,7 @@ namespace MOD_YtxSQ1.UI
             {
                 if (selectedIndex == 1) RefreshBag(force);
                 if (selectedIndex == 2) RefreshMartials(force);
+                if (selectedIndex == 3) RefreshRelations(force);
                 return;
             }
             for (int group = 0; group < attributeTexts.Count; group++)

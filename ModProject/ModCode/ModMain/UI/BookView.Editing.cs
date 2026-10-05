@@ -295,6 +295,7 @@ namespace MOD_YtxSQ1.UI
                 else if (itemLibrary != null) CloseItemLibrary();
                 else if (fateLibrary != null) CloseFateLibrary();
                 else if (martialOverlay != null) CloseMartialOverlay();
+                else if (relationOverlay != null) CloseRelationOverlay();
                 else if (requestClose != null) requestClose();
             }
         }
@@ -305,6 +306,7 @@ namespace MOD_YtxSQ1.UI
             Cleanup(ClearFateLibraryView, "气运图鉴");
             Cleanup(ClearItemsView, "道具视图");
             Cleanup(ClearMartialsView, "功法视图");
+            Cleanup(ClearRelationsView, "关系视图");
             Cleanup(ClearActions, "快捷说明");
             editBindings.Clear();
         }

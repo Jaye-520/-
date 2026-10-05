@@ -12,12 +12,12 @@ using MOD_YtxSQ1.UI;
 namespace UnityEngine
 {
     public enum KeyCode { Return,KeypadEnter,Escape,Tab }
-    public static class Input { public static string compositionString=""; public static bool MouseDown,RightDown,Submit,Escape; public static Vector2 mousePosition,mouseScrollDelta;public static bool GetMouseButtonDown(int button) { return button==1 ? RightDown : MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return || Escape && key==KeyCode.Escape; } }
+    public static class Input { public static string compositionString=""; public static bool MouseDown,RightDown,Submit,Escape; public static Vector2 mousePosition,mouseScrollDelta;public static bool GetMouseButton(int button) { return MouseDown; } public static bool GetMouseButtonDown(int button) { return button==1 ? RightDown : MouseDown; } public static bool GetKeyDown(KeyCode key) { return Submit && key==KeyCode.Return || Escape && key==KeyCode.Escape; } }
     public class Canvas : Component { public Camera worldCamera; }
     public class CanvasGroup : Component { public float alpha; public bool interactable,blocksRaycasts; }
     public static class RectTransformUtility
     {
-        public static bool Inside=true;public static bool RectangleContainsScreenPoint(RectTransform rect,Vector2 point,Camera camera) { return Inside; }
+        public static bool ScreenPointToLocalPointInRectangle(RectTransform rect,Vector2 point,Camera camera,out Vector2 local) { local=point;return true; } public static bool Inside=true;public static bool RectangleContainsScreenPoint(RectTransform rect,Vector2 point,Camera camera) { return Inside; }
     }
     public class Object
     {
@@ -43,7 +43,7 @@ namespace UnityEngine
     public struct Vector2
     {
         public float x, y; public Vector2(float a, float b) { x = a; y = b; }
-        public static Vector2 zero { get { return new Vector2(); } }
+        public static Vector2 operator +(Vector2 a,Vector2 b) { return new Vector2(a.x+b.x,a.y+b.y); } public static Vector2 operator -(Vector2 a,Vector2 b) { return new Vector2(a.x-b.x,a.y-b.y); } public static Vector2 operator *(Vector2 a,float s) { return new Vector2(a.x*s,a.y*s); } public static Vector2 zero { get { return new Vector2(); } }
         public static Vector2 one { get { return new Vector2(1, 1); } }
     }
     public struct Vector3 { public float x,y,z;public Vector3(float a,float b,float c) { x=a;y=b;z=c; } public static Vector3 one { get { return new Vector3(1,1,1); } } public static Vector3 operator *(Vector3 value,float amount) { return new Vector3(value.x*amount,value.y*amount,value.z*amount); } }
@@ -59,7 +59,8 @@ namespace UnityEngine
         }
     }
     public class Renderer : Component { public bool enabled=true;public Bounds bounds; }
-    public class Camera : Component { public bool orthographic;public float orthographicSize,aspect; }
+    public class RenderTexture : Object { public static RenderTexture active; } public class Camera : Component { public RenderTexture targetTexture; public GameObject CapturedModel; public bool ModelAttachedAtRender; public float CapturedCenterY;
+        public void Render() { if(CapturedModel!=null) { ModelAttachedAtRender=CapturedModel.transform.IsChildOf(transform); var bounds=CapturedModel.GetComponent<Renderer>().bounds; CapturedCenterY=bounds.center.y-transform.position.y+(ModelAttachedAtRender?transform.position.y:0); } } public bool orthographic;public float orthographicSize,aspect; }
     public struct Rect
     {
         public float x,y,width,height;
@@ -114,7 +115,7 @@ namespace UnityEngine
         public Vector3 position;public Transform parent; public readonly List<Transform> Children=new List<Transform>();
         public bool IsChildOf(Transform ancestor){for(var p=parent;p!=null;p=p.parent)if(p==ancestor)return true;return false;} public int childCount { get { return Children.Count; } }
         public Transform GetChild(int index) { return Children[index]; }
-        public void SetParent(Transform value,bool world) {if(gameObject.name==GameObject.ThrowParentName){GameObject.FaultAllocated=gameObject;throw new Exception("parent failure");} parent=value; value.Children.Add(this); }
+        public void SetParent(Transform value,bool world) {if(gameObject.name==GameObject.ThrowParentName){GameObject.FaultAllocated=gameObject;throw new Exception("parent failure");} if(parent!=null)parent.Children.Remove(this); parent=value; if(value!=null)value.Children.Add(this); }
         public void SetAsFirstSibling() { parent.Children.Remove(this); parent.Children.Insert(0,this); }
     }
     public class RectTransform : Transform
@@ -134,7 +135,7 @@ namespace UnityEngine
         public string Path; public Color[] Pixels; public int Width,Height;public static int LiveProcedural;
         public Texture2D() { }
         public Texture2D(int width,int height,TextureFormat format,bool mipmap) { Width=width;Height=height;LiveProcedural++; }
-        public void SetPixels(Color[] pixels) { Pixels=pixels; }
+        public void ReadPixels(Rect rect,int x,int y) { Pixels=new Color[Width*Height]; } public void SetPixels(Color[] pixels) { Pixels=pixels; }
         public void Apply() { }
     }
     public enum TextAnchor { MiddleLeft,MiddleCenter,MiddleRight,UpperLeft }
@@ -338,11 +339,11 @@ public sealed partial class ConfDramaNpc
         if(id==8101)
         {
             image.enabled=false;
-            new UnityEngine.GameObject("native prefab").transform.SetParent(image.transform,false);
+            var prefab=new UnityEngine.GameObject("native prefab");prefab.transform.SetParent(image.transform,false);prefab.AddComponent<UnityEngine.Renderer>().bounds=new UnityEngine.Bounds(new UnityEngine.Vector3(0,0,0),new UnityEngine.Vector3(200,400,1));if(callback!=null)callback(prefab);
             return 2;
         }
         image.texture=new UnityEngine.Texture2D();
-        ModelRenderTexture.NativeOwners[image.gameObject]=new ModelRenderTexture(new UnityEngine.GameObject("native portrait"),image,offset);
+        var root=new UnityEngine.GameObject("native portrait");root.AddComponent<UnityEngine.Renderer>().bounds=new UnityEngine.Bounds(new UnityEngine.Vector3(0,0,0),new UnityEngine.Vector3(200,400,1));ModelRenderTexture.NativeOwners[image.gameObject]=new ModelRenderTexture(root,image,offset);if(callback!=null)callback(root);
         return 1;
     }
 }
@@ -351,15 +352,19 @@ public sealed class PortraitModel
     public UnityEngine.GameObject root;
     public static PortraitModelData LastData;
     public static bool LastDynamic;
-    public static PortraitModel CreateModel(WorldUnitBase unit,bool async,bool dynamic,object callback)
+    public static bool DeferCallbacks;
+    public static readonly List<Action> PendingCallbacks=new List<Action>();
+    private static void Complete(PortraitModel model,Action<UnityEngine.GameObject> callback)
+    { if(callback==null)return; if(DeferCallbacks) PendingCallbacks.Add(()=>callback(model.root)); else callback(model.root); }
+    public static PortraitModel CreateModel(WorldUnitBase unit,bool async,bool dynamic,Action<UnityEngine.GameObject> callback)
     {
         LastData=null;LastDynamic=dynamic;
-        return MakeModel();
+        var model=MakeModel(); Complete(model,callback); return model;
     }
-    public static PortraitModel CreateModel(PortraitModelData data,bool async,bool dynamic,object callback)
+    public static PortraitModel CreateModel(PortraitModelData data,bool async,bool dynamic,Action<UnityEngine.GameObject> callback)
     {
         LastData=data;LastDynamic=dynamic;
-        return MakeModel();
+        var model=MakeModel(); Complete(model,callback); return model;
     }
     private static PortraitModel MakeModel()
     {
@@ -376,6 +381,7 @@ public sealed class ModelRenderTexture
     public static UnityEngine.Camera LastCamera;public UnityEngine.Camera camera;
     public ModelRenderTexture(UnityEngine.GameObject model,UnityEngine.UI.RawImage image,UnityEngine.Vector2 offset)
     { Active++;camera=new UnityEngine.GameObject("camera").AddComponent<UnityEngine.Camera>();camera.transform.position=new UnityEngine.Vector3(0,0,-1000);LastCamera=camera; }
+    public ModelRenderTexture(UnityEngine.GameObject model,int width,int height,UnityEngine.Vector2 offset,UnityEngine.Transform parent) : this(model,(UnityEngine.UI.RawImage)null,offset) { camera.targetTexture=new UnityEngine.RenderTexture(); camera.CapturedModel=model; model.transform.SetParent(camera.transform,true); }
     public void Destroy() { Active--; }
 }
 namespace MOD_YtxSQ1.UI
@@ -414,6 +420,8 @@ internal static class BookLayoutHarness
         var size=PreviewSize(node);
         if(node.anchorMax.x>node.anchorMin.x)x+=node.offsetMin.x;
         if(node.anchorMax.y>node.anchorMin.y)y-=node.offsetMax.y;
+        System.Drawing.Drawing2D.GraphicsState scaleState=null;
+        if(node.gameObject.name=="BHML_\u5173\u7cfb\u56fe\u753b\u5e03") { scaleState=graphics.Save();graphics.TranslateTransform(x,y);graphics.ScaleTransform(node.localScale.x,node.localScale.y);x=0;y=0; }
         var rect=new RectangleF(x,y,size.x,size.y);
         foreach(var graphic in node.gameObject.Components.OfType<UnityEngine.UI.Graphic>())
         {
@@ -476,6 +484,7 @@ internal static class BookLayoutHarness
         if(node.GetComponent<UnityEngine.UI.RectMask2D>()!=null) graphics.SetClip(rect);
         foreach(var child in node.Children) Paint(graphics,(UnityEngine.RectTransform)child,x,y,false);
         graphics.Restore(previous);
+        if(scaleState!=null)graphics.Restore(scaleState);
     }
     private static void Check(bool value,string description) { if(!value) throw new Exception("FAIL: "+description); Console.WriteLine("PASS: "+description); }
     private static string Selected(BookView view) { return (string)typeof(BookView).GetField("selectedUnitId",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(view); }

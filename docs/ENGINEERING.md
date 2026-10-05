@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：07.98 ｜ **最后更新**：2026-10-05
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：08.01 ｜ **最后更新**：2026-10-05
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -41,6 +41,11 @@
 | UI/BookView.FateLibrary.cs | 全库检索、多选与可见按钮池；三处气运共用自绘品阶样式 |
 | UI/BookView.Actions.cs | 七个快捷按钮、六个叠加帮助菱形和满状态金框 |
 | Services/CharacterActions.cs | 六资源恢复、满修为、当前人物现有叠加物品补量、NPC传送及双向好感度 |
+| Services/CharacterRelations.cs | 原生身份/双向好感读取、已故记录、纯托管人物/连线/确认快照 |
+| Services/RelationOperations.cs | 两人身份和数据容器复核、好感setter、原生建立/解除动作及Pending |
+| Services/RelationLayout.cs | 分类整数槽布局、循环/重复人物合并后的不重叠位置 |
+| UI/BookView.Relations.cs | 关系图、筛选、拖动缩放、节点菜单、人物选择与确认弹窗 |
+| UI/BookView.RelationPictures.cs | 可见人物逐个生成静态小立绘、128张窗口内纹理缓存及释放 |
 | Services/ItemInventory.cs | 道具配置、背包快照、原生发放/逐件删除、境界药效补给与人物上下文预检 |
 | UI/BookView.Items.cs | 道具三栏、物品图鉴、背包网格与原生内容悬浮、绑定人物的添加/清空弹窗 |
 | UI/BookView.ItemMenu.cs | 背包右键菜单、按唯一ID修改/增加数量及移除单项、菜单释放 |
@@ -551,3 +556,21 @@ Unhollower包装方法的Cecil.IsVirtual可为false，但IL中il2cpp_object_get_
 ## 兴趣修改异常后的再次操作（07.96）
 
 原生兴趣修改一旦开始，集合冲突或初始化失败后保留Pending与未知运行对象，并按世界/人物运行身份隔离再次修改。UI短暂退出或保存管理器替换不得清除该隔离；新世界身份可清除，其他人物不继承。写入前校验失败未开始原生修改，不隔离、不做盲Undo，允许纠正后重试。托管检查只覆盖这些控制路径，不能代替原生保存重载验证。
+
+### 关系图与原生编辑（07.99）
+
+关系读取直接遍历RelationData的parent/children/childrenPrivate/brother/parentBack/childrenBack/brotherBack/married/lover/master/student，避免GetRelation(type, true)清理死亡记录。已故人物从DataMgr.unitDie.GetUnitDie读取；好友/仇人按本机GameParameter的friendCloseRequire/haterCloseRequire判定（只读配置60/-60），不是可任意设置的独立身份。部分阈值读取失败保留已读身份并标注。接口依据为官方CHM的UnitActionRelationSet(WorldUnitBase, UnitRelationType, Int32)与本机Managed程序集；原生反汇编见.tools/relations-api.txt、relations-native.txt和relations-reading-native.txt。
+
+好感用双方各自SetIntim，指向玩家时读取intimToPlayerUnit，其他指向读取intimToUnit；输入和指纹按float往返格式保留小数，并限制在原生GetIntim整数读数可表示范围内。确认绑定世界、双方unit/data/unitData/relationData身份、整组结构指纹和原好感；回调后先复核，再修改第二侧；仅回退实际尝试的步骤，无法确认结果则保留Pending。结构写入走IsCreateAction/CreateAction，不直接改关系容器。夫妻/道侣/师徒/义亲建立与解除核对反向类型；重复、多重/不对称身份或已有配偶冲突拒绝，不自动换人。
+
+血亲新增通过UnitActionRelationSetParent，仅父母槽为空且不形成祖先循环时开放；明确会更新兄弟姐妹、子女和后代姓氏。已有家谱不替换；血亲单项解除及直接设置私生/同胞身份未开放。结构动作可能影响原生行为、声望与事件，失败不伪装事务回滚，不盲重试。
+
+图面按可达expanded集合展开，ID合并、有限访问避免循环；首次/回到中心按图面范围适配缩放。每次只为可见节点临时创建一个静态模型，160×154截图后释放模型/相机，最多缓存128张静态纹理；不为每个节点常驻动态模型。模拟预览不验证原生画面；专属人物按avatar/modelID分流，拼装模型走GetPortraitModelDataInModel，独立资源走原生CreateTexture回调取得模型；截图后销毁临时专属承载，原生autoDestroy释放其资源。依据补充见.tools/relations-special-native.txt；真实静态图效果仍须游戏核对，失败有占位。关闭浮层先注销其中InputField，再独立隐藏/销毁；切人/切页/退出清理。
+
+### 08.00 小立绘加载时序
+
+关系卡必须等待 `PortraitModel.CreateModel` 的 `onCreateCall` 或专属立绘原生完成回调，下一次视图刷新再生成静态快照；不把刚返回的root当作所有部件已完成。先预渲染，再按完整Renderer边界居中取景，160×154截图与80×77图区等比例，边界倍率1.12。窗口只保留一个加载任务，切页/切人清理；已取消任务的迟到回调销毁旧模型，不能写入新人物卡。10秒未完成标记加载失败，不自动重试。
+
+### 08.01 原生相机父子关系
+
+本机GameAssembly反汇编确认 `ModelRenderTexture.CreateRenderTex(GameObject,...)` 将人物root设为相机对象（实例+0x10）子物体，随后设置其世界位置为相机位置加offset。`CreateRenderTex(int,int,Transform)`将相机对象写入+0x10、Camera组件写入+0x20。若直接设置camera.position，root会跟随，取景中心调整失效；小立绘先 `modelRoot.transform.SetParent(null, true)`，保留世界姿态再测量和拟合。原生renderer与脱离后的root仍分别在finally释放。托管渲染器补上相机父子关系，四尺寸回归检查在移除此修正时均失败，加回后通过。证据：`.tools/portrait-native-metadata/render-disassembly.txt`及`.tools/relations-0801-before-fix.txt`；不等同于实际GPU验收。

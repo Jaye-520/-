@@ -43,6 +43,11 @@
     <Compile Include="Services\CharacterFateOperations.cs" />
     <Compile Include="Services\CharacterSave.cs" />
     <Compile Include="Services\CharacterActions.cs" />
+    <Compile Include="Services\CharacterRelations.cs" />
+    <Compile Include="Services\RelationOperations.cs" />
+    <Compile Include="Services\RelationLayout.cs" />
+    <Compile Include="UI\BookView.Relations.cs" />
+    <Compile Include="UI\BookView.RelationPictures.cs" />
     <Compile Include="Services\ItemInventory.cs" />
     <Compile Include="Services\CharacterMartials.cs" />
     <Compile Include="Services\CharacterMartials.Operations.cs" />
