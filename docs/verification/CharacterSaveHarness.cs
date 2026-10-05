@@ -22,8 +22,100 @@ internal static class CharacterSaveHarness
     private static void Commit() { CharacterSave.Commit(session,(ok,m)=>message=m); }
     public static void Main()
     { try { Run(); } catch (Exception ex) { Console.WriteLine("FAIL: " + ex.Message); Environment.ExitCode=1; } }
+    private static void AuditRegressionTests()
+    {
+        int failures = 0;
+        Action<bool, string> check = (ok, name) => { if (ok) Check(true, name); else { Console.WriteLine("FAIL: " + name); failures++; } };
+        string result;
+        foreach (var late in new[] { false, true })
+        {
+            Reset(); var npc = new WorldUnitBase(); npc.data.unitData.unitID = "npc"; g.world.unit.Npcs.Add(npc);
+            var a = g.world.playerUnit.data.unitData.relationData; var b = npc.data.unitData.relationData;
+            a.intimToUnit["npc"] = 1.5f; b.intimToPlayerUnit = 2.5f;
+            if (late) b.AfterSet = () => { b.AfterSet = null; a.intimToUnit["npc"] = 9; };
+            else a.AfterSet = () => { a.AfterSet = null; a.intimToUnit["npc"] = 8; };
+            check(!CharacterActions.Execute("npc", "好感度", "10", out result) && a.intimToUnit["npc"] == 1.5f && b.intimToPlayerUnit == 2.5f && CharacterSave.Pending == 0,
+                "affinity increment refuses wrong finite result and restores both sides late=" + late);
+        }
+        Reset(); var roundNpc = new WorldUnitBase(); roundNpc.data.unitData.unitID = "npc"; g.world.unit.Npcs.Add(roundNpc);
+        g.world.playerUnit.data.unitData.relationData.intimToUnit["npc"] = 1.234567f;
+        roundNpc.data.unitData.relationData.intimToPlayerUnit = -2.345678f;
+        check(CharacterActions.Execute("npc", "好感度", "10", out result) && g.world.playerUnit.data.unitData.relationData.intimToUnit["npc"] == 11.23f && roundNpc.data.unitData.relationData.intimToPlayerUnit == 7.65f,
+            "affinity increment verifies native two-decimal targets");
+        foreach (var container in new[] { "data", "info", "property" })
+        foreach (var remove in new[] { false, true })
+        {
+            Reset(); var target = g.world.playerUnit; g.conf.roleCreateFeature.Items[1] = new FateItem { type = 1 };
+            if (remove) CharacterFateOperations.Add("player", 1, out result);
+            var oldData = target.data; var oldInfo = oldData.unitData; var oldProperty = oldInfo.propertyData;
+            var oldRuntime = remove ? target.GetLuck(1) : null;
+            Action replace = () => {
+                if (container == "data") { target.data = new PlayerData(); target.data.unitData.propertyData.bornLuck = oldProperty.bornLuck; }
+                else if (container == "info") { oldData.unitData = new UnitData(); oldData.unitData.propertyData.bornLuck = oldProperty.bornLuck; }
+                else oldInfo.propertyData = new PropertyData { bornLuck = oldProperty.bornLuck };
+            };
+            if (remove) target.AfterAction = replace; else target.AfterLuck = replace;
+            bool ok = remove ? CharacterFateOperations.Remove("player", 1, out result) : CharacterFateOperations.Add("player", 1, out result);
+            check(!ok && result.Contains("替换") && CharacterSave.Pending > 0 && g.data.Calls == 0,
+                "fate operation binds owning containers and retains uncertain pending " + container + " remove=" + remove);
+            if (!remove) check(target.GetLuck(1).NewCalls == 0, "fate replacement stops follow-up initialization " + container);
+            else check(oldProperty.bornLuck.Length == 1, "fate replacement stops stale born-record overwrite " + container);
+        }
+        Reset(); var dynamicData = g.world.playerUnit.data.dynUnitData;
+        dynamicData.sp.AfterWrite = () => { dynamicData.sp.AfterWrite = null; dynamicData.hp.Stored = 1; };
+        check(!CharacterActions.Execute("player", "满状态", null, out result) && dynamicData.hp.Stored == 123 && CharacterSave.Pending == 0,
+            "full status verifies earlier fields after final callback and rolls back");
+        Reset(); var cap = g.world.playerUnit.data.dynUnitData.hpMax; var attack = g.world.playerUnit.data.dynUnitData.attack;
+        Stage(0, 4, "600", 1); Stage(1, 0, "100");
+        attack.AfterWrite = () => { attack.AfterWrite = null; cap.Stored = 601; };
+        Commit();
+        check(g.data.Calls == 0 && cap.Stored == 456 && attack.Stored == 77 && session.Count == 2 && CharacterSave.Pending == 0,
+            "batch save verifies earlier target after later setter before disk dispatch");
+        // Complete old-code dispatch so this probe cannot leave Busy set for subsequent runs.
+        if (CharacterSave.Busy) { g.data.Complete(false); CharacterSave.Poll(); }
+        Reset(); var materialBag = g.world.playerUnit.data.unitData.propData;
+        var material = new DataProps.PropsData { soleID = "material", propsID = 11, propsCount = 3, propsItem = new ConfItemPropsItem { isOverlay = 1 } };
+        materialBag.allProps.Add(material);
+        materialBag.AfterRefresh = () => { materialBag.AfterRefresh = null; material.propsCount = 4; };
+        check(!CharacterActions.Execute("player", "满材料", null, out result) && material.propsCount == 3 && CharacterSave.Pending == 0,
+            "full materials verifies quantities after native refresh callback and rolls back");
+        Reset(); materialBag = g.world.playerUnit.data.unitData.propData;
+        material = new DataProps.PropsData { soleID = "old-material", propsID = 11, propsCount = 3, propsItem = new ConfItemPropsItem { isOverlay = 1 } };
+        var replacement = new DataProps.PropsData { soleID = "old-material", propsID = 11, propsCount = 7, propsItem = material.propsItem };
+        materialBag.allProps.Add(material);
+        materialBag.AfterRefresh = () => { materialBag.AfterRefresh = null; materialBag.allProps.Remove(material); materialBag.allProps.Add(replacement); };
+        check(!CharacterActions.Execute("player", "满材料", null, out result) && replacement.propsCount == 7 && material.propsCount == 9999 && CharacterSave.Pending > 0,
+            "full materials never restores a replaced record and retains partial pending");
+        foreach (var container in new[] { "data", "info", "property", "dynamic", "grade" })
+        {
+            Reset(); var target = g.world.playerUnit; var original = target.data.unitData.propertyData;
+            original.AfterExp = () => {
+                if (container == "data") target.data = new PlayerData();
+                else if (container == "info") target.data.unitData = new UnitData();
+                else if (container == "property") target.data.unitData.propertyData = new PropertyData();
+                else if (container == "dynamic") target.data.dynUnitData = new DynamicData();
+                else target.data.dynUnitData.gradeID = new DynInt { Stored = 103 };
+                target.data.unitData.propertyData.exp = 100;
+            };
+            check(!CharacterActions.Execute("player", "满修为", null, out result) && CharacterSave.Pending > 0 && g.data.Calls == 0,
+                "cultivation callback replacing owning container cannot claim success " + container);
+        }
+        Reset(); var hpPill = new ConfItemPillItem { id = 20 }; hpPill.Effects["hp"] = 10;
+        var mpPill = new ConfItemPillItem { id = 21 }; mpPill.Effects["mp"] = 10;
+        g.conf.itemPill._allConfList.Add(hpPill); g.conf.itemPill._allConfList.Add(mpPill);
+        g.conf.itemProps._allConfList.Add(new ConfItemPropsItem { id = 20, isOverlay = 1 });
+        g.conf.itemProps._allConfList.Add(new ConfItemPropsItem { id = 21, isOverlay = 1 });
+        var supplyBag = g.world.playerUnit.data.unitData.propData;
+        supplyBag.AfterAdd = () => { if (supplyBag.AddCalls == 2) supplyBag.GetProps(20)[0].propsCount = 1; };
+        bool supplyRefused = false;
+        try { ItemInventory.Supply(CharacterReader.ContextKey(), "player"); } catch (InvalidOperationException) { supplyRefused = true; }
+        check(supplyRefused && CharacterSave.Pending > 0 && supplyBag.GetPropsNum(20) == 1 && supplyBag.GetPropsNum(21) == 20,
+            "supply validates both medicines after second callback without blind replay");
+        if (failures > 0) throw new Exception("audit regressions failed: " + failures);
+    }
     private static void Run()
     {
+        AuditRegressionTests();
         foreach (var npcSide in new[] { false, true })
         foreach (var relationLate in new[] { false, true })
         foreach (var container in new[] { "data", "info", "relation" })

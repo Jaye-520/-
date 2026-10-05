@@ -23,7 +23,7 @@ namespace MOD_YtxSQ1.Services
         }
     }
 
-    // 草稿不持有任何游戏引用；跨视图重开保留，世界上下文改变清空。
+    // 草稿不持有游戏引用；同窗口切页保留，重开由WorkshopWindow清空，世界上下文改变清空。
     internal sealed class CharacterEditSession
     {
         internal sealed class Change

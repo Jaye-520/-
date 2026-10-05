@@ -250,7 +250,8 @@ namespace MOD_YtxSQ1.Services
             var ensure = Guard(context, unit);
             int hp = BestMedicine(unit, "hp"), mp = BestMedicine(unit, "mp");
             var bag = unit.data.unitData.propData;
-            checked { _ = bag.GetPropsNum(hp) + (hp == mp ? 40 : 20); _ = bag.GetPropsNum(mp) + 20; }
+            int expectedHp, expectedMp;
+            checked { expectedHp = bag.GetPropsNum(hp) + (hp == mp ? 40 : 20); expectedMp = bag.GetPropsNum(mp) + 20; }
             var simulatedUsed = bag.GetGridCurNum(true); var maximum = bag.GetGridMaxNum();
             foreach (var id in hp == mp ? new[] { hp } : new[] { hp, mp })
             {
@@ -263,8 +264,14 @@ namespace MOD_YtxSQ1.Services
                 }
             }
             ensure(); Add(context, unit, hp, 20);
-            try { ensure(); Add(context, unit, mp, 20); ensure(); }
-            catch (Exception ex) { throw new InvalidOperationException("回血药已增加20个，回蓝药未确认完成：" + ex.Message); }
+            try
+            {
+                ensure(); Add(context, unit, mp, 20); ensure();
+                if (bag.GetPropsNum(hp) != expectedHp || (hp != mp && bag.GetPropsNum(mp) != expectedMp))
+                    throw new InvalidOperationException("整批补给数量回读不一致");
+                ensure();
+            }
+            catch (Exception ex) { throw new InvalidOperationException("补给未完整确认：" + ex.Message + "；请核对背包，勿直接重复补给", ex); }
             return LocalText(g.conf.itemProps.GetItem(hp).name, "回血药") + "、" + LocalText(g.conf.itemProps.GetItem(mp).name, "回蓝药") + "各增加20个；请点击保存";
         }
     }

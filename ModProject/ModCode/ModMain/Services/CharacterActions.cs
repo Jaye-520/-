@@ -98,12 +98,18 @@ namespace MOD_YtxSQ1.Services
                     ensure(); applied = i + 1; fields[i].baseValue = targets[i]; ensure();
                     if (fields[i].value != maxima[i].value) throw new InvalidOperationException("状态恢复回读不一致");
                 }
+                // 后续setter/回调也可能改动已核对的资源，完成整批后再确认全部目标。
+                ensure();
+                for (int i = 0; i < fields.Length; i++)
+                    if (fields[i].value != maxima[i].value) throw new InvalidOperationException("状态恢复整批回读不一致");
             }
             catch
             {
                 bool restored = true;
                 for (int i = applied - 1; i >= 0; i--)
                     try { ensure(); fields[i].baseValue = old[i]; ensure(); if (fields[i].baseValue != old[i]) restored = false; } catch { restored = false; }
+                try { ensure(); for (int i = 0; i < fields.Length; i++) if (fields[i].baseValue != old[i]) restored = false; }
+                catch { restored = false; }
                 if (!restored)
                 {
                     MarkDirty(context);
@@ -122,7 +128,21 @@ namespace MOD_YtxSQ1.Services
             var unit = CharacterReader.Resolve(id);
             if (unit == null) throw new InvalidOperationException("人物已失效");
             var context = CharacterReader.ContextKey(); var ensure = Guard(unit, context);
-            var next = g.conf.roleGrade.GetNextGradeItem(unit.data.dynUnitData.gradeID.value);
+            var data = unit.data; var info = data.unitData; var property = info.propertyData; var dynamic = data.dynUnitData;
+            var dataPointer = data.Pointer; var infoPointer = info.Pointer; var propertyPointer = property.Pointer;
+            var dynamicPointer = dynamic.Pointer; var gradePointer = dynamic.gradeID.Pointer; var gradeId = dynamic.gradeID.value;
+            var ensureTarget = ensure;
+            ensure = () =>
+            {
+                ensureTarget(); var current = unit.data;
+                if (current == null || current.Pointer != dataPointer || current.unitData == null || current.unitData.Pointer != infoPointer ||
+                    current.unitData.propertyData == null || current.unitData.propertyData.Pointer != propertyPointer ||
+                    current.dynUnitData == null || current.dynUnitData.Pointer != dynamicPointer || current.dynUnitData.gradeID == null ||
+                    current.dynUnitData.gradeID.Pointer != gradePointer || current.dynUnitData.gradeID.value != gradeId)
+                    throw new InvalidOperationException("人物修为数据或境界已被替换或改变，停止操作");
+            };
+            ensure();
+            var next = g.conf.roleGrade.GetNextGradeItem(gradeId);
             if (next == null) throw new InvalidOperationException("已到最高阶段");
             var delta = checked(next.exp - unit.data.unitData.propertyData.exp);
             var beforeExp = unit.data.unitData.propertyData.exp;
@@ -154,6 +174,12 @@ namespace MOD_YtxSQ1.Services
                 if (item != null && item.propsItem != null && item.propsItem.isOverlay == 1 && item.propsCount > 0 && item.propsCount < 9999) changes.Add(item);
             }
             var old = new List<int>(); foreach (var item in changes) old.Add(item.propsCount);
+            Action<DataProps.PropsData> requireRecord = item =>
+            {
+                ensure(); bool found = false;
+                foreach (var current in bag.allProps) if (current != null && current.Pointer == item.Pointer) { found = true; break; }
+                if (!found) throw new InvalidOperationException("原物品记录已被移除或替换，停止补满");
+            };
             // 自定义数量可超过9999；补小堆之前核对同类总量，避免原生整数统计溢出。
             var changedIds = new HashSet<int>(); foreach (var item in changes) changedIds.Add(item.propsID);
             var totals = new Dictionary<int, long>();
@@ -168,15 +194,24 @@ namespace MOD_YtxSQ1.Services
             int applied = 0;
             try
             {
-                for (int i = 0; i < changes.Count; i++) { ensure(); applied = i + 1; changes[i].propsCount = 9999; ensure(); if (changes[i].propsCount != 9999) throw new InvalidOperationException("数量回读不一致"); }
+                for (int i = 0; i < changes.Count; i++)
+                {
+                    requireRecord(changes[i]);
+                    if (changes[i].propsCount != old[i]) throw new InvalidOperationException("待补满数量已变化，停止后续操作");
+                    applied = i + 1; changes[i].propsCount = 9999; requireRecord(changes[i]);
+                    if (changes[i].propsCount != 9999) throw new InvalidOperationException("数量回读不一致");
+                }
                 ensure(); bag.UpdateAllShowProps(); ensure();
+                foreach (var item in changes) { requireRecord(item); if (item.propsCount != 9999) throw new InvalidOperationException("补满整批数量回读不一致"); }
             }
             catch
             {
                 bool restored = true;
                 for (int i = applied - 1; i >= 0; i--)
-                    try { ensure(); changes[i].propsCount = old[i]; ensure(); if (changes[i].propsCount != old[i]) restored = false; } catch { restored = false; }
+                    try { requireRecord(changes[i]); changes[i].propsCount = old[i]; requireRecord(changes[i]); if (changes[i].propsCount != old[i]) restored = false; } catch { restored = false; }
                 try { ensure(); bag.UpdateAllShowProps(); ensure(); } catch { restored = false; }
+                try { foreach (var item in changes) requireRecord(item); for (int i = 0; i < changes.Count; i++) if (changes[i].propsCount != old[i]) restored = false; }
+                catch { restored = false; }
                 if (!restored)
                 {
                     MarkDirty(context);
@@ -205,6 +240,9 @@ namespace MOD_YtxSQ1.Services
             };
             ensure(); return ensure;
         }
+        // 本机SetIntim在存值前执行Single.ToString("0.##")再Parse；核对原生量化结果。
+        internal static float NormalizeIntim(float value)
+        { return float.Parse(value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), System.Globalization.CultureInfo.InvariantCulture); }
         private static string AddIntimacy(WorldUnitBase player, WorldUnitBase npc, string id, string amount)
         {
             int add;
@@ -215,18 +253,18 @@ namespace MOD_YtxSQ1.Services
             var playerId = player.data.unitData.unitID;
             var a = player.data.unitData.relationData; var b = npc.data.unitData.relationData;
             float beforeA = RawIntim(a, id), beforeB = b.intimToPlayerUnit;
-            float nextA = beforeA + add, nextB = beforeB + add;
-            if (float.IsNaN(nextA) || float.IsInfinity(nextA) || float.IsNaN(nextB) || float.IsInfinity(nextB) || nextA <= beforeA || nextB <= beforeB)
+            float nextA = NormalizeIntim(beforeA + add), nextB = NormalizeIntim(beforeB + add);
+            if (float.IsNaN(nextA) || float.IsInfinity(nextA) || float.IsNaN(nextB) || float.IsInfinity(nextB) || nextA <= beforeA || nextB <= beforeB || nextA >= 2147483648f || nextB >= 2147483648f || nextA <= -2147483648f || nextB <= -2147483648f)
                 throw new InvalidOperationException("原好感度异常或增量超出可表示范围，未修改");
             int applied = 0;
             try
             {
                 ensure(); applied = 1; a.SetIntim(id, nextA); ensure();
                 var actualA = RawIntim(a, id);
-                if (float.IsNaN(actualA) || float.IsInfinity(actualA) || actualA <= beforeA) throw new InvalidOperationException("玩家好感度未能增加");
+                if (actualA != nextA || b.intimToPlayerUnit != beforeB) throw new InvalidOperationException("第一侧好感或反向基准回读不一致");
                 applied = 2; b.SetIntim(playerId, nextB); ensure();
                 var actualB = b.intimToPlayerUnit;
-                if (float.IsNaN(actualB) || float.IsInfinity(actualB) || actualB <= beforeB) throw new InvalidOperationException("NPC好感度未能增加");
+                if (actualB != nextB || RawIntim(a, id) != nextA) throw new InvalidOperationException("双向好感结果与目标不一致");
             }
             catch
             {

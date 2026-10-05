@@ -5,7 +5,7 @@ $verificationDirectory = $PSScriptRoot
 $started = Get-Date
 
 # 脚本卫生：受维护的 .ps1 必须是带 BOM 的 UTF-8，且能被本机 PowerShell 解析。
-# 本机只有 PowerShell 5.1，按系统 ANSI 读取无 BOM 的中文脚本会直接语法失败。
+# 兼容 Windows PowerShell 5.1：其默认 ANSI 读取无 BOM 中文脚本可能语法失败。
 Write-Host '== 脚本卫生（BOM + 解析）=='
 $maintained = @((Join-Path $projectDirectory 'build.ps1'))
 $maintained += Get-ChildItem -LiteralPath $verificationDirectory -Filter '*.ps1' -File | ForEach-Object { $_.FullName }

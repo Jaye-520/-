@@ -224,6 +224,8 @@ namespace MOD_YtxSQ1.Services
             // 全批生成、核对成功才开始入包；前缀与唯一ID由原生奖励/物品工厂负责。
             var props = new List<DataProps.PropsData>();
             foreach (var entry in entries) { ensure(); props.Add(Generate(entry, expectedGrade)); ensure(); }
+            var ids = new List<string>(); var signatures = new List<string>();
+            foreach (var item in props) { ids.Add(item.soleID); signatures.Add(item.soleIDHashData); }
             int completed = 0; CharacterSave.Sync(context);
             try
             {
@@ -248,8 +250,18 @@ namespace MOD_YtxSQ1.Services
                     }
                     finally { CharacterSave.MarkDirty(context); }
                 }
+                // 后续原生回调可能改变先前入包的记录；逐项成功不代表整批仍成立。
+                for (int i = 0; i < props.Count; i++)
+                {
+                    ensure(); var stored = unit.data.unitData.propData.GetProps(ids[i]);
+                    if (stored == null || stored.propsType != DataProps.PropsDataType.Martial || stored.soleIDHashData != signatures[i])
+                        throw new InvalidOperationException("整批秘籍入包记录回读不一致");
+                    if (entries[i].SuitId != 0 && stored.To<DataProps.PropsAbilityData>().suitID != entries[i].SuitId)
+                        throw new InvalidOperationException("整批秘籍传承身份回读不一致");
+                    ensure();
+                }
             }
-            catch (Exception ex) { throw new InvalidOperationException("已确认添加" + completed + "本，后续未完整确认：" + ex.Message + "；请核对背包，勿直接重复整套添加", ex); }
+            catch (Exception ex) { throw new InvalidOperationException("已逐项处理" + completed + "本，整批未完整确认：" + ex.Message + "；请核对背包，勿直接重复整套添加", ex); }
             return "已添加" + completed + "本" + Realm(expectedGrade) + "秘籍到背包；请点击保存";
         }
     }

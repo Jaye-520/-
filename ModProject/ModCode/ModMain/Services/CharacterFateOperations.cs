@@ -16,14 +16,27 @@ namespace MOD_YtxSQ1.Services
             CharacterSave.Sync(context);
             return unit;
         }
+        private static Action Guard(WorldUnitBase unit, string context)
+        {
+            var id = unit.data.unitData.unitID; var pointer = unit.Pointer;
+            var dataPointer = unit.data.Pointer; var infoPointer = unit.data.unitData.Pointer;
+            var propertyPointer = unit.data.unitData.propertyData.Pointer;
+            Action ensure = () =>
+            {
+                var current = CharacterSave.RequireCurrentTarget(context, id, pointer).data;
+                if (current == null || current.Pointer != dataPointer || current.unitData == null || current.unitData.Pointer != infoPointer ||
+                    current.unitData.propertyData == null || current.unitData.propertyData.Pointer != propertyPointer)
+                    throw new InvalidOperationException("人物气运数据已被替换，停止后续操作；请核对气运");
+            };
+            ensure(); return ensure;
+        }
         internal static bool Add(string unitId, int id, out string message)
         {
             bool mayHaveChanged = false;
             try
             {
                 var unit = Target(unitId);
-                var context = CharacterReader.ContextKey(); var pointer = unit.Pointer; var actualId = unit.data.unitData.unitID;
-                Action ensure = () => CharacterSave.RequireCurrentTarget(context, actualId, pointer);
+                var context = CharacterReader.ContextKey(); var ensure = Guard(unit, context);
                 ensure();
                 var item = g.conf.roleCreateFeature.GetItem(id);
                 if (item == null || item.conceal == 1) throw new InvalidOperationException("隐藏效果或无效配置不能手动添加");
@@ -41,8 +54,8 @@ namespace MOD_YtxSQ1.Services
                     records.Add(record);
                     // 工厂先验证此配置是否有实际运行类，避免把不能初始化的条目写入记录。
                     ensure(); if (WorldFactory.CreateLuckInID(id) == null) throw new InvalidOperationException("气运运行类不可用");
-                    ensure(); p.bornLuck = new Il2CppReferenceArray<DataUnit.LuckData>(records.ToArray()); ensure();
-                    CharacterSave.MarkDirty(); mayHaveChanged = true;
+                    ensure(); CharacterSave.MarkDirty(context); mayHaveChanged = true;
+                    p.bornLuck = new Il2CppReferenceArray<DataUnit.LuckData>(records.ToArray()); ensure();
                     ensure(); var runtime = unit.CreateLuck(record); ensure();
                     // Init may already have registered runtime effects or callback-owned records.
                     if (runtime == null) throw new InvalidOperationException("气运运行效果未确认，请核对记录");
@@ -58,7 +71,7 @@ namespace MOD_YtxSQ1.Services
                 ensure(); if (!HasRecord(unit, id) || unit.GetLuck(id) == null) throw new InvalidOperationException("气运记录或运行效果未一致，请核对");
                 message = "已添加“" + CharacterFateCatalog.ReadName(item) + "”"; return true;
             }
-            catch (Exception ex) { message = "添加未完成：" + ex.Message + (mayHaveChanged ? "；气运可能部分生效，请重新读取后核对" : ""); return false; }
+            catch (Exception ex) { if (mayHaveChanged) UnityEngine.Debug.LogWarning("[八荒秘录] 气运添加未完整确认 人物=" + unitId + " 气运=" + id + "：" + ex); message = "添加未完成：" + ex.Message + (mayHaveChanged ? "；气运可能部分生效，请重新读取后核对" : ""); return false; }
             finally
             {
                 try { CharacterSave.Sync(CharacterReader.ContextKey()); }
@@ -67,11 +80,11 @@ namespace MOD_YtxSQ1.Services
         }
         internal static bool Remove(string unitId, int id, out string message)
         {
+            bool mayHaveChanged = false;
             try
             {
                 var unit = Target(unitId);
-                var context = CharacterReader.ContextKey(); var pointer = unit.Pointer; var actualId = unit.data.unitData.unitID;
-                Action ensure = () => CharacterSave.RequireCurrentTarget(context, actualId, pointer);
+                var context = CharacterReader.ContextKey(); var ensure = Guard(unit, context);
                 ensure();
                 var item = g.conf.roleCreateFeature.GetItem(id);
                 if (item == null || item.conceal == 1)
@@ -85,7 +98,7 @@ namespace MOD_YtxSQ1.Services
                     var record = p.bornLuck[i];
                     if (record != null && record.id == id) born = true; else records.Add(record);
                 }
-                CharacterSave.MarkDirty();
+                CharacterSave.MarkDirty(); mayHaveChanged = true;
                 ensure(); var result = unit.CreateAction(new UnitActionLuckDel(id), false); ensure();
                 if (unit.GetLuck(id) != null) throw new InvalidOperationException("游戏拒绝移除（" + result + "）");
                 // 原生删除注销运行效果并清理addLuck；补齐其不负责的先天拥有记录。
@@ -100,7 +113,7 @@ namespace MOD_YtxSQ1.Services
                 if (HasRecord(unit, id)) throw new InvalidOperationException("移除后的记录未一致，请重新读取");
                 message = "已移除“" + CharacterFateCatalog.ReadName(item) + "”"; return true;
             }
-            catch (Exception ex) { message = "移除未完成：" + ex.Message; return false; }
+            catch (Exception ex) { if (mayHaveChanged) UnityEngine.Debug.LogWarning("[八荒秘录] 气运移除未完整确认 人物=" + unitId + " 气运=" + id + "：" + ex); message = "移除未完成：" + ex.Message + (mayHaveChanged ? "；气运可能部分改变，请核对后保存" : ""); return false; }
             finally
             {
                 try { CharacterSave.Sync(CharacterReader.ContextKey()); }

@@ -22,6 +22,7 @@ namespace MOD_YtxSQ1.UI
         private readonly Dictionary<string, Texture2D> relationTextures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
         private readonly HashSet<string> relationPictureFailures = new HashSet<string>(StringComparer.Ordinal);
         private readonly List<Image> relationLines = new List<Image>();
+        private readonly List<bool> relationLineVertical = new List<bool>();
         private readonly List<RelationLink> relationLineLinks = new List<RelationLink>();
         private readonly List<Button> relationFilters = new List<Button>();
         private float relationZoom = 1;
@@ -74,6 +75,7 @@ namespace MOD_YtxSQ1.UI
             float extentX = Mathf.Max(center.x, relationPage.sizeDelta.x - center.x), extentY = Mathf.Max(center.y, relationPage.sizeDelta.y - center.y);
             relationZoom = Mathf.Clamp(Mathf.Min(1, Mathf.Min((relationViewport.sizeDelta.x - 20) / (extentX * 2), (relationViewport.sizeDelta.y - 20) / (extentY * 2))), .45f, 1);
             relationPage.localScale = new Vector3(relationZoom, relationZoom, 1);
+            UpdateRelationLineWidths();
             relationPage.anchoredPosition = new Vector2(relationViewport.sizeDelta.x / 2 - center.x * relationZoom, -relationViewport.sizeDelta.y / 2 + center.y * relationZoom);
         }
         private void ZoomRelations(float delta)
@@ -83,6 +85,7 @@ namespace MOD_YtxSQ1.UI
             var mouse = RelationMouseInside() ? RelationMouse() : new Vector2(relationViewport.sizeDelta.x / 2, -relationViewport.sizeDelta.y / 2);
             relationPage.anchoredPosition = mouse + (relationPage.anchoredPosition - mouse) * (next / relationZoom);
             relationZoom = next; relationPage.localScale = new Vector3(next, next, 1);
+            UpdateRelationLineWidths();
         }
         private void TickRelations()
         {
@@ -130,7 +133,7 @@ namespace MOD_YtxSQ1.UI
         private void DrawRelations()
         {
             for (int i = relationPage.childCount - 1; i >= 0; i--) ReleaseViewObject(relationPage.GetChild(i).gameObject, "关系图旧内容");
-            relationCards.Clear(); relationPictures.Clear(); relationPositions.Clear(); relationLines.Clear(); relationLineLinks.Clear();
+            relationCards.Clear(); relationPictures.Clear(); relationPositions.Clear(); relationLines.Clear(); relationLineVertical.Clear(); relationLineLinks.Clear();
             var placed = RelationLayout.Arrange(selectedUnitId, relationGraph.Links);
             float minX = 0, minY = 0, maxX = 0, maxY = 0;
             foreach (var position in placed.Values) { minX = Mathf.Min(minX, position.Column * 126); minY = Mathf.Min(minY, position.Row * 164); maxX = Mathf.Max(maxX, position.Column * 126); maxY = Mathf.Max(maxY, position.Row * 164); }
@@ -172,13 +175,26 @@ namespace MOD_YtxSQ1.UI
                 Label(rect, caption, 3, 106, 86, 20, 12, person.Dead || !person.Valid ? Cinnabar : Muted, TextAnchor.MiddleCenter);
                 if (!person.Valid) Label(rect, person.Dead ? "故" : "？", 8, 14, 76, 62, 30, Muted, TextAnchor.MiddleCenter);
             }
+            UpdateRelationLineWidths();
             HighlightRelation(relationSelection);
         }
         private void RelationLine(RelationLink link, float x1, float y1, float x2, float y2)
         {
             if (Math.Abs(x1 - x2) < .01f && Math.Abs(y1 - y2) < .01f) return;
             var line = Fill(relationPage, "关系连线", Mathf.Min(x1, x2), Mathf.Min(y1, y2), Mathf.Max(1, Math.Abs(x2 - x1)), Mathf.Max(1, Math.Abs(y2 - y1)), Gold);
-            relationLines.Add(line); relationLineLinks.Add(link);
+            relationLines.Add(line); relationLineVertical.Add(Math.Abs(x1 - x2) < .01f); relationLineLinks.Add(link);
+        }
+        private void UpdateRelationLineWidths()
+        {
+            // Avoid subpixel Image geometry disappearing during canvas pixel adjustment.
+            // Compensate only the thin dimension; endpoints and routing still scale with the graph.
+            float thickness = 2f / relationZoom;
+            for (int i = 0; i < relationLines.Count; i++)
+            {
+                var rect = relationLines[i].rectTransform;
+                var size = rect.sizeDelta;
+                rect.sizeDelta = relationLineVertical[i] ? new Vector2(thickness, size.y) : new Vector2(size.x, thickness);
+            }
         }
         private void HighlightRelation(string id)
         {
@@ -244,7 +260,7 @@ namespace MOD_YtxSQ1.UI
             bool sync = false;
             var toggle = MakeButton(panel, "同步双向好感", 16, 220, w - 32, 34, "□ 同步修改双方", () => { });
             toggle.onClick.AddListener((UnityAction)(new Action(() => { sync = !sync; b.interactable = !sync; toggle.GetComponentInChildren<Text>().text = sync ? "☑ 同步修改双方" : "□ 同步修改双方"; })));
-            Label(panel, "好感与身份分别管理；实际数值以原生回读为准。\n确认后即时修改，顶部保存负责落盘。", 16, 270, w - 32, 60, 15, Muted);
+            Label(panel, "身份另行管理；原生好感最多两位小数。\n确认后即时修改，顶部保存负责落盘。", 16, 270, w - 32, 60, 15, Muted);
             MakeButton(panel, "确认双向好感", 16, panel.sizeDelta.y - 98, w - 32, 36, "确认修改", () =>
             {
                 if (!string.IsNullOrEmpty(Input.compositionString)) return;
@@ -329,7 +345,7 @@ namespace MOD_YtxSQ1.UI
             try { var message = operation(); CloseRelationOverlay(); RefreshCharacter(true); SetEditStatus(message); }
             catch (Exception ex)
             {
-                if (CharacterSave.Pending != pending) { CloseRelationOverlay(); RefreshCharacter(true); }
+                if (CharacterSave.Pending != pending) { Debug.LogWarning("[八荒秘录] 关系操作未完整确认 " + pair.A + " ↔ " + pair.B + "：" + ex); CloseRelationOverlay(); RefreshCharacter(true); }
                 else if (relationDialogStatus != null) { relationDialogStatus.text = ex.Message; relationDialogStatus.color = Cinnabar; }
                 SetEditStatus(ex.Message, true);
             }
@@ -350,7 +366,7 @@ namespace MOD_YtxSQ1.UI
         {
             CloseRelationOverlay(); ClearRelationTextures(); relationDragging = false;
             relationGraph = null; relationOwner = null; relationSelection = null; relationPage = null; relationViewport = null; relationSummary = null;
-            relationCards.Clear(); relationPictures.Clear(); relationPositions.Clear(); relationLines.Clear(); relationLineLinks.Clear(); relationExpanded.Clear(); relationFilters.Clear();
+            relationCards.Clear(); relationPictures.Clear(); relationPositions.Clear(); relationLines.Clear(); relationLineVertical.Clear(); relationLineLinks.Clear(); relationExpanded.Clear(); relationFilters.Clear();
         }
     }
 }

@@ -21,30 +21,31 @@ namespace MOD_YtxSQ1.Services
         {
             if (!CharacterRelations.EditableAffinity(ab) || !CharacterRelations.EditableAffinity(ba)) throw new InvalidOperationException("好感须大于-2147483648、小于2147483648，可输入小数");
             Ensure(expected, true); CharacterSave.Sync(expected.Context);
+            ab = CharacterActions.NormalizeIntim(ab); ba = CharacterActions.NormalizeIntim(ba);
+            if (ab == expected.AB && ba == expected.BA) return "好感未变化（原生最多保留两位小数）";
             var a = CharacterReader.Resolve(expected.A).data.unitData.relationData; var b = CharacterReader.Resolve(expected.B).data.unitData.relationData;
             bool appliedA = false, appliedB = false;
             try
             {
                 if (ab != expected.AB) { Ensure(expected); appliedA = true; a.SetIntim(expected.B, ab); Ensure(expected); }
-                if (CharacterRelations.State(a) != expected.StateA || CharacterRelations.State(b) != expected.StateB || CharacterRelations.Raw(b, expected.A) != expected.BA)
+                if (CharacterRelations.State(a) != expected.StateA || CharacterRelations.State(b) != expected.StateB || CharacterRelations.Raw(a, expected.B) != ab || CharacterRelations.Raw(b, expected.A) != expected.BA)
                     throw new InvalidOperationException("原生回调期间双方关系已变化，停止第二侧修改");
                 if (ba != expected.BA) { Ensure(expected); appliedB = true; b.SetIntim(expected.A, ba); Ensure(expected); }
                 if (CharacterRelations.State(a) != expected.StateA || CharacterRelations.State(b) != expected.StateB)
                     throw new InvalidOperationException("好感回调期间身份关系已变化，请核对双方");
                 var actualA = CharacterRelations.Raw(a, expected.B); var actualB = CharacterRelations.Raw(b, expected.A);
-                if (!CharacterRelations.Finite(actualA) || !CharacterRelations.Finite(actualB) ||
-                    (ab != expected.AB && actualA == expected.AB) || (ba != expected.BA && actualB == expected.BA))
-                    throw new InvalidOperationException("原生好感修改未生效");
+                if (actualA != ab || actualB != ba)
+                    throw new InvalidOperationException("原生好感结果与目标不一致");
                 if (appliedA || appliedB) CharacterSave.MarkDirty(expected.Context);
                 return "好感 " + expected.NameA + "→" + expected.NameB + " " + CharacterRelations.Number(actualA) + "；反向 " + CharacterRelations.Number(actualB) + "；请点击保存";
             }
-            catch
+            catch (Exception ex)
             {
                 bool restored = true;
                 if (appliedB) try { Ensure(expected); b.SetIntim(expected.A, expected.BA); Ensure(expected); } catch { restored = false; }
                 if (appliedA) try { Ensure(expected); a.SetIntim(expected.B, expected.AB); Ensure(expected); } catch { restored = false; }
                 try { Ensure(expected); restored &= CharacterRelations.Raw(a, expected.B) == expected.AB && CharacterRelations.Raw(b, expected.A) == expected.BA && CharacterRelations.State(a) == expected.StateA && CharacterRelations.State(b) == expected.StateB; } catch { restored = false; }
-                if (!restored) { CharacterSave.MarkDirty(expected.Context); throw new InvalidOperationException("好感可能部分改变，已标记待保存；请核对双方，不要重复提交"); }
+                if (!restored) { CharacterSave.MarkDirty(expected.Context); throw new InvalidOperationException("好感可能部分改变，已标记待保存；请核对双方，不要重复提交", ex); }
                 throw;
             }
         }

@@ -118,6 +118,16 @@ namespace MOD_YtxSQ1.Services
             };
             ensure(); return ensure;
         }
+        internal static int StudyTipCode(DataStruct<string, int> tip)
+        {
+            if (tip == null) throw new InvalidOperationException("学习条件检查未返回结果");
+            // 本机Unhollower泛型值字段getter重复装箱，把已装箱对象头当整数读取。
+            // 从实际返回对象的原生字段元数据取得偏移，不使用错误getter或固定布局。
+            var field = UnhollowerBaseLib.IL2CPP.GetIl2CppField(UnhollowerBaseLib.IL2CPP.il2cpp_object_get_class(tip.Pointer), "t2");
+            if (field == IntPtr.Zero) throw new InvalidOperationException("学习条件码字段不可读取");
+            var offset = checked((int)UnhollowerBaseLib.IL2CPP.il2cpp_field_get_offset(field));
+            return System.Runtime.InteropServices.Marshal.ReadInt32(IntPtr.Add(tip.Pointer, offset));
+        }
         internal static string Study(string context, string unitId, MartialEntry entry)
         {
             var unit = ItemInventory.RequireTarget(context, unitId);
@@ -128,17 +138,28 @@ namespace MOD_YtxSQ1.Services
             if (props.propsCount != 1 || unit.data.unitData.GetActionMartial(entry.SoleId) != null)
                 throw new InvalidOperationException("秘籍记录异常，未学习");
             var tip = UnitActionPropMartialStudy.GetStudyTip(unit, props.To<DataProps.MartialData>(), true, true, true);
-            if (tip != null && (!string.IsNullOrEmpty(tip.t1) || tip.t2 != 0))
-                throw new InvalidOperationException(string.IsNullOrEmpty(tip.t1) ? "当前条件不允许学习（" + tip.t2 + "）" : Plain(tip.t1));
+            var tipCode = StudyTipCode(tip);
+            if (!string.IsNullOrEmpty(tip.t1) || tipCode != 0)
+                throw new InvalidOperationException(string.IsNullOrEmpty(tip.t1) ? "当前条件不允许学习（" + tipCode + "）" : Plain(tip.t1));
+            // 原生学习记录复用秘籍对象；CostPropItem把其数量从1减为0后移出背包。
+            // soleIDHashData包含数量，所以成功后的签名必须按数量0预先计算。
+            var consumed = props.Clone(); consumed.propsCount = 0;
+            var consumedSignature = consumed.soleIDHashData;
+            ensure();
+            if (Record(unit, entry).Pointer != props.Pointer)
+                throw new InvalidOperationException("原秘籍对象已被替换，请重新选择");
             CharacterSave.Sync(context);
             try
             {
                 ensure(); unit.data.unitData.StudyActionMartialProp(props); ensure();
                 ensure();
                 var learned = unit.data.unitData.GetActionMartial(entry.SoleId);
-                if (learned == null || learned.data.soleIDHashData != entry.Signature || unit.data.unitData.propData.GetProps(entry.SoleId) != null)
+                if (learned == null || learned.data == null || learned.data.Pointer != props.Pointer || learned.data.soleIDHashData != consumedSignature || unit.data.unitData.propData.GetProps(entry.SoleId) != null)
                     throw new InvalidOperationException("学习结果未完整确认，请核对秘籍和已学功法，勿重复提交");
-                unit.data.unitData.propData.UpdateAllShowProps(); ensure(); unit.UpdateConf(); ensure();
+                var ensureLearned = GuardLearned(context, unit, entry, learned);
+                unit.data.unitData.propData.UpdateAllShowProps(); ensureLearned(); unit.UpdateConf(); ensureLearned();
+                if (learned.data.soleIDHashData != consumedSignature || unit.data.unitData.propData.GetProps(entry.SoleId) != null)
+                    throw new InvalidOperationException("学习完成后的秘籍消耗或已学记录不一致，请核对，勿重复提交");
             }
             finally { CharacterSave.MarkDirty(context); }
             return "已学会“" + entry.Name + "”，消耗这本秘籍；未自动装备，请点击保存";
@@ -158,6 +179,9 @@ namespace MOD_YtxSQ1.Services
                 if (unit.data.unitData.GetActionMartial(entry.SoleId)?.exp != maximum)
                     throw new InvalidOperationException("修炼结果回读不一致，请核对功法");
                 RefreshEffects(unit, entry, ensure);
+                ensure();
+                if (action.exp != maximum || IsEquipped(unit, entry.SoleId) != entry.Equipped)
+                    throw new InvalidOperationException("效果刷新后的修炼或装备结果不一致，请核对功法");
             }
             finally { CharacterSave.MarkDirty(context); }
             return "这本功法已修炼圆满；请点击保存";
@@ -470,6 +494,13 @@ namespace MOD_YtxSQ1.Services
                     var result = unit.CreateAction(equip, false); ensure();
                     if (result != 0 || Slot(unitId, entry.Type, slot) != entry.SoleId) throw new InvalidOperationException("词条已应用，原装备恢复未确认，请核对");
                 }
+                ensure(); var finalValues = props.GetValues();
+                if (action.exp != entry.Exp || finalValues == null || finalValues.Length != copy.Length || IsEquipped(unit, entry.SoleId) != entry.Equipped)
+                    throw new InvalidOperationException("刷新后的词条、修炼或装备状态不一致，请核对，勿重复提交");
+                for (int i = 0; i < copy.Length; i++) if (finalValues[i] != copy[i]) throw new InvalidOperationException("刷新后的词条结果与草稿不一致，请核对，勿重复提交");
+                if (entry.Type == MartialType.Ability && props.To<DataProps.PropsAbilityData>().suitID != entry.SuitId)
+                    throw new InvalidOperationException("刷新后的传承身份不一致，请核对功法");
+                ensure();
             }
             finally { CharacterSave.MarkDirty(context); }
             return "词条修改已应用；数量变化会按游戏规则改变秘籍品质，修炼进度保留";

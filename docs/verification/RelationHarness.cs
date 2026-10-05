@@ -93,6 +93,23 @@ internal static class RelationHarness
         Check(Rejected(() => RelationOperations.SetAffinity(pair, 1, 2)) && CharacterRelations.Raw(b.data.unitData.relationData, "a") == beforeSave, "busy save refuses affinity without mutation"); DataMgr.isSaveData = false;
         Check(Rejected(() => Pair("a", "a")) && Rejected(() => Pair("a", "missing")), "rejects self and unresolved write targets");
         Reset(); a = Add("a", "苏勇"); b = Add("b", "许愉心");
+        RelationOperations.SetAffinity(Pair("a", "b"), .123456f, -.987654f);
+        Check(Pair("a", "b").AB == .12f && Pair("a", "b").BA == -.99f, "native two-decimal affinity is accepted and read back");
+        pair = Pair("a", "b");
+        a.data.unitData.relationData.AfterSet = () => { a.data.unitData.relationData.AfterSet = null; a.data.unitData.relationData.intimToUnit["b"] = 8; };
+        var beforeRejected = CharacterSave.Pending;
+        Check(Rejected(() => RelationOperations.SetAffinity(pair, 10, 20)) && Pair("a", "b").AB == pair.AB && Pair("a", "b").BA == pair.BA && CharacterSave.Pending == beforeRejected, "wrong finite first-side result rejects and restores without success");
+        pair = Pair("a", "b");
+        b.data.unitData.relationData.AfterSet = () => { b.data.unitData.relationData.AfterSet = null; a.data.unitData.relationData.intimToUnit["b"] = 9; };
+        Check(Rejected(() => RelationOperations.SetAffinity(pair, 10, 20)) && Pair("a", "b").AB == pair.AB && Pair("a", "b").BA == pair.BA, "second-side callback changing first side cannot claim success");
+        pair = Pair("a", "b");
+        b.data.unitData.relationData.AfterSet = () => { b.data.unitData.relationData.AfterSet = null; a.data.unitData.relationData.intimToUnit["b"] = 7; };
+        beforeRejected = CharacterSave.Pending;
+        Check(Rejected(() => RelationOperations.SetAffinity(pair, pair.AB, 30)) && CharacterSave.Pending > beforeRejected && Pair("a", "b").AB == 7, "unchanged side altered by callback rejects and preserves uncertain pending");
+        Reset(); a = Add("a", "苏勇"); b = Add("b", "许愉心");
+        RelationOperations.SetAffinity(Pair("a", "b"), .004f, -.004f);
+        Check(Pair("a", "b").AB == 0 && Pair("a", "b").BA == 0 && CharacterSave.Pending == 0, "rounded no-op does not call setters or mark pending");
+        Reset(); a = Add("a", "苏勇"); b = Add("b", "许愉心");
         foreach (var type in new[] { 5, 6, 7, 8, 9, 10, 11 })
         {
             pair = Pair("a", "b"); RelationOperations.SetRelation(pair, type, false);
@@ -153,6 +170,17 @@ internal static class RelationHarness
             Check(Field<UnityEngine.GameObject>(view, "relationOverlay") == null && !closed, "escape closes relation overlay before book at " + size[0]);
             Click(book, "放大关系图"); Check(Field<float>(view, "relationZoom") > .45f, "zoom changes graph scale at " + size[0]);
             Click(book, "关系回到中心"); Check(Field<float>(view, "relationZoom") <= 1, "return to center fits direct graph at " + size[0]);
+            var lines = Field<List<UnityEngine.UI.Image>>(view, "relationLines");
+            var verticals = Field<List<bool>>(view, "relationLineVertical");
+            var lengths = lines.Select((line, index) => verticals[index] ? line.rectTransform.sizeDelta.y : line.rectTransform.sizeDelta.x).ToArray();
+            foreach (var zoom in new[] { .45f, .55f, .7f, 1f, 1.6f, .8f, .45f })
+            {
+                typeof(BookView).GetMethod("ZoomRelations", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(view, new object[] { zoom - Field<float>(view, "relationZoom") });
+                float actual = Field<float>(view, "relationZoom");
+                Check(lines.Count == lengths.Length && lines.Select((line, index) => Math.Abs((verticals[index] ? line.rectTransform.sizeDelta.x : line.rectTransform.sizeDelta.y) * actual - 2) < .001f && Math.Abs((verticals[index] ? line.rectTransform.sizeDelta.y : line.rectTransform.sizeDelta.x) - lengths[index]) < .001f).All(ok => ok), "zoom preserves visible stroke and route length at " + size[0] + " / " + zoom);
+            }
+            Click(book, "关系回到中心");
+            Check(lines.Select((line, index) => Math.Abs((verticals[index] ? line.rectTransform.sizeDelta.x : line.rectTransform.sizeDelta.y) * Field<float>(view, "relationZoom") - 2) < .001f).All(ok => ok), "auto-fit restores compensated line widths at " + size[0]);
             var page = Field<UnityEngine.RectTransform>(view, "relationPage"); var oldPosition = page.anchoredPosition;
             UnityEngine.Input.mousePosition = new UnityEngine.Vector2(10, -10); UnityEngine.Input.MouseDown = true;
             Find(book, "关系图拖动区域").GetComponent<UIEventListener>().onPointDown.Invoke();

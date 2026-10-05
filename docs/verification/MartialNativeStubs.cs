@@ -22,7 +22,7 @@ public sealed partial class UnitData
     public bool IsEquipProps(string id){return false; } // 普通物品装备判断不包含功法槽位。}
     public Action AfterStudy, AfterExp; public bool FailStudyAfterWrite, FailExpAfterWrite;
     public DataUnit.ActionMartialData StudyActionMartialProp(DataProps.PropsData props)
-    {var item=new DataUnit.ActionMartialData{data=props};if(!Learned.ContainsKey(props.Martial.martialType))Learned[props.Martial.martialType]=new List<DataUnit.ActionMartialData>();Learned[props.Martial.martialType].Add(item);propData.DelProps(props.soleID);if(AfterStudy!=null)AfterStudy();if(FailStudyAfterWrite)throw new InvalidOperationException("study callback failed");return item;}
+    {var item=new DataUnit.ActionMartialData{data=props};if(!Learned.ContainsKey(props.Martial.martialType))Learned[props.Martial.martialType]=new List<DataUnit.ActionMartialData>();Learned[props.Martial.martialType].Add(item);propData.DelProps(props.soleID);props.propsCount=0;if(props.Raw!=null)props.Raw[1]=0;if(AfterStudy!=null)AfterStudy();if(FailStudyAfterWrite)throw new InvalidOperationException("study callback failed");return item;}
     public void AddMartialExp(string id,int delta){var action=GetActionMartial(id);var items=g.conf.battleSkillMastery.GetItems(null,action.data.Martial);action.exp=Math.Min(g.conf.battleSkillMastery.GetExp(items.Last(),action.data.Martial.grade),action.exp+delta);if(AfterExp!=null)AfterExp();if(FailExpAfterWrite)throw new InvalidOperationException("exp callback failed");}
 }
 public partial class DataProps
@@ -77,7 +77,24 @@ public partial class DataProps
         private void Changed(){Record.Raw=null;Record.ExtraData=string.Join(";",Prefixes.Select(p=>p.prefixValueItem.number+":"+p.prefixLevel));}
     }
 }
-public class DataStruct<T,A>{public T t1;public A t2;}
+public class DataStruct<T,A>
+{
+    public T t1; private A value; public static bool BrokenIntegerGetter;
+    public IntPtr Pointer = System.Runtime.InteropServices.Marshal.AllocHGlobal(32);
+    public DataStruct(){System.Runtime.InteropServices.Marshal.WriteInt32(Pointer,24,0);}
+    public A t2 {get{return BrokenIntegerGetter && typeof(A)==typeof(int) ? (A)(object)(-204225504) : value;}
+        set{this.value=value;if(typeof(A)==typeof(int))System.Runtime.InteropServices.Marshal.WriteInt32(Pointer,24,(int)(object)value);}}
+    ~DataStruct(){System.Runtime.InteropServices.Marshal.FreeHGlobal(Pointer);}
+}
+namespace UnhollowerBaseLib
+{
+    public static class IL2CPP
+    {
+        public static IntPtr il2cpp_object_get_class(IntPtr pointer){return new IntPtr(1);}
+        public static IntPtr GetIl2CppField(IntPtr type,string name){return name=="t2"?new IntPtr(2):IntPtr.Zero;}
+        public static uint il2cpp_field_get_offset(IntPtr field){return 24;}
+    }
+}
 public class ConfBattleSkillMasteryItem {public int id;public int[] Grades;}
 public class ConfBattleSkillMastery
 {

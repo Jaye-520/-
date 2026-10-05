@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：08.01 ｜ **最后更新**：2026-10-05
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：08.05 ｜ **最后更新**：2026-10-05
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -113,7 +113,7 @@
 
 磁盘哈希一致只证明文件相同，不证明运行中的游戏已重载该版本；官方编辑器“进入游戏调试”也会复制Release DLL并加载。运行版本以日志、界面和实测反馈核对，不擅自终止游戏。
 
-**脚本编码约定（2026-10-03实测并修复）**：`build.ps1`与`docs/verification/run-*.ps1`原先是无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误、完全无法运行**（本机仅有5.1：`$PSVersionTable.PSVersion`为5.1、`[Text.Encoding]::Latin1`不存在；修复前实测11个脚本全部解析失败，`build.ps1`含5处错误）。已给全部11个受跟踪`.ps1`加UTF-8 BOM（字节级前置，不改内容与换行，diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1下执行。**今后新增或改写`.ps1`必须保留BOM**（或写成纯ASCII），否则本机下次又会整体失效；`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。**改写`.ps1`会丢掉BOM**：2026-10-03用文本编辑方式改`run-entrances.ps1`后脚本立即无法解析，须在改完后按字节重新前置`EF BB BF`，并在提交前用`[System.Management.Automation.Language.Parser]::ParseFile`复验全部受跟踪`.ps1`。
+**脚本编码约定（2026-10-03实测并修复）**：`build.ps1`与`docs/verification/run-*.ps1`原先是无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误、完全无法运行**（2026-10-03当时会话为5.1：`$PSVersionTable.PSVersion`为5.1、`[Text.Encoding]::Latin1`不存在；修复前实测11个脚本全部解析失败，`build.ps1`含5处错误）。已给全部11个受跟踪`.ps1`加UTF-8 BOM（字节级前置，不改内容与换行，diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1下执行。**今后新增或改写`.ps1`必须保留BOM**（或写成纯ASCII），否则Windows PowerShell 5.1下可能再次整体失效；`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。**改写`.ps1`会丢掉BOM**：2026-10-03用文本编辑方式改`run-entrances.ps1`后脚本立即无法解析，须在改完后按字节重新前置`EF BB BF`，并在提交前用`[System.Management.Automation.Language.Parser]::ParseFile`复验全部受跟踪`.ps1`。
 
 2026-10-02按用户指令在工程根建立本地Git，主分支main，无远程。初始提交包含当时07.15源码、工程会话入口、配置、源资源、检查脚本及文档；最新验收以项目记忆为准。未配置原用户提交身份，因此仅仓库内使用Codex <codex@localhost>作为自动化身份，不修改全局设置。
 
@@ -461,7 +461,7 @@ ContextKey同时绑定玩家原生指针、人物ID和DataMgr指针；存档管�
 
 快捷操作入口检查ContextKey及保存忙状态；Guard绑定人物指针与存档上下文，满状态/满材料每项写入、回读及回退都校验，满修为在原生AddExp后重新确认对象。MarkDirty(context)只能归入同一当前存档；世界切换仅同步，不将旧操作计入新存档。无法确认当前对象的部分操作保留可能生效提示，不再读取旧引用凑回读。
 
-返回原点同时绑定NPC ID及原生指针，人物替换不能继承旧位置；替换后重新“来”会建立新原点。好感度使用SetIntim维护关系缓存，预检有限数值及增量可表示性，第一侧回读实际增加后才写第二侧；原生包含浮点字符串格式化，不把传入浮点值当成最终精确结果。失败逆序回退，只恢复已尝试步骤，并再次校验双方。
+返回原点同时绑定NPC ID及原生指针，人物替换不能继承旧位置；替换后重新“来”会建立新原点。好感度使用SetIntim维护关系缓存，预检有限数值及增量可表示性，本机原生SetIntim以Single.ToString("0.##")再Parse存值，先量化目标；第一侧必须等于量化目标且第二侧保持原值才继续，最终双方都须等于各自目标。失败逆序回退，只恢复已尝试步骤，并再次校验双方。
 
 ### 道具容器身份与气运回调后快照（07.77）
 
@@ -561,7 +561,7 @@ Unhollower包装方法的Cecil.IsVirtual可为false，但IL中il2cpp_object_get_
 
 关系读取直接遍历RelationData的parent/children/childrenPrivate/brother/parentBack/childrenBack/brotherBack/married/lover/master/student，避免GetRelation(type, true)清理死亡记录。已故人物从DataMgr.unitDie.GetUnitDie读取；好友/仇人按本机GameParameter的friendCloseRequire/haterCloseRequire判定（只读配置60/-60），不是可任意设置的独立身份。部分阈值读取失败保留已读身份并标注。接口依据为官方CHM的UnitActionRelationSet(WorldUnitBase, UnitRelationType, Int32)与本机Managed程序集；原生反汇编见.tools/relations-api.txt、relations-native.txt和relations-reading-native.txt。
 
-好感用双方各自SetIntim，指向玩家时读取intimToPlayerUnit，其他指向读取intimToUnit；输入和指纹按float往返格式保留小数，并限制在原生GetIntim整数读数可表示范围内。确认绑定世界、双方unit/data/unitData/relationData身份、整组结构指纹和原好感；回调后先复核，再修改第二侧；仅回退实际尝试的步骤，无法确认结果则保留Pending。结构写入走IsCreateAction/CreateAction，不直接改关系容器。夫妻/道侣/师徒/义亲建立与解除核对反向类型；重复、多重/不对称身份或已有配偶冲突拒绝，不自动换人。
+好感用双方各自SetIntim，指向玩家时读取intimToPlayerUnit，其他指向读取intimToUnit；输入按本机原生0.##量化，指纹保留实际float；限制在原生GetIntim整数读数可表示范围内，量化后未改变则不写入也不新增Pending。确认绑定世界、双方unit/data/unitData/relationData身份、整组结构指纹和原好感；回调后先复核，再修改第二侧；仅回退实际尝试的步骤，无法确认结果则保留Pending。结构写入走IsCreateAction/CreateAction，不直接改关系容器。夫妻/道侣/师徒/义亲建立与解除核对反向类型；重复、多重/不对称身份或已有配偶冲突拒绝，不自动换人。
 
 血亲新增通过UnitActionRelationSetParent，仅父母槽为空且不形成祖先循环时开放；明确会更新兄弟姐妹、子女和后代姓氏。已有家谱不替换；血亲单项解除及直接设置私生/同胞身份未开放。结构动作可能影响原生行为、声望与事件，失败不伪装事务回滚，不盲重试。
 
@@ -574,3 +574,19 @@ Unhollower包装方法的Cecil.IsVirtual可为false，但IL中il2cpp_object_get_
 ### 08.01 原生相机父子关系
 
 本机GameAssembly反汇编确认 `ModelRenderTexture.CreateRenderTex(GameObject,...)` 将人物root设为相机对象（实例+0x10）子物体，随后设置其世界位置为相机位置加offset。`CreateRenderTex(int,int,Transform)`将相机对象写入+0x10、Camera组件写入+0x20。若直接设置camera.position，root会跟随，取景中心调整失效；小立绘先 `modelRoot.transform.SetParent(null, true)`，保留世界姿态再测量和拟合。原生renderer与脱离后的root仍分别在finally释放。托管渲染器补上相机父子关系，四尺寸回归检查在移除此修正时均失败，加回后通过。证据：`.tools/portrait-native-metadata/render-disassembly.txt`及`.tools/relations-0801-before-fix.txt`；不等同于实际GPU验收。
+
+### 08.02 关系连线缩放
+
+连线Image原始1单位短边随图面缩到0.45后可能被像素对齐舍掉。保存每段横/竖方向，`UpdateRelationLineWidths`只将短边改为 `2 / relationZoom`，使图面缩放后的线宽稳定；长边不改，保留路由长度。绘图、自动居中与手动缩放统一更新，不依赖重新构图恢复线条。关系专项四尺寸连续缩放及居中检查覆盖尺寸补偿，08.05当前分辨率三节点按钮缩小到0.45及回到中心已实测；其它GPU/复杂布局仍需实际验证。
+
+### 08.03 写入收尾与所有权
+
+每步回读通过仍可能被后续setter、原生事件或UpdateConf改写。属性全批在磁盘保存启动前重新核对全部目标；满状态、材料、双药补给及整批秘籍在最后回调后复核。可回退字段在整批回退后也核验原值；不能恢复则保留Pending，不声明成功或盲重试。气运和满修为绑定unit/data/unitData/propertyData及相关动态字段，替换后停止后续写入；材料绑定当前包中的原记录，禁止回退到脱离背包的旧对象。功法学习、修炼和词条保存须在刷新/重新装备之后确认最终记录、消耗、经验、装备及词条。复杂原生动作不承诺事务回滚。
+
+本机SetIntim的0.##格式来自当前GameAssembly及metadata解析，不以托管替身反推API；详见[08.03证据](CHANGELOG.md#0803--系统审查与写入结果确认)。替身覆盖可控回调中断，不代表原版实际出现这些干扰或已游戏验收。
+
+### 08.04–08.05 本机学习返回码与消耗签名
+
+本机Unhollower 0.4.18的DataStruct<string,int>.t2值字段getter经PointerToValueGeneric重复装箱，可能返回对象头的随机整数。学习门禁仍调用原生GetStudyTip，使用实际对象类的t2字段元数据偏移读取int；缺返回对象或字段立即拒绝，不使用固定偏移或忽略非零失败码。依据及实际游戏复现见[变更记录](CHANGELOG.md#08040805--游戏学习故障修复及运行验证)。
+
+StudyActionMartialProp将原秘籍对象写入已学记录，DelProps将同一对象数量从1减为0再移出包；soleIDHashData包含数量。因此学习前克隆计算数量0的预期完整签名，学习后检查原指针、完整签名、原包已消耗、已学归属，刷新完成后再次核验。不能保留错误的“学习前后签名完全相同”假设；也不能仅检查已学数量增加就报成功。替身必须模拟同对象count归零，成功提示回归与刷新后重插书/改经验/改词条拒绝回归同时保留。该契约只在当前游戏二进制核实，升级游戏/Unhollower需要重新核对。

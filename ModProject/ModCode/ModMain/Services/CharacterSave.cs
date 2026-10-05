@@ -10,7 +10,7 @@ namespace MOD_YtxSQ1.Services
     {
         private sealed class Write
         {
-            internal Action Apply, Undo;
+            internal Action Apply, Undo, Verify;
             internal int Order;
             internal string UnitId;
             internal IntPtr UnitPointer;
@@ -101,6 +101,7 @@ namespace MOD_YtxSQ1.Services
                     EnsureWriteTarget(writeContext, writes[i]);
                 }
                 EnsureWriteTarget(writeContext, null);
+                foreach (var write in writes) { EnsureWriteTarget(writeContext, write); write.Verify(); }
                 if (writes.Count > 0) { MarkDirty(); session.Clear(); }
             }
             catch (Exception ex)
@@ -182,8 +183,30 @@ namespace MOD_YtxSQ1.Services
         {
             var unit = CharacterReader.Resolve(c.UnitId);
             if (unit == null) throw new InvalidOperationException("人物已失效");
+            var preparedContext = CharacterReader.ContextKey(); var pointer = unit.Pointer;
+            var dataPointer = unit.data.Pointer; var infoPointer = unit.data.unitData.Pointer;
+            var propertyPointer = unit.data.unitData.propertyData.Pointer;
+            var number = c.Field.Name || c.Field.Choice ? null : CharacterEditData.Number(unit, c.Field);
+            var numberPointer = number == null ? IntPtr.Zero : number.Pointer;
+            Action ensure = () =>
+            {
+                var current = RequireCurrentTarget(preparedContext, c.UnitId, pointer).data;
+                if (current == null || current.Pointer != dataPointer || current.unitData == null || current.unitData.Pointer != infoPointer ||
+                    current.unitData.propertyData == null || current.unitData.propertyData.Pointer != propertyPointer)
+                    throw new InvalidOperationException("人物属性容器已被替换，停止保存");
+                if (numberPointer != IntPtr.Zero)
+                {
+                    var field = CharacterEditData.Number(unit, c.Field);
+                    if (field == null || field.Pointer != numberPointer) throw new InvalidOperationException("原属性字段已被替换，停止保存");
+                }
+            };
             var write = PrepareForUnit(c, changes, unit);
-            write.UnitId = c.UnitId; write.UnitPointer = unit.Pointer; return write;
+            write.Verify = () =>
+            {
+                ensure(); var actual = CharacterEditData.Read(unit, c.Field); ensure();
+                if (actual != c.Value) throw new InvalidOperationException(CharacterSnapshot.Labels[c.Field.Group][c.Field.Index] + "整批回读与目标不一致");
+            };
+            write.UnitId = c.UnitId; write.UnitPointer = pointer; return write;
         }
         private static Write PrepareForUnit(CharacterEditSession.Change c, List<CharacterEditSession.Change> changes, WorldUnitBase unit)
         {

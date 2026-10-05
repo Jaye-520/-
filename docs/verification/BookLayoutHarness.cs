@@ -604,8 +604,13 @@ internal static class BookLayoutHarness
         var bookEntry=CharacterMartials.ReadBooks(target).First(x=>x.SoleId==props.soleID);var pending=CharacterSave.Pending;
         UnitActionPropMartialStudy.Refuse=true;
         Check(Rejected(()=>CharacterMartials.Study(context,target,bookEntry)) && bag.IsHasProps(props.soleID) && CharacterSave.Pending==pending,"study refusal leaves book and pending unchanged at "+size);UnitActionPropMartialStudy.Refuse=false;
-        ClickNamed(book,"确认学会秘籍");ClickNamed(book,"切换功法阶段");
+        DataStruct<string,int>.BrokenIntegerGetter=true;
+        var successfulTip=UnitActionPropMartialStudy.GetStudyTip(unit,props.Martial,true,true,true);
+        Check(successfulTip.t2!=0 && System.Runtime.InteropServices.Marshal.ReadInt32(successfulTip.Pointer,24)==0,"native success code remains zero despite generated generic getter corruption at "+size);
+        Check(CharacterMartials.StudyTipCode(new DataStruct<string,int>{t1="",t2=5})==5 && Rejected(()=>CharacterMartials.StudyTipCode(null)),"study condition decoder retains refusal code and rejects missing result at "+size);
+        ClickNamed(book,"确认学会秘籍");DataStruct<string,int>.BrokenIntegerGetter=false;ClickNamed(book,"切换功法阶段");
         var entry=CharacterMartials.Read(target).Single();
+        Check(props.propsCount==0 && props.soleIDHashData!=bookEntry.Signature && Walk(book).Any(t=>t.gameObject.GetComponent<UnityEngine.UI.Text>()!=null && t.gameObject.GetComponent<UnityEngine.UI.Text>().text.Contains("已学会")),"native study consumes shared record count and reports verified success at "+size);
         Check(!bag.IsHasProps(props.soleID) && entry.Exp==0 && !entry.Equipped,"study consumes exact book and retains unique untrained record at "+size);
         Check(Rejected(()=>CharacterMartials.Study(context,target,bookEntry)),"consumed book cannot be studied twice at "+size);
         ClickNamed(book,"装备功法");
@@ -777,6 +782,27 @@ internal static class BookLayoutHarness
             props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};data.skillLeft=props.soleID;
             entry=CharacterMartials.Read("player").First();unit.AfterDestroyEquip=()=>{g.world=new World();g.data=new DataMgr();};
             Check(Rejected(()=>CharacterMartials.Complete(context,"player",entry)) && unit.EquipRebuilds==1 && CharacterSave.Pending==0,"effects destruction callback world switch stops subsequent native equipment creation at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;bag=data.propData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});bag.allProps.Add(props);
+            entry=CharacterMartials.ReadBooks("player").First();var studiedProps=props;var studyBag=bag;unit.AfterConf=()=>studyBag.allProps.Add(studiedProps);
+            bool studyRefused=Rejected(()=>CharacterMartials.Study(context,"player",entry)) && CharacterSave.Pending>0;
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};
+            entry=CharacterMartials.Read("player").First();var cultivated=data.GetActionMartial(props.soleID);unit.AfterConf=()=>cultivated.exp=1;
+            bool masteryRefused=Rejected(()=>CharacterMartials.Complete(context,"player",entry)) && CharacterSave.Pending>0;
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;context=CharacterReader.ContextKey();
+            props=DataProps.PropsData.NewMartial(MartialType.SkillLeft,new[]{14111,CharacterMartials.Grade("player")});data.Learned[MartialType.SkillLeft]=new List<DataUnit.ActionMartialData>{new DataUnit.ActionMartialData{data=props}};
+            entry=CharacterMartials.Read("player").First();draft=props.Clone();draft.Martial.SetPrefixLevel(0,21);var refreshedProps=props;unit.AfterConf=()=>refreshedProps.Martial.SetPrefixLevel(0,22);
+            bool prefixRefused=Rejected(()=>CharacterMartials.SavePrefixes(context,"player",entry,draft)) && CharacterSave.Pending>0;
+            Console.WriteLine("Post-refresh mutation probes: study="+studyRefused+", mastery="+masteryRefused+", prefixes="+prefixRefused);
+            Check(studyRefused,"study verifies consumed book again after native configuration refresh at "+size);
+            Check(masteryRefused,"mastery verifies final experience after effects refresh at "+size);
+            Check(prefixRefused,"prefix save verifies final values after configuration refresh at "+size);
+            reset();unit=g.world.playerUnit;data=unit.data.unitData;bag=data.propData;context=CharacterReader.ContextKey();grade=CharacterMartials.Grade("player");
+            sample=CharacterMartials.Catalog().First(x=>x.Id==14111 && x.SuitId==0);var batchBag=bag;
+            batchBag.AfterAdd=()=>{if(batchBag.AddCalls==2)batchBag.allProps.RemoveAt(0);};
+            Check(Rejected(()=>CharacterMartials.Give(context,"player",new[]{sample,sample},grade)) && CharacterSave.Pending>0 && batchBag.allProps.Count==1,
+                "book batch verifies earlier grants after later callback at "+size);
         }
         finally {g.world=oldWorld;g.data=oldData;CharacterSave.Sync(CharacterReader.ContextKey());}
     }
