@@ -158,14 +158,14 @@ namespace MOD_YtxSQ1.Services
             foreach (var error in graph.Errors) signature.Append(error);
             graph.Fingerprint = signature.ToString(); return graph;
         }
-        internal static string State(DataUnit.RelationData data)
+        internal static string State(DataUnit.RelationData data, string excluding = null)
         {
             var sb = new StringBuilder();
-            if (data.parent != null) for (int i = 0; i < data.parent.Length; i++) sb.Append(data.parent[i]).Append(';');
+            if (data.parent != null) for (int i = 0; i < data.parent.Length; i++) sb.Append(data.parent[i] == excluding ? "" : data.parent[i]).Append(';');
             sb.Append('/');
             foreach (var list in new[] { data.children, data.childrenPrivate, data.brother, data.parentBack, data.childrenBack, data.brotherBack, data.lover, data.master, data.student })
-            { if (list != null) foreach (var id in list) sb.Append(id).Append(';'); sb.Append('/'); }
-            sb.Append(data.married).Append('/');
+            { if (list != null) foreach (var id in list) if (id != excluding) sb.Append(id).Append(';'); sb.Append('/'); }
+            sb.Append(data.married == excluding ? "" : data.married).Append('/');
             if (data.notRelieveUnitsID != null)
             {
                 var locks = new List<string>();

@@ -34,6 +34,13 @@ public sealed class UnitActionRelationSet : UnitActionBase
     {
         var a = unit.data.unitData.relationData; var b = Target.data.unitData.relationData;
         string aid = unit.data.unitData.unitID, bid = Target.data.unitData.unitID;
+        // ClearRelation's inspected native lambda clears both parent slots and all nine lists.
+        foreach (var r in new[] { a, b })
+        {
+            string other = r == a ? bid : aid;
+            for (int i = 0; i < 2; i++) if (r.parent[i] == other) r.parent[i] = "";
+            r.children.Remove(other); r.childrenPrivate.Remove(other); r.brother.Remove(other);
+        }
         for (int i = 5; i <= 11; i++) if (i != 8) { a.ForType(i).Remove(bid); b.ForType(i).Remove(aid); }
         if (a.married == bid) a.married = ""; if (b.married == aid) b.married = "";
         if (Type == UnitRelationType.None) return;

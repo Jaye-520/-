@@ -132,10 +132,63 @@ internal static class RelationHarness
         Reset(); a = Add("a", "孩子"); b = Add("b", "父亲"); b.data.unitData.propertyData.sex = UnitSexType.Man;
         RelationOperations.SetRelation(Pair("a", "b"), 1, false);
         Check(a.data.unitData.relationData.parent[0] == "b" && b.data.unitData.relationData.children.Contains("a"), "parent action targets child with verified parent slot and reciprocal readback");
-        Check(RelationOperations.Unavailable(Pair("a", "b"), 1, true) != null, "blood relation removal remains unavailable");
+        Check(RelationOperations.Unavailable(Pair("a", "b"), 1, true) == null, "reciprocal parent removal opens as an overall plan");
         c = Add("c", "另一位父亲"); Check(RelationOperations.Unavailable(Pair("a", "c"), 1, false) != null, "existing family not rebuilt by parent action");
         Reset(); a = Add("a", "孩子"); b = Add("b", "候选父亲"); b.data.unitData.relationData.parent = new[] { "c", "" }; c = Add("c", "祖辈"); c.data.unitData.relationData.parent = new[] { "a", "" };
         Check(RelationOperations.Unavailable(Pair("a", "b"), 1, false) != null, "transitive blood ancestry cycle refused");
+        RemovalTests();
+    }
+    private static void RemovalTests()
+    {
+        Reset(); var child = Add("child", "孩子"); var father = Add("father", "父亲"); var mother = Add("mother", "母亲");
+        var half = Add("half", "异母同胞"); var full = Add("full", "同胞"); var descendant = Add("desc", "后代");
+        child.data.unitData.relationData.parent = new[] { "father", "mother" };
+        half.data.unitData.relationData.parent = new[] { "father", "" };
+        full.data.unitData.relationData.parent = new[] { "father", "mother" };
+        father.data.unitData.relationData.children.AddRange(new[] { "child", "half", "full" });
+        mother.data.unitData.relationData.children.AddRange(new[] { "child", "full" });
+        child.data.unitData.relationData.brother.AddRange(new[] { "half", "full" });
+        half.data.unitData.relationData.brother.Add("child"); full.data.unitData.relationData.brother.Add("child");
+        descendant.data.unitData.relationData.parent = new[] { "child", "" }; child.data.unitData.relationData.children.Add("desc");
+        child.data.unitData.relationData.intimToUnit["father"] = 123.25f;
+        var plan = RelationOperations.PlanRemoval(Pair("child", "father"));
+        Check(plan.Steps.Count == 2 && plan.Description.Contains("异母同胞") && !plan.Steps.Any(p => p.B == "full"), "plan lists lost-parent sibling and retains shared other parent");
+        half.data.unitData.relationData.notRelieveUnitsID["child"] = "story";
+        Check(Rejected(() => RelationOperations.PlanRemoval(Pair("child", "father"))) && child.ActionCalls == 0 && CharacterSave.Pending == 0, "third-party reverse story protection refuses entire batch before writes");
+        half.data.unitData.relationData.notRelieveUnitsID.Clear();
+        full.data.unitData.relationData.parent[1] = "";
+        Check(Rejected(() => RelationOperations.RemoveRelations(plan)) && child.ActionCalls == 0, "changed retained sibling invalidates captured confirmation before writes");
+        full.data.unitData.relationData.parent[1] = "mother";
+        RelationOperations.RemoveRelations(RelationOperations.PlanRemoval(Pair("child", "father")));
+        Check(child.data.unitData.relationData.parent[0] == "" && child.data.unitData.relationData.parent[1] == "mother" && !father.data.unitData.relationData.children.Contains("child"), "native overall removal clears reciprocal parent and preserves other parent");
+        Check(!child.data.unitData.relationData.brother.Contains("half") && !half.data.unitData.relationData.brother.Contains("child") && full.data.unitData.relationData.brother.Contains("child"), "removes orphaned sibling both ways and retains valid sibling");
+        Check(descendant.data.unitData.relationData.parent[0] == "child" && child.data.unitData.relationData.children.Contains("desc") && father.data.unitData.relationData.children.Contains("half") && Pair("child", "father").AB == 123.25f && child.data.unitData.propertyData.Name == "孩子" && g.data.Calls == 0, "preserves descendants other children name affinity and avoids implicit save");
+        Check(Rejected(() => RelationOperations.PlanRemoval(Pair("child", "full"))), "shared-parent sibling cannot be erased into contradictory family");
+        Check(Rejected(() => RelationOperations.RemoveRelations(plan)), "completed plan cannot be applied again");
+        Reset(); child = Add("child", "私生子女"); father = Add("father", "父亲");
+        child.data.unitData.relationData.parent = new[] { "father", "" }; father.data.unitData.relationData.childrenPrivate.Add("child");
+        RelationOperations.RemoveRelations(RelationOperations.PlanRemoval(Pair("father", "child")));
+        Check(child.data.unitData.relationData.parent[0] == "" && father.data.unitData.relationData.childrenPrivate.Count == 0, "private child removal handles reciprocal parent from parent direction");
+        Reset(); var a = Add("a", "甲"); var b = Add("b", "乙");
+        a.data.unitData.relationData.lover.Add("b"); b.data.unitData.relationData.lover.Add("a");
+        a.data.unitData.relationData.student.Add("b"); b.data.unitData.relationData.master.Add("a");
+        RelationOperations.RemoveRelations(RelationOperations.PlanRemoval(Pair("a", "b")));
+        Check(Pair("a", "b").Types.Count == 0 && Pair("b", "a").Types.Count == 0, "overall removal handles all reciprocal nonblood identities together");
+        a.data.unitData.relationData.lover.Add("b");
+        Check(Rejected(() => RelationOperations.PlanRemoval(Pair("a", "b"))), "asymmetric identity refuses before action");
+        b.data.unitData.relationData.lover.Add("a"); a.data.unitData.relationData.lover.Add("b");
+        Check(Rejected(() => RelationOperations.PlanRemoval(Pair("a", "b"))), "native single Remove cannot silently leave duplicate relation entries");
+        Reset(); child = Add("child", "孩子"); father = Add("father", "父亲"); half = Add("half", "同胞");
+        child.data.unitData.relationData.parent = new[] { "father", "" }; half.data.unitData.relationData.parent = new[] { "father", "" };
+        father.data.unitData.relationData.children.AddRange(new[] { "child", "half" });
+        child.data.unitData.relationData.brother.Add("half"); half.data.unitData.relationData.brother.Add("child");
+        half.data.unitData.relationData.lover.Add("child"); child.data.unitData.relationData.lover.Add("half");
+        Check(Rejected(() => RelationOperations.PlanRemoval(Pair("child", "father"))) && child.ActionCalls == 0, "collateral sibling multi-identity cannot be removed implicitly");
+        half.data.unitData.relationData.lover.Clear(); child.data.unitData.relationData.lover.Clear();
+        plan = RelationOperations.PlanRemoval(Pair("child", "father")); half.RejectAction = true;
+        // The second actor is still child; inject a callback to replace a guarded third-party container.
+        child.AfterAction = () => { half.data.unitData.relationData = new DataUnit.RelationData(); };
+        Check(Rejected(() => RelationOperations.RemoveRelations(plan)) && child.ActionCalls == 1 && CharacterSave.Pending > 0 && child.data.unitData.relationData.brother.Contains("half"), "third-party replacement after first action stops cascade and retains Pending");
     }
     private static void UiTests(string art, string preview)
     {
@@ -156,6 +209,11 @@ internal static class RelationHarness
             Click(book, "关系人物_parent"); Check(Field<string>(view, "selectedUnitId") == "player", "click selects node without changing center at " + size[0]);
             Click(book, "关系菜单操作5"); Check(Field<RelationGraph>(view, "relationGraph").People.ContainsKey("grand"), "expand adds next generation at " + size[0]);
             Click(book, "关系人物_parent"); Click(book, "关系菜单操作5"); Check(!Field<RelationGraph>(view, "relationGraph").People.ContainsKey("grand"), "collapse hides indirect generation at " + size[0]);
+            Click(book, "关系人物_parent"); Click(book, "关系菜单操作2");
+            Check(Find(book, "确认关系动作").GetComponentInChildren<UnityEngine.UI.Text>().text.Contains("整体解除") && !Walk(book).Any(t => t.gameObject.name == "BHML_关系类型1"), "removal opens complete captured confirmation without single-type selector at " + size[0]);
+            SavePreview(book, preview, "relations-removal-" + size[0]);
+            UnityEngine.Input.Escape = true; UnityEngine.Time.frameCount++; view.RefreshCharacter(); UnityEngine.Input.Escape = false;
+            Check(own.parent[0] == "parent" && parent.ActionCalls == 0 && CharacterSave.Pending == 0, "closing removal confirmation never writes at " + size[0]);
             Click(book, "关系人物_partner"); SavePreview(book, preview, "relations-menu-" + size[0]); Click(book, "关系菜单操作0");
             Check(Find(book, "正向好感").GetComponentInChildren<UnityEngine.UI.InputField>().text == "90.5", "affinity dialog binds captured direction at " + size[0]);
             SavePreview(book, preview, "relations-affinity-" + size[0]);

@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：08.05 ｜ **最后更新**：2026-10-05
+> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：08.06 ｜ **最后更新**：2026-10-05
 
 仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
 
@@ -561,9 +561,17 @@ Unhollower包装方法的Cecil.IsVirtual可为false，但IL中il2cpp_object_get_
 
 关系读取直接遍历RelationData的parent/children/childrenPrivate/brother/parentBack/childrenBack/brotherBack/married/lover/master/student，避免GetRelation(type, true)清理死亡记录。已故人物从DataMgr.unitDie.GetUnitDie读取；好友/仇人按本机GameParameter的friendCloseRequire/haterCloseRequire判定（只读配置60/-60），不是可任意设置的独立身份。部分阈值读取失败保留已读身份并标注。接口依据为官方CHM的UnitActionRelationSet(WorldUnitBase, UnitRelationType, Int32)与本机Managed程序集；原生反汇编见.tools/relations-api.txt、relations-native.txt和relations-reading-native.txt。
 
-好感用双方各自SetIntim，指向玩家时读取intimToPlayerUnit，其他指向读取intimToUnit；输入按本机原生0.##量化，指纹保留实际float；限制在原生GetIntim整数读数可表示范围内，量化后未改变则不写入也不新增Pending。确认绑定世界、双方unit/data/unitData/relationData身份、整组结构指纹和原好感；回调后先复核，再修改第二侧；仅回退实际尝试的步骤，无法确认结果则保留Pending。结构写入走IsCreateAction/CreateAction，不直接改关系容器。夫妻/道侣/师徒/义亲建立与解除核对反向类型；重复、多重/不对称身份或已有配偶冲突拒绝，不自动换人。
+好感用双方各自SetIntim，指向玩家时读取intimToPlayerUnit，其他指向读取intimToUnit；输入按本机原生0.##量化，指纹保留实际float；限制在原生GetIntim整数读数可表示范围内，量化后未改变则不写入也不新增Pending。确认绑定世界、双方unit/data/unitData/relationData身份、整组结构指纹和原好感；回调后先复核，再修改第二侧；仅回退实际尝试的步骤，无法确认结果则保留Pending。结构写入走IsCreateAction/CreateAction，不直接改关系容器。夫妻/道侣/师徒/义亲建立与解除核对反向类型；建立时拒绝重复、已有身份及已有配偶冲突，不自动换人。07.99单身份解除限制已由08.06整体解除规则替代，见下节。
 
-血亲新增通过UnitActionRelationSetParent，仅父母槽为空且不形成祖先循环时开放；明确会更新兄弟姐妹、子女和后代姓氏。已有家谱不替换；血亲单项解除及直接设置私生/同胞身份未开放。结构动作可能影响原生行为、声望与事件，失败不伪装事务回滚，不盲重试。
+血亲新增通过UnitActionRelationSetParent，仅父母槽为空且不形成祖先循环时开放；明确会更新兄弟姐妹、子女和后代姓氏。已有家谱不替换；直接设置私生/同胞身份未开放。08.06整体解除规则见下节。结构动作可能影响原生行为、声望与事件，失败不伪装事务回滚，不盲重试。
+
+### 08.06 整体解除与连带家谱
+
+官方CHM `html/05049abf-b91e-0efc-b2e6-58d11a1b7b15.htm` 核对构造签名。本机原生OnCreate=0x1836fcf10，分别两次ClearRelation=0x1836fc370并UpdateAllUnitRelation；ClearRelation委托=0x183acf4e0逐个清除匹配的两个父母槽、九个列表和配偶，List.Remove只删首条，不能以它修复重复记录。新增实机文件只读核查`.tools/inspect-relief-0806.py`和`.tools/relief-0806-native.txt`包含GameAssembly/metadata哈希与委托反汇编。该路径不会调用SetParent.UpdateBrother，故必须单独规划失去共同父母依据的既有同胞；直接清兄弟列表或重建整族均不可替代原生动作。
+
+RelationOperations.PlanRemoval绑定完整影响清单与保留的同胞，解除父母/正常子女/私生关系时保留另一父母；仍共有父母的同胞保留，失去依据的既有同胞通过额外原生None动作双向解除。连带同胞有其他身份或任一方向剧情保护，整批拒绝。主对非血亲多重身份可整体解除；血亲多重身份、父母槽异常、容器缺失/重复/自关联、不对称家谱、已故/失效关联拒绝，不隐式修复。不直接删除仍共有父母的同胞身份，提示从父母—子女入口处理。姓名/好感保留，各自后代与其他子女不拆除。
+
+RemoveRelations全批复核unit/data/unitData/relationData身份、结构和原好感，全部IsCreateAction通过后才开始；每步前再次预检，预计算仅删指定ID的预期结构，动作后核对所有关联人物的精确结构/好感，再执行下一步。首笔动作后异常保留Pending并关闭确认，不自动补偿或盲重试；不保证原生事件回退。浮层直接显示可滚动整体影响清单，捕获计划直到确认，取消不写入；自动保存边界保持。托管替身补上实际父母/血亲列表清理，验证22个新增断亲/冲突/四尺寸交互检查，不能证明游戏原生事件、月份推进、保存重载和其他MOD兼容。
 
 图面按可达expanded集合展开，ID合并、有限访问避免循环；首次/回到中心按图面范围适配缩放。每次只为可见节点临时创建一个静态模型，160×154截图后释放模型/相机，最多缓存128张静态纹理；不为每个节点常驻动态模型。模拟预览不验证原生画面；专属人物按avatar/modelID分流，拼装模型走GetPortraitModelDataInModel，独立资源走原生CreateTexture回调取得模型；截图后销毁临时专属承载，原生autoDestroy释放其资源。依据补充见.tools/relations-special-native.txt；真实静态图效果仍须游戏核对，失败有占位。关闭浮层先注销其中InputField，再独立隐藏/销毁；切人/切页/退出清理。
 

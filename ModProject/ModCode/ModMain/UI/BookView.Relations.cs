@@ -270,6 +270,7 @@ namespace MOD_YtxSQ1.UI
         private void OpenRelationTypes(RelationPair pair, bool remove)
         {
             if (pair == null) return;
+            if (remove) { ConfirmRelationRemoval(pair); return; }
             var panel = RelationDialog((remove ? "解除关系 · " : "设置关系 · ") + pair.NameA + " ↔ " + pair.NameB);
             float w = panel.sizeDelta.x, h = panel.sizeDelta.y;
             Label(panel, "以下称谓指右侧人物相对于左侧人物的身份。\n好友／仇人由原生好感阈值判定，通过好感编辑调整。", 14, 48, w - 28, 48, 15, Muted);
@@ -286,6 +287,24 @@ namespace MOD_YtxSQ1.UI
                 row.interactable = unavailable == null;
             }
             if (types.Length == 0) relationDialogStatus.text = "双方没有可解除的身份关系";
+        }
+        private void ConfirmRelationRemoval(RelationPair pair)
+        {
+            var panel = RelationDialog("确认解除关系 · " + pair.NameA + " ↔ " + pair.NameB);
+            float w = panel.sizeDelta.x, h = panel.sizeDelta.y;
+            RelationRemoval plan;
+            try { plan = RelationOperations.PlanRemoval(pair); }
+            catch (Exception ex)
+            {
+                Label(panel, ex.Message, 16, 64, w - 32, h - 140, 17, Cinnabar, TextAnchor.UpperLeft);
+                relationDialogStatus.text = "未作修改 · 请核对双方及关联家谱"; return;
+            }
+            var scroll = ItemScroll(panel, "解除影响列表", 16, 54, w - 32, h - 164); AddMartialScrollbar(scroll);
+            string description = plan.Description + "\n\n确认后即时改变游戏内存，自动保存也可能落盘；此操作不提供撤销。";
+            float height = Mathf.Max(scroll.viewport.sizeDelta.y, (description.Split('\n').Length + description.Length / 24 + 2) * 25);
+            scroll.content.sizeDelta = new Vector2(scroll.content.sizeDelta.x, height);
+            Label(scroll.content, description, 8, 4, scroll.content.sizeDelta.x - 28, height - 8, 16, Ink, TextAnchor.UpperLeft);
+            MakeButton(panel, "确认关系动作", 16, h - 98, w - 32, 36, "确认整体解除（" + plan.Steps.Count + " 组）", () => RunRelationOperation(pair, () => RelationOperations.RemoveRelations(plan)));
         }
         private void ConfirmRelation(RelationPair pair, int type, bool remove)
         {
