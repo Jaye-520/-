@@ -41,6 +41,7 @@ namespace MOD_YtxSQ1.UI {
         internal void Toggle() { Toggles++; IsOpen = !IsOpen; }
         internal string OpenId;
         internal void Open(string id) { OpenId = id; IsOpen = true; }
+        internal void Dispose() { Close(); }
         internal void Close() { Closes++; IsOpen = false; }
     }
 }

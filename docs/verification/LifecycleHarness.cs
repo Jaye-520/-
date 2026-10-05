@@ -7,6 +7,8 @@ using MOD_YtxSQ1.UI;
 
 namespace UnityEngine
 {
+    public class GameObject { public int GetInstanceID(){return GetHashCode();} public T[] GetComponentsInChildren<T>(bool inactive){return new T[0];} }
+    public class Transform { public GameObject gameObject; }
     public enum KeyCode { F8 }
     public static class Input { public static bool Pressed; public static bool GetKeyDown(KeyCode key) { return Pressed; } }
     public static class Debug
@@ -17,7 +19,7 @@ namespace UnityEngine
         public static void LogError(string value) { Errors++; }
     }
 }
-public sealed class GameObject { public bool activeInHierarchy = true; }
+public sealed class GameObject { public bool activeInHierarchy = true; public int GetInstanceID(){return GetHashCode();} public T[] GetComponentsInChildren<T>(bool inactive){return new T[0];} }
 public sealed class UITextInfoLong
 {
     public static int FailInitCount;
@@ -66,9 +68,14 @@ namespace MOD_YtxSQ1.UI
         public object SearchInput { get { return null; } }
         public static bool ThrowBuild;
         public static bool ThrowDispose;
-        public static int Disposals;
+        public static int Disposals, Builds, Resumes, Suspends;
+        public bool Sleeping;
         public static string InitialId;
-        public void Build(UITextInfoLong window, Action close, string initialUnitId = null) { InitialId = initialUnitId; if (ThrowBuild) throw new Exception("build failure"); }
+        public void Build(UITextInfoLong window, Action close, string initialUnitId = null) { Builds++; Sleeping=false; InitialId = initialUnitId; if (ThrowBuild) throw new Exception("build failure"); }
+        public bool CanResume() { return Sleeping; }
+        public void BeginInteractionTiming(bool warm, long start=0) { }
+        public void Suspend() { if(ThrowDispose)throw new Exception("suspend failure");Suspends++;Sleeping=true; }
+        public void Resume(UITextInfoLong window,Action close,string id) { Resumes++;Sleeping=false;InitialId=id; }
         public void RefreshCharacter(bool force = false) { }
         public void FocusTarget(string id) { InitialId = id; }
         public void Dispose() { Disposals++; if (ThrowDispose) throw new Exception("dispose failure"); }
@@ -112,7 +119,7 @@ internal static class LifecycleHarness
         g.ui = new FakeUI(); g.timer = new FakeTimer();
         UnityEngine.Input.Pressed = false;
         UITextInfoLong.FailInitCount = 0; WindowInputScope.ThrowAttach = false; WindowInputScope.Active = false;
-        BookView.ThrowBuild = false; BookView.ThrowDispose = false; BookView.Disposals = 0;
+        BookView.ThrowBuild = false; BookView.ThrowDispose = false; BookView.Disposals = 0; BookView.Builds=BookView.Resumes=BookView.Suspends=0;
         MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = false;
         MOD_YtxSQ1.Core.WorkshopController.ThrowDispose = false;
         MOD_YtxSQ1.Core.WorkshopController.Disposals = 0;
@@ -123,7 +130,7 @@ internal static class LifecycleHarness
         cycles.Open("npc-current"); Check(BookView.InitialId == "npc-current", "NPC ID reaches initial view build without player fallback");
         cycles.Open("other"); Check(BookView.InitialId == "other", "NPC entrance retargets existing shared session without creating a second view"); cycles.Close(); Reset();
         for (int i = 0; i < 30; i++) { cycles.Toggle(); if (!cycles.IsOpen || !WindowInputScope.Active) throw new Exception("open cycle " + i); cycles.Close(); if (cycles.IsOpen || WindowInputScope.Active) throw new Exception("close cycle " + i); }
-        Check(g.ui.Closes == 30 && BookView.Disposals == 30, "30 open-close cycles release each view and input patch");
+        Check(g.ui.Closes == 30 && BookView.Disposals == 0 && BookView.Resumes == 30 && BookView.Suspends == 30, "30 open-close cycles reuse one view and release each input patch");
 
         Reset();var lostUi=new WorkshopWindow();lostUi.Open(null);g.ui=null;bool lostUiFailed=false;
         try{lostUi.RefreshOwnership();}catch{lostUiFailed=true;}

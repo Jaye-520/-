@@ -32,6 +32,22 @@ namespace MOD_YtxSQ1.Services
 
     internal static class CharacterReader
     {
+        // Shared target bar needs only name/realm outside the attributes page.
+        public static bool TryReadSummary(string unitId, out CharacterSnapshot snapshot, out string reason)
+        {
+            snapshot = null; reason = "当前角色尚未就绪"; LastFailure = null;
+            try
+            {
+                var unit = Resolve(unitId); if (unit == null || unit.data == null || unit.data.unitData == null
+                    || unit.data.unitData.propertyData == null || unit.data.dynUnitData == null) return false;
+                var name = unit.data.unitData.propertyData.GetName(); var realm = "境界待确认";
+                var grade = g.conf.roleGrade.GetItem(unit.data.dynUnitData.gradeID.value);
+                if (grade != null) realm = g.conf.roleGrade.GetGradeName(grade.grade, grade.phase);
+                snapshot = new CharacterSnapshot(string.IsNullOrEmpty(name) ? "无名修士" : name, realm, new string[0], new string[0][]);
+                return true;
+            }
+            catch (Exception ex) { LastFailure = ex.GetType().Name + ":" + ex.Message; return false; }
+        }
         public static bool TryRead(out CharacterSnapshot snapshot, out string reason)
         {
             return TryRead(null, out snapshot, out reason);

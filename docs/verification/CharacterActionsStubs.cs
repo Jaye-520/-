@@ -45,7 +45,7 @@ public partial class DataProps
     public partial class MartialData { public string ExtraData; }
 }
 public class ConfItemPropsItem { public int drop=1,dieDrop=1;public int isOverlay,id,hide,level;public string name,desc; }
-public class ItemPropsConfig { public List<ConfItemPropsItem> _allConfList=new List<ConfItemPropsItem>();public ConfItemPropsItem GetItem(int id){return _allConfList.FirstOrDefault(p=>p.id==id);} }
+public class ItemPropsConfig { public IntPtr Pointer {get{return new IntPtr(GetHashCode());}} public List<ConfItemPropsItem> _allConfList=new List<ConfItemPropsItem>();public ConfItemPropsItem GetItem(int id){return _allConfList.FirstOrDefault(p=>p.id==id);} }
 public class ConfItemPillItem { public int id,effectType=101,grade,operUse=1,battleUIHide;public Dictionary<string,int> Effects=new Dictionary<string,int>(); }
 public class ItemPillConfig { public List<ConfItemPillItem> _allConfList=new List<ConfItemPillItem>(); public Dictionary<string,int> GetPillAddValue(WorldUnitBase unit,int id,bool ignore){return _allConfList.First(p=>p.id==id).Effects;} }
 public static partial class UIIconTool { public class PropsInfoDataBase { public string name,typeSuffix; public int sale; } }

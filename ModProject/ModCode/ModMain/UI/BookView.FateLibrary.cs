@@ -167,7 +167,7 @@ namespace MOD_YtxSQ1.UI
         }
         private bool LoadFateCatalog()
         {
-            var key = CharacterReader.ContextKey();
+            var key = CatalogKey();
             if (key == catalogContext && fateCatalog.Count > 0) return true;
             try { fateCatalog = CharacterFateCatalog.Read(); catalogContext = key; return true; }
             catch (Exception ex) { SetEditStatus("气运配置库读取失败：" + ex.GetType().Name, true); return false; }

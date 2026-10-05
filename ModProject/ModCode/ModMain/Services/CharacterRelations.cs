@@ -7,7 +7,7 @@ namespace MOD_YtxSQ1.Services
 {
     internal sealed class RelationPerson
     {
-        internal string Id, Name, Error;
+        internal string Id, Name, Error, Appearance;
         internal bool Dead, Valid;
         internal UnitSexType Sex;
         internal int DramaId;
@@ -76,10 +76,11 @@ namespace MOD_YtxSQ1.Services
                     result.Name = unit.data.unitData.propertyData.GetName() ?? "无名修士";
                     result.Sex = unit.data.unitData.propertyData.sex; result.Dead = unit.isDie;
                     result.DramaId = g.conf == null || g.conf.dramaNpc == null ? 0 : g.conf.dramaNpc.GetFiveFlowerDramaNpcID(unit);
+                    result.Appearance = CharacterPortrait.AppearanceKey(unit, result.DramaId);
                     result.Valid = !unit.isDie; result.Error = null; return result;
                 }
                 var dead = g.data == null || g.data.unitDie == null ? null : g.data.unitDie.GetUnitDie(id);
-                if (dead != null) { result.Name = dead.GetName() ?? "无名修士"; result.Sex = dead.sex; result.Dead = true; result.Error = null; }
+                if (dead != null) { result.Name = dead.GetName() ?? "无名修士"; result.Sex = dead.sex; result.Dead = true; result.Appearance = CharacterPortrait.AppearanceKey(dead.modelData); result.Error = null; }
             }
             catch (Exception ex) { result.Error = "人物读取失败：" + ex.Message; }
             return result;
@@ -153,7 +154,7 @@ namespace MOD_YtxSQ1.Services
                 catch (Exception ex) { graph.Errors.Add(graph.People[source].Name + "：" + ex.Message); }
             }
             var signature = new StringBuilder();
-            foreach (var person in graph.People.Values) signature.Append(person.Id).Append('|').Append(person.Name).Append('|').Append(person.Sex).Append('|').Append(person.DramaId).Append('|').Append(person.Dead).Append('|').Append(person.Error).Append(';');
+            foreach (var person in graph.People.Values) signature.Append(person.Id).Append('|').Append(person.Name).Append('|').Append(person.Sex).Append('|').Append(person.DramaId).Append('|').Append(person.Dead).Append('|').Append(person.Error).Append('|').Append(person.Appearance).Append(';');
             foreach (var link in graph.Links) signature.Append(link.From).Append('|').Append(link.To).Append('|').Append(link.Type).Append('|').Append(Number(link.Affinity)).Append(';');
             foreach (var error in graph.Errors) signature.Append(error);
             graph.Fingerprint = signature.ToString(); return graph;

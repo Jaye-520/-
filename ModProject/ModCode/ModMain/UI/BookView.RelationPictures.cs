@@ -8,12 +8,45 @@ namespace MOD_YtxSQ1.UI
     {
         private sealed class RelationPictureJob
         {
-            internal string Id;
+            internal string Id, Key;
             internal GameObject Root, Host;
             internal bool Ready, Cancelled;
             internal DateTime Started = DateTime.UtcNow;
         }
         private RelationPictureJob relationPictureJob;
+        private void ResetCurrentRelationPictures()
+        { CancelRelationPicture(); relationTextures.Clear(); relationPictureFailures.Clear(); }
+        private string RelationPictureKey(string id)
+        {
+            RelationPerson person;
+            if (relationGraph == null || !relationGraph.People.TryGetValue(id, out person)) return null;
+            return contextKey + ":" + catalogsKey + ":" + id + ":" + person.Dead + ":" + person.DramaId + ":" + person.Appearance;
+        }
+        private Texture2D CachedRelationPicture(string id)
+        {
+            var key = RelationPictureKey(id); Texture2D texture;
+            if (key == null || !relationTextureCache.TryGetValue(key, out texture)) return null;
+            relationTextureUse[key] = ++relationTextureClock; relationTextures[id] = texture; return texture;
+        }
+        private bool ReserveRelationTexture()
+        {
+            if (relationTextureCache.Count < 128) return true;
+            string oldest = null; long used = long.MaxValue;
+            foreach (var pair in relationTextureUse)
+            {
+                bool visible = false;
+                foreach (var alias in relationTextures) if (alias.Value == relationTextureCache[pair.Key] && RelationPictureVisible(alias.Key)) { visible = true; break; }
+                if (!visible && pair.Value < used) { oldest = pair.Key; used = pair.Value; }
+            }
+            if (oldest == null) return false;
+            var texture = relationTextureCache[oldest];
+            foreach (var id in new System.Collections.Generic.List<string>(relationTextures.Keys)) if (relationTextures[id] == texture)
+            {
+                relationTextures.Remove(id); UnityEngine.UI.RawImage image;
+                if (relationPictures.TryGetValue(id, out image)) { image.texture = null; image.enabled = false; }
+            }
+            UnityEngine.Object.Destroy(texture); relationTextureCache.Remove(oldest); relationTextureUse.Remove(oldest); return true;
+        }
         private void CompleteRelationPicture(RelationPictureJob job, GameObject root)
         {
             if (job.Cancelled || relationPictureJob != job)
@@ -44,19 +77,13 @@ namespace MOD_YtxSQ1.UI
         {
             if (relationGraph == null) return;
             // One transient static model at a time; cards retain only small textures, never live renderers.
-            if (relationPictureJob != null && (!relationPictures.ContainsKey(relationPictureJob.Id) || !RelationPictureVisible(relationPictureJob.Id))) CancelRelationPicture();
+            if (relationPictureJob != null && (!relationPictures.ContainsKey(relationPictureJob.Id) || !RelationPictureVisible(relationPictureJob.Id) || relationPictureJob.Key != RelationPictureKey(relationPictureJob.Id))) CancelRelationPicture();
             foreach (var entry in relationPictures)
             {
-                if (relationTextures.ContainsKey(entry.Key) || relationPictureFailures.Contains(entry.Key) || !RelationPictureVisible(entry.Key)) continue;
-                if (relationTextures.Count >= 128)
-                {
-                    string evict = null;
-                    foreach (var cached in relationTextures.Keys) if (!RelationPictureVisible(cached)) { evict = cached; break; }
-                    if (evict == null) return;
-                    UnityEngine.Object.Destroy(relationTextures[evict]); relationTextures.Remove(evict);
-                    UnityEngine.UI.RawImage previous;
-                    if (relationPictures.TryGetValue(evict, out previous)) { previous.texture = null; previous.enabled = false; }
-                }
+                if (relationPictureFailures.Contains(entry.Key) || !RelationPictureVisible(entry.Key)) continue;
+                var cached = CachedRelationPicture(entry.Key);
+                if (cached != null) { entry.Value.texture = cached; entry.Value.enabled = true; continue; }
+                if (!ReserveRelationTexture()) return;
                 if (relationPictureJob != null && relationPictureJob.Id != entry.Key) continue;
                 var id = entry.Key; var image = entry.Value;
                 GameObject modelRoot = null, specialHost = null; ModelRenderTexture renderer = null; Texture2D texture = null;
@@ -65,7 +92,7 @@ namespace MOD_YtxSQ1.UI
                 {
                     if (relationPictureJob == null)
                     {
-                        var job = new RelationPictureJob { Id = id };
+                        var job = new RelationPictureJob { Id = id, Key = RelationPictureKey(id) };
                         relationPictureJob = job;
                         var onCreated = new Action<GameObject>(created => CompleteRelationPicture(job, created));
                         var unit = CharacterRelations.ResolveIncludingDead(id);
@@ -126,7 +153,9 @@ namespace MOD_YtxSQ1.UI
                     camera.transform.position = new Vector3(bounds.center.x, bounds.center.y, camera.transform.position.z);
                     camera.Render(); RenderTexture.active = camera.targetTexture;
                     texture = new Texture2D(160, 154, TextureFormat.RGBA32, false);
-                    texture.ReadPixels(new Rect(0, 0, 160, 154), 0, 0); texture.Apply();
+                    texture.ReadPixels(new Rect(0, 0, 160, 154), 0, 0); texture.Apply(false, true);
+                    var cacheKey = RelationPictureKey(id);
+                    relationTextureCache[cacheKey] = texture; relationTextureUse[cacheKey] = ++relationTextureClock;
                     relationTextures[id] = texture; image.texture = texture; image.enabled = true; texture = null;
                 }
                 catch (Exception ex)

@@ -69,6 +69,6 @@ namespace MOD_YtxSQ1.Core
             return tmp != null && tmp.isFocused;
         }
 
-        public void Dispose() { window.Close(); CharacterEditSession.Shared.Sync(null); }
+        public void Dispose() { window.Dispose(); CharacterEditSession.Shared.Sync(null); }
     }
 }

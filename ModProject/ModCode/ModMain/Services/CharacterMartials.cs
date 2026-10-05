@@ -163,6 +163,35 @@ namespace MOD_YtxSQ1.Services
             result.Sort((a, b) => a.Equipped != b.Equipped ? (a.Equipped ? -1 : 1) : a.Category.CompareTo(b.Category));
             return result;
         }
+        // A changed probe always falls through to the full validated read. Never used for writes.
+        internal static string ReadProbe(string unitId, bool books)
+        {
+            try
+            {
+                var unit = CharacterReader.Resolve(unitId); if (unit == null) return null;
+                var text = new StringBuilder(); text.Append(unit.Pointer).Append(':').Append(unit.data.Pointer).Append(':').Append(unit.data.unitData.Pointer);
+                if (books)
+                {
+                    foreach (var props in unit.data.unitData.propData.allProps)
+                        if (props != null && props.propsType == DataProps.PropsDataType.Martial)
+                            text.Append('|').Append(props.Pointer).Append(':').Append(props.soleID).Append(':').Append(props.soleIDHashData);
+                }
+                else foreach (var type in new[] { MartialType.SkillLeft, MartialType.SkillRight, MartialType.Step, MartialType.Ability, MartialType.Ultimate })
+                {
+                    var records = unit.data.unitData.GetActionMartial(type); if (records == null) continue;
+                    for (int i = 0; i < records.Count; i++)
+                    {
+                        var record = records[i]; if (record == null || record.data == null) { text.Append("|null"); continue; }
+                        var props = record.data;
+                        text.Append('|').Append(record.Pointer).Append(':').Append(props.Pointer).Append(':').Append(props.soleID).Append(':').Append(props.soleIDHashData)
+                            .Append(':').Append(record.exp).Append(':').Append(IsEquipped(unit, props.soleID))
+                            .Append(':').Append(MaximumExp(unit, props.To<DataProps.MartialData>()));
+                    }
+                }
+                return text.ToString();
+            }
+            catch { return null; }
+        }
         internal static string Fingerprint(List<MartialEntry> entries)
         {
             var text = new StringBuilder();

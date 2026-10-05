@@ -254,6 +254,17 @@ internal static class RelationHarness
             view.FocusTarget("player"); Click(book, "卷目3");
             for (int tick = 0; tick < 8; tick++) view.RefreshCharacter();
             Check(ModelRenderTexture.Active == 1 && Field<Dictionary<string, UnityEngine.Texture2D>>(view, "relationTextures").Count > 0, "thumbnail snapshots leave only shared portrait renderer at " + size[0]);
+            var oldCard=Find(book,"关系人物_partner");var previousName=partner.data.unitData.propertyData.Name;
+            var controlsBefore=WorkshopPerformance.Created;partner.data.unitData.propertyData.Name=previousName+"改";view.RefreshCharacter(true);
+            Check(ReferenceEquals(oldCard,Find(book,"关系人物_partner")) && WorkshopPerformance.Created==controlsBefore,"name-only relation refresh reuses nodes/lines without layout controls at "+size[0]);
+            var cached=Field<Dictionary<string,UnityEngine.Texture2D>>(view,"relationTextureCache");var cacheBefore=cached.Count;
+            Click(book,"卷目0");Click(book,"卷目3");view.RefreshCharacter();
+            Check(cached.Count==cacheBefore && Field<Dictionary<string,UnityEngine.Texture2D>>(view,"relationTextures").Count>0,"page revisit reuses static thumbnail cache at "+size[0]);
+            var beforeAppearance=Field<Dictionary<string,UnityEngine.Texture2D>>(view,"relationTextures")["partner"];
+            partner.data.unitData.propertyData.modelData.body++;view.RefreshCharacter(true);
+            for(int tick=0;tick<8;tick++)view.RefreshCharacter();
+            Check(Field<Dictionary<string,UnityEngine.Texture2D>>(view,"relationTextures")["partner"]!=beforeAppearance,"changed outfit invalidates the thumbnail value key at "+size[0]);
+            partner.data.unitData.propertyData.Name=previousName;
             typeof(BookView).GetMethod("ClearRelationTextures", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(view, null);
             PortraitModel.DeferCallbacks = true; view.RefreshCharacter(); view.RefreshCharacter();
             Check(Field<Dictionary<string, UnityEngine.Texture2D>>(view, "relationTextures").Count == 0 && PortraitModel.PendingCallbacks.Count == 1, "incomplete model is never cached and only one job loads at " + size[0]);

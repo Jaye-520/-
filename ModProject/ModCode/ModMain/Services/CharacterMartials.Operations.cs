@@ -285,11 +285,11 @@ namespace MOD_YtxSQ1.Services
             }
             return true;
         }
-        internal static List<MartialPrefixEntry> AllPrefixes(string unitId, MartialEntry entry, int index, int quality, DataProps.PropsData source = null)
+        internal static List<MartialPrefixEntry> AllPrefixes(string unitId, MartialEntry entry, int index, int quality, DataProps.PropsData source = null, List<MartialEntry> catalog = null)
         {
             var applicable = Candidates(unitId, entry, index, false, quality, true, source); var result = new List<MartialPrefixEntry>();
             var unit = CharacterReader.Resolve(unitId); var martial = (source ?? Record(unit, entry)).To<DataProps.MartialData>();
-            var catalog = Catalog();
+            if (catalog == null) catalog = Catalog();
             var byId = new Dictionary<int, MartialPrefixEntry>();
             foreach (var item in applicable) byId[g.conf.battleSkillPrefixValue.GetItem((int)martial.martialType, martial.baseID, item.Number).id] = item;
             foreach (var conf in g.conf.battleSkillPrefixValue._allConfList)

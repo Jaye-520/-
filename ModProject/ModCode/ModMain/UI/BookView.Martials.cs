@@ -21,6 +21,9 @@ namespace MOD_YtxSQ1.UI
         private readonly HashSet<string> martialPicks = new HashSet<string>();
         private readonly List<Button> martialCategoryButtons = new List<Button>();
         private string martialQuery = "", martialOwner, martialFingerprint, martialLibraryOwner, martialLibraryContext;
+        private string martialCatalogContext, martialProbe;
+        private int martialRenderFirst = -1, martialLibraryRenderFirst = -1;
+        private string martialDetailKey;
         private MartialEntry martialSelection;
         private bool martialCompact, martialEquippedOnly, martialBooksOnly;
         private int martialCategory, martialLibraryGrade;
@@ -55,17 +58,21 @@ namespace MOD_YtxSQ1.UI
             martialCount = Label(martialListPanel, "正在读取功法…", 12, 134, width - 24, 22, 14, Muted);
             martialListScroll = ItemScroll(martialListPanel, "功法列表", 10, 164, width - 20, Mathf.Max(70, height - 180));
             AddMartialScrollbar(martialListScroll); BuildMartialRows(martialRows, martialListScroll, 1, false);
-            martialListScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderMartialRows(false))));
+            martialListScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderMartialRows(false, false))));
             var detailWidth = martialCompact ? contentWidth : contentWidth - width - 16;
             martialDetailPanel = Card(content, "功法详情", martialCompact ? 0 : width + 16, 76, detailWidth, height); Border(martialDetailPanel, detailWidth, height);
-            RefreshMartials(true);
+            // Dynamic records are read only when this prepared page becomes active.
         }
         private void RefreshMartials(bool force = false)
         {
             if (selectedIndex != 2 || martialListScroll == null) return;
             try
             {
+                var probe = CharacterMartials.ReadProbe(selectedUnitId, martialBooksOnly);
+                if (!force && probe != null && martialOwner == selectedUnitId && martialProbe == probe) return;
                 var entries = martialBooksOnly ? CharacterMartials.ReadBooks(selectedUnitId) : CharacterMartials.Read(selectedUnitId); var signature = CharacterMartials.Fingerprint(entries);
+                martialProbe = probe;
+                foreach (var entry in entries) if (entry.ReadError != null) { martialProbe = null; break; }
                 if (!force && martialOwner == selectedUnitId && martialFingerprint == signature) return;
                 if (martialOwner != selectedUnitId) { CloseMartialOverlay(); martialSelection = null; }
                 martialOwner = selectedUnitId; martialFingerprint = signature; martialEntries = entries;
@@ -87,6 +94,7 @@ namespace MOD_YtxSQ1.UI
         {
             if (martialListScroll == null) return;
             var previous = martialSelection;
+            martialRenderFirst = -1;
             martialFiltered.Clear();
             foreach (var entry in martialEntries) if ((martialBooksOnly || !martialEquippedOnly || entry.Equipped) && MatchesMartial(entry, martialQuery)) martialFiltered.Add(entry);
             martialSelection = martialFiltered.Find(entry => SameMartialSelection(previous, entry));
@@ -126,12 +134,14 @@ namespace MOD_YtxSQ1.UI
             scroll.content.anchoredPosition = Vector2.zero; scroll.verticalNormalizedPosition = 1;
             scroll.verticalScrollbar.gameObject.SetActive(scroll.content.sizeDelta.y > scroll.viewport.sizeDelta.y);
         }
-        private void RenderMartialRows(bool library)
+        private void RenderMartialRows(bool library, bool force = true)
         {
             var scroll = library ? martialLibraryScroll : martialListScroll; if (scroll == null) return;
             var rows = library ? martialLibraryRows : martialRows; var entries = library ? martialLibraryResults : martialFiltered;
             int columns = library ? MartialLibraryColumns() : 1;
             int first = (int)(Mathf.Max(0, scroll.content.anchoredPosition.y) / MartialPitch) * columns;
+            if (!force && (library ? martialLibraryRenderFirst == first : martialRenderFirst == first)) return;
+            if (library) martialLibraryRenderFirst = first; else martialRenderFirst = first;
             var width = (scroll.content.sizeDelta.x - 12 - (columns - 1) * 10) / columns;
             for (int i = 0; i < rows.Count; i++)
             {
@@ -158,6 +168,10 @@ namespace MOD_YtxSQ1.UI
         private void RenderMartialDetail()
         {
             if (martialDetailPanel == null) return;
+            var detailKey = selectedUnitId + ":" + martialBooksOnly + ":" + martialCompact + ":" + catalogsKey + ":" + CharacterSave.Busy;
+            if (martialSelection != null) detailKey += ":" + CharacterMartials.Fingerprint(new List<MartialEntry> { martialSelection });
+            if (!martialDraftChanged && detailKey == martialDetailKey) return;
+            martialDetailKey = detailKey;
             // 空检索或切到背包不会进入BeginMartialDraft，须在详情入口释放旧草稿。
             if (martialSelection == null || martialSelection.InBag || martialSelection.ReadError != null ||
                 martialDraftEntry != null && (!SameMartialSelection(martialDraftEntry, martialSelection) ||
@@ -225,7 +239,9 @@ namespace MOD_YtxSQ1.UI
         }
         private bool LoadMartialCatalog()
         {
-            try { martialCatalog = CharacterMartials.Catalog(); return true; }
+            var key = CatalogKey();
+            if (key == martialCatalogContext && martialCatalog.Count > 0) return true;
+            try { martialCatalog = CharacterMartials.Catalog(); martialCatalogContext = key; return true; }
             catch (Exception ex) { SetEditStatus("秘籍配置读取失败：" + ex.Message, true); return false; }
         }
         private void OpenMartialLibrary()
@@ -244,7 +260,7 @@ namespace MOD_YtxSQ1.UI
                 }
                 martialLibraryScroll = ItemScroll(panel, "秘籍库列表", 12, 162, width - 24, height - 238); AddMartialScrollbar(martialLibraryScroll);
                 BuildMartialRows(martialLibraryRows, martialLibraryScroll, MartialLibraryColumns(), true);
-                martialLibraryScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderMartialRows(true))));
+                martialLibraryScroll.onValueChanged.AddListener((UnityAction<Vector2>)(new Action<Vector2>(_ => RenderMartialRows(true, false))));
                 martialLibraryStatus = Label(panel, "", 12, height - 64, width - 156, 48, 14, Muted);
                 MakeButton(panel, "添加所选秘籍", width - 132, height - 52, 120, 36, "添加到背包", () =>
                 {

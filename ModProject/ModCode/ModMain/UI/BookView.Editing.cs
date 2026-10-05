@@ -65,7 +65,7 @@ namespace MOD_YtxSQ1.UI
         {
             edits.Sync(CharacterReader.ContextKey());
             var unit = CharacterReader.Resolve(selectedUnitId);
-            foreach (var binding in editBindings)
+            if (selectedIndex == 0) foreach (var binding in editBindings)
             {
                 try
                 {
@@ -83,7 +83,7 @@ namespace MOD_YtxSQ1.UI
             CharacterSave.Sync(CharacterReader.ContextKey());
             var pending = edits.Count + CharacterSave.Pending;
             if (tabLabels.Count > 6) tabLabels[6].text = CharacterSave.Busy ? "保存中…" : pending == 0 ? "保存" : "保存（" + pending + "）";
-            RefreshActions();
+            if (selectedIndex == 0) RefreshActions();
         }
 
         private void SetEditStatus(string message, bool error = false)
@@ -327,7 +327,7 @@ namespace MOD_YtxSQ1.UI
             }, out validation)) { SetEditStatus(validation, true); return; }
             CharacterSave.Commit(edits, (success, message) =>
             {
-                if (root == null) return;
+                if (root == null || suspended) return;
                 RefreshCharacter(true); RefreshEditors(); SetEditStatus(message, !success);
             });
         }

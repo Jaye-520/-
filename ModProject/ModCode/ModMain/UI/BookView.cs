@@ -26,10 +26,8 @@ namespace MOD_YtxSQ1.UI
         private readonly List<Button> nativeButtons = new List<Button>();
         private readonly List<bool> nativeButtonStates = new List<bool>();
         private readonly List<bool> nativeButtonActiveStates = new List<bool>();
-        private readonly List<Image> tabImages = new List<Image>();
         private readonly List<Text> tabLabels = new List<Text>();
-        private readonly List<Image> tabMarks = new List<Image>();
-        private readonly List<RawImage> tabBrushes = new List<RawImage>();
+        private readonly List<GameObject> tabFrames = new List<GameObject>();
         private GameObject root;
         private CanvasGroup appearance;
         private float appearanceStarted;
@@ -41,7 +39,7 @@ namespace MOD_YtxSQ1.UI
             if (!appearing || appearance == null) return;
             var progress = Math.Min(1f, Math.Max(0f, (Time.unscaledTime - appearanceStarted) / AppearanceDuration));
             appearance.alpha = progress * progress * (3f - 2f * progress);
-            if (progress >= 1f) { appearance.interactable = true; appearing = false; }
+            if (progress >= 1f) { appearance.interactable = true; appearing = false; CompleteInteractionTiming(); }
         }
         private RectTransform content;
         private Font font;
@@ -158,7 +156,8 @@ namespace MOD_YtxSQ1.UI
             BuildTargetPanel(book, bodyHeight);
             contentWidth = width - targetWidth - 76;
             contentHeight = bodyHeight;
-            content = Box("卷页", book, targetWidth + 52, BodyTop, contentWidth, contentHeight);
+            contentHost = content = Box("卷页", book, targetWidth + 52, BodyTop, contentWidth, contentHeight);
+            preparedCanvas = available; preparedContext = CharacterReader.ContextKey();
 
             Fill(book, "页脚分界", 24, height - 40, width - 48, 1, Gold);
             var footer = Box("页脚", book, 24, height - 36, width - 48, 28);
@@ -166,7 +165,8 @@ namespace MOD_YtxSQ1.UI
             Label(footer, "Jaye@2026-爱你一生一世", 214, 1, width - 48 - 428, 24, 16, Ink, TextAnchor.MiddleCenter);
             Label(footer, ModVersion.Current + " / Esc 合上", width - 254, 1, 190, 24, 16, Muted, TextAnchor.MiddleRight);
             RecordOpeningStage("窗口骨架/搜索模板");
-            Select(0);
+            PreparePages(); RecordOpeningStage("静态六页/配置索引");
+            ReloadRoster(); RecordOpeningStage("人物名单"); Select(0);
             if (!string.IsNullOrEmpty(initialUnitId)) ScrollToInitialUnit(initialUnitId);
             RecordOpeningStage("完成绑定");
             Debug.Log("[八荒秘录] " + ModVersion.Current + "界面构建=" + openTimer.ElapsedMilliseconds + "ms；画布=" + available + "；窗口=" + width + "×" + height + openingStages);
@@ -231,16 +231,56 @@ namespace MOD_YtxSQ1.UI
             {
                 int index = i;
                 var tab = MakeButton(navigation, "卷目" + i, i * (tabWidth + 12), 0, tabWidth, 42, Modules[i], () => { if (index == 6) SaveEdits(); else Select(index); });
-                if (skin != null)
+                var rect = tab.GetComponent<RectTransform>();
+                var label = tab.GetComponentInChildren<Text>();
+                tab.GetComponent<Image>().color = new Color(.38f, .38f, .32f, .025f);
+                // 保存只执行操作，不创建永远不会显示的页面选中框。
+                if (index < Modules.Length - 1)
                 {
-                    var brush = Texture(tab.GetComponent<RectTransform>(), "页签墨迹", 0, 0, tabWidth, 42, skin.Brush, new Rect(0, 0, 1, 1));
-                    brush.transform.SetAsFirstSibling();
-                    tabBrushes.Add(brush);
+                    tabFrames.Add(BuildNavigationFrame(rect, tabWidth));
+                    label.transform.SetAsLastSibling();
                 }
-                tabImages.Add(tab.GetComponent<Image>());
-                tabLabels.Add(tab.GetComponentInChildren<Text>());
-                tabMarks.Add(Fill(tab.GetComponent<RectTransform>(), "选中标记", 8, 12, 3, 18, Cinnabar));
+                tabLabels.Add(label);
             }
+        }
+
+        // 独立装饰层：细金框与朱砂折角，所有图形不接收指针。
+        private GameObject BuildNavigationFrame(RectTransform tab, float width)
+        {
+            var frame = Box("选页金框", tab, 0, 0, width, 42);
+            Fill(frame, "暖纸", 0, 0, width, 42, new Color(.94f, .90f, .79f, .88f));
+            var metal = new Color(.52f, .40f, .23f, .92f);
+            Fill(frame, "金框上", 0, 0, width, 1.25f, metal);
+            Fill(frame, "金框下", 0, 40.75f, width, 1.25f, metal);
+            Fill(frame, "金框左", 0, 0, 1.25f, 42, metal);
+            Fill(frame, "金框右", width - 1.25f, 0, 1.25f, 42, metal);
+            var fine = new Color(.64f, .48f, .27f, .34f);
+            Fill(frame, "内框上", 4, 4, width - 8, .75f, fine);
+            Fill(frame, "内框下", 4, 37.25f, width - 8, .75f, fine);
+            // 四角短线形成收束的朱砂书签，不侵入文字区。
+            for (int corner = 0; corner < 4; corner++)
+            {
+                bool right = corner % 2 == 1, bottom = corner >= 2;
+                Fill(frame, "朱砂横角" + corner, right ? width - 17 : 4,
+                    bottom ? 36.5f : 4, 13, 1.5f, Cinnabar);
+                Fill(frame, "朱砂竖角" + corner, right ? width - 5.5f : 4,
+                    bottom ? 30 : 4, 1.5f, 8, Cinnabar);
+            }
+            frame.gameObject.SetActive(false);
+            return frame.gameObject;
+        }
+
+        // 只在真正切页时更新旧项与新项；装饰无需逐帧刷新。
+        private void SetNavigationSelection(int index)
+        {
+            if (selectedIndex >= 0)
+            {
+                tabFrames[selectedIndex].SetActive(false);
+                tabLabels[selectedIndex].color = Ink;
+            }
+            if (index < 0) return;
+            tabFrames[index].SetActive(true);
+            tabLabels[index].color = Cinnabar;
         }
 
         // 从玉简入口打开时把名单滚到目标人物；无有效目标或无需滚动时只重绘行。
@@ -255,75 +295,26 @@ namespace MOD_YtxSQ1.UI
 
         private void Select(int index)
         {
-            if (index == selectedIndex) return;
+            if (index == selectedIndex || index < 0 || index >= pages.Count) return;
             if (!FinishInlineEdit(false)) return;
-            ClearEditingView();
-            attributeTexts.Clear();
-            HideFateTips();
-            fateColumns.Clear();
-            fateUnitId = null;
-            fates = new CharacterFate[0];
-            fateReason = null;
-            var hasTarget = index <= 3;
-            targetPanel.gameObject.SetActive(hasTarget);
-            contentWidth = hasTarget ? bookWidth - targetWidth - 76 : bookWidth - 48;
-            content.anchoredPosition = new Vector2(hasTarget ? targetWidth + 52 : 24, -BodyTop);
-            content.sizeDelta = new Vector2(contentWidth, contentHeight);
-            for (int i = content.childCount - 1; i >= 0; i--)
+            using (WorkshopPerformance.Measure("切页_" + Modules[index]))
             {
-                var old = content.GetChild(i).gameObject;
-                ReleaseViewObject(old, "旧页面");
+                if (selectedIndex >= 0) pages[selectedIndex].Deactivate();
+                var page = pages[index];
+                targetPanel.gameObject.SetActive(page.UsesTarget);
+                contentHost.anchoredPosition = new Vector2(page.UsesTarget ? targetWidth + 52 : 24, -BodyTop);
+                contentHost.sizeDelta = new Vector2(page.Root.sizeDelta.x, contentHeight);
+                SetNavigationSelection(index); selectedIndex = index;
+                page.Activate();
+                if (!page.UsesTarget) ReleasePortrait();
+                else if (index != 0 && portraitKey == null) UpdatePortrait();
+                if (index == 0) RefreshCharacter(true);
+                else
+                {
+                    var previousRefresh = nextCharacterRefresh; RefreshCharacter();
+                    if (!suspended && nextCharacterRefresh == previousRefresh) page.Refresh(false);
+                }
             }
-            for (int i = 0; i < tabImages.Count; i++)
-            {
-                tabImages[i].color = i == index ? (skin != null ? new Color(1, 1, 1, 0) : Ink) : new Color(.38f, .38f, .32f, .025f);
-                tabLabels[i].color = i == index ? new Color(.95f, .94f, .90f, 1f) : Ink;
-                tabMarks[i].gameObject.SetActive(i == index);
-                if (i < tabBrushes.Count) tabBrushes[i].gameObject.SetActive(i == index);
-            }
-            if (index == 0)
-            {
-                var panelWidth = contentWidth - 20;
-                var panelHeight = 64 + AttributeGroupTop(contentHeight - 64, panelWidth >= 1180) - 10;
-                var overview = Fill(content, "总览气运底框", 0, 0, panelWidth, panelHeight, new Color(.92f, .91f, .87f, .35f)).rectTransform;
-                Border(overview, panelWidth, panelHeight);
-            }
-            else if (hasTarget)
-            {
-                var heading = Fill(content, "模块题栏底框", 0, 0, contentWidth, 64, new Color(.92f, .91f, .87f, .35f)).rectTransform;
-                Border(heading, contentWidth, 64);
-            }
-            Label(content, index == 0 ? "属性总览" : Modules[index], 20, 4, contentWidth - 152, 30, 25, Ink);
-            editStatus = Label(content, index == 0 ? "点击数值修改；选择字段可下拉，修改待保存" : "功能尚未开放", 20, 34, contentWidth - 152, 24, 16, Muted);
-            selectedIndex = index;
-            if (index == 1)
-            {
-                editStatus.text = "检索或选择道具，添加给当前人物；操作后点击保存";
-                BuildItems(); RefreshCharacter(true); return;
-            }
-            if (index == 2)
-            {
-                editStatus.text = "获取秘籍 → 学习 → 修炼与装备 → 参悟；操作当前选中人物";
-                BuildMartials(); RefreshCharacter(true); return;
-            }
-            if (index == 3)
-            {
-                editStatus.text = "以左侧人物为中心；点击关系人物查看、展开或修改";
-                BuildRelations(); RefreshCharacter(true); return;
-            }
-            if (index != 0)
-            {
-                var blank = Card(content, "待编纂", 0, 76, contentWidth, contentHeight - 76);
-                Label(blank, "此卷待编纂", 16, 80, contentWidth - 32, 42, 25, Ink, TextAnchor.MiddleCenter);
-                Label(blank, "功能尚未开放", 16, 140, contentWidth - 32, 30, 16, Muted, TextAnchor.MiddleCenter);
-                RefreshCharacter(true);
-                return;
-            }
-            if (roster.Count == 0) ReloadRoster();
-            RecordOpeningStage("人物名单/排序/筛选");
-            BuildAttributeOverview();
-            RecordOpeningStage("属性/气运控件");
-            RefreshCharacter(true);
         }
 
         private void BuildTargetPanel(RectTransform book, float height)
@@ -381,7 +372,8 @@ namespace MOD_YtxSQ1.UI
         {
             contextKey = CharacterReader.ContextKey();
             string reason;
-            var ready = CharacterRoster.TryRead(out roster, out reason);
+            bool ready;
+            using (WorkshopPerformance.Measure("人物名单读取")) ready = CharacterRoster.TryRead(out roster, out reason);
             FilterRoster();
             if (!ready) rosterCount.text = reason;
         }
@@ -532,7 +524,7 @@ namespace MOD_YtxSQ1.UI
                 var unit = CharacterReader.Resolve(selectedUnitId);
                 if (unit == null) { ReleasePortrait(); return; }
                 var dramaId = CharacterPortrait.GetDramaId(unit);
-                key += ":" + dramaId;
+                key += ":" + dramaId + ":" + CharacterPortrait.AppearanceKey(unit, dramaId);
                 if (portraitKey == key) return;
                 ReleasePortrait();
                 portraitKey = key;
@@ -583,7 +575,7 @@ namespace MOD_YtxSQ1.UI
                 Cleanup(() => special.enabled = false, "隐藏特殊立绘");
                 Cleanup(() => special.gameObject.SetActive(false), "停用特殊立绘承载");
                 // 专属承载销毁后，原生autoDestroy检测释放模型/RenderTexture并停止计时器。
-                Cleanup(() => UnityEngine.Object.Destroy(special.gameObject), "特殊立绘承载控件");
+                Cleanup(() => ReleaseViewObject(special.gameObject, "特殊立绘承载控件"), "特殊立绘承载控件");
             }
             if (renderer != null) Cleanup(renderer.Destroy, "立绘渲染资源");
             if (model != null) Cleanup(() => UnityEngine.Object.Destroy(model), "立绘模型");
@@ -784,17 +776,34 @@ namespace MOD_YtxSQ1.UI
 
         public void RefreshCharacter(bool force = false)
         {
-            if (root == null) return;
+            if (root == null || suspended || preparingPages) return;
             TickAppearance();
             TickItemTipWheel();
             TickEditing();
             if (root == null) return;
             TickRelations();
             if (fateTipCloseAt > 0 && Time.unscaledTime >= fateTipCloseAt) HideFateTips();
-            if (root == null || characterName == null) return;
+            if (root == null || characterName == null || selectedIndex < 0) return;
             var now = Time.unscaledTime;
             if (!force && now < nextCharacterRefresh) return;
             nextCharacterRefresh = now + 1f;
+            if (!pages[selectedIndex].UsesTarget)
+            {
+                if (CharacterReader.ContextKey() != contextKey)
+                { if (requestClose != null) requestClose(); else Dispose(); return; }
+                if (pages[selectedIndex].Implemented)
+                {
+                    CheckCatalogSources();
+                    using (WorkshopPerformance.Measure("数据刷新_" + Modules[selectedIndex])) pages[selectedIndex].Refresh(force);
+                }
+                return;
+            }
+            using (WorkshopPerformance.Measure("数据刷新_" + Modules[selectedIndex])) RefreshData(force);
+        }
+
+        private void RefreshData(bool force)
+        {
+            CheckCatalogSources();
             var currentContext = CharacterReader.ContextKey();
             if (currentContext != contextKey)
             {
@@ -811,12 +820,14 @@ namespace MOD_YtxSQ1.UI
             RenderRosterRows();
             CharacterSnapshot snapshot;
             string reason;
-            if (!CharacterReader.TryRead(selectedUnitId, out snapshot, out reason))
+            var ready = selectedIndex == 0 ? CharacterReader.TryRead(selectedUnitId, out snapshot, out reason)
+                : CharacterReader.TryReadSummary(selectedUnitId, out snapshot, out reason);
+            if (!ready)
             {
                 characterName.text = reason;
                 characterRealm.text = "—";
                 ReleasePortrait();
-                foreach (var group in attributeTexts) foreach (var value in group) value.text = "—";
+                if (selectedIndex == 0) foreach (var group in attributeTexts) foreach (var value in group) value.text = "—";
                 FinishInlineEdit(true); CloseDropdown(); RefreshEditors();
                 UpdateFates(new CharacterFate[0], reason);
                 if (selectedIndex == 1) RefreshBag(true);
@@ -834,20 +845,18 @@ namespace MOD_YtxSQ1.UI
             if (selectedUnitId == null) selectedUnitId = CharacterReader.Resolve(null).data.unitData.unitID;
             RefreshEditors();
             RecordOpeningStage("人物快照/编辑绑定");
-            UpdatePortrait();
+            using (WorkshopPerformance.Measure("共享人物立绘")) UpdatePortrait();
             RecordOpeningStage("人物立绘");
             if (selectedIndex != 0)
             {
-                if (selectedIndex == 1) RefreshBag(force);
-                if (selectedIndex == 2) RefreshMartials(force);
-                if (selectedIndex == 3) RefreshRelations(force);
+                pages[selectedIndex].Refresh(force);
                 return;
             }
             for (int group = 0; group < attributeTexts.Count; group++)
                 for (int i = 0; i < attributeTexts[group].Length; i++) attributeTexts[group][i].text = snapshot.Groups[group][i];
             CharacterFate[] entries;
             string fateError;
-            CharacterFates.TryRead(selectedUnitId, out entries, out fateError);
+            using (WorkshopPerformance.Measure("拥有气运读取")) CharacterFates.TryRead(selectedUnitId, out entries, out fateError);
             UpdateFates(entries, fateError);
             var fateFailure = CharacterFates.LastFailure;
             if (fateFailure != null && fateFailure != lastFateFailure) Debug.LogWarning("[八荒秘录] 气运读取：" + fateFailure);
@@ -886,43 +895,29 @@ namespace MOD_YtxSQ1.UI
                 var column = fateColumns[i];
                 var page = column.content;
                 var position = resetScroll ? 1f : column.verticalNormalizedPosition;
-                for (int child = page.childCount - 1; child >= 0; child--)
-                {
-                    var old = page.GetChild(child).gameObject;
-                    ReleaseViewObject(old, "气运行");
-                }
                 var items = FilterFates(i);
                 var rowPitch = Mathf.Min(36, Mathf.Max(24, column.viewport.sizeDelta.y / 3));
                 var rowHeight = rowPitch - 4;
                 var pageHeight = Mathf.Max(column.viewport.sizeDelta.y, (items.Count + (items.Count > 0 && fateReason != null ? 1 : 0)) * rowPitch);
                 page.sizeDelta = new Vector2(page.sizeDelta.x, pageHeight);
-                if (items.Count == 0)
-                    Label(page, fateReason ?? "无", 4, 4, page.sizeDelta.x - 8, 28, 15, Muted, TextAnchor.MiddleCenter);
-                else if (fateReason != null)
-                    Label(page, fateReason, 4, items.Count * rowPitch, page.sizeDelta.x - 8, rowHeight, 12, Cinnabar, TextAnchor.MiddleCenter);
-                for (int n = 0; n < items.Count; n++)
+                var pool = ownedFateRows[i];
+                // Reuse bindings without retaining a growing historical list after large shrinkage.
+                var retained = Math.Max(items.Count, (int)Math.Ceiling(column.viewport.sizeDelta.y / rowPitch) + 1);
+                while (pool.Count > retained) { ReleaseViewObject(pool[pool.Count - 1].Root.gameObject, "多余气运行"); pool.RemoveAt(pool.Count - 1); }
+                while (pool.Count < items.Count) pool.Add(CreateOwnedFateRow(i, page, page.sizeDelta.x, rowHeight, pool.Count));
+                if (fateEmptyLabels[i] == null) fateEmptyLabels[i] = Label(page, "", 4, 4, page.sizeDelta.x - 8, 28, 15, Muted, TextAnchor.MiddleCenter);
+                var empty = fateEmptyLabels[i]; empty.gameObject.SetActive(items.Count == 0 || fateReason != null);
+                empty.text = items.Count == 0 ? fateReason ?? "无" : fateReason ?? "";
+                empty.rectTransform.anchoredPosition = new Vector2(4, items.Count == 0 ? -4 : -items.Count * rowPitch);
+                empty.color = items.Count == 0 ? Muted : Cinnabar;
+                for (int n = 0; n < pool.Count; n++)
                 {
-                    var rowWidth = page.sizeDelta.x;
-                    var rowImage = Fill(page, "气运行_" + i + "_" + n, 0, n * rowPitch, rowWidth, rowHeight, new Color(.91f, .90f, .85f, .88f), true);
-                    var row = rowImage.rectTransform;
-                    Border(row, rowWidth, rowHeight);
-                    var entry = items[n];
-                    BindFateHover(row.gameObject, () => ShowFateTip(row, entry), () =>
-                    {
-                        if (fateTipOwner == row) fateTipCloseAt = Time.unscaledTime + .12f;
-                    });
-                    var nameWidth = rowWidth - (i < 3 ? 36 : 12);
-                    var name = Label(row, items[n].Name, 6, 0, nameWidth, rowHeight, 16, Ink, TextAnchor.MiddleCenter);
-                    name.resizeTextForBestFit = true; name.resizeTextMinSize = 12; name.resizeTextMaxSize = 16;
-                    StyleFateRow(rowImage, name, entry, rowWidth, rowHeight, 32);
-                    if (i < 3)
-                    {
-                        var removeImage = Fill(row, "移除气运_" + i + "_" + n, rowWidth - 28, 2, 26, rowHeight - 4, new Color(1, 1, 1, .001f), true);
-                        var remove = removeImage.gameObject.AddComponent<Button>();
-                        remove.targetGraphic = removeImage;
-                        remove.onClick.AddListener((UnityAction)(new Action(() => DeleteOwnedFate(entry))));
-                        Label(removeImage.rectTransform, "×", 0, 0, 26, rowHeight - 4, (int)Mathf.Min(23, rowHeight - 5), FateInk(entry.Level), TextAnchor.MiddleCenter);
-                    }
+                    var row = pool[n]; row.Entry = n < items.Count ? items[n] : null;
+                    row.Root.gameObject.SetActive(row.Entry != null); if (row.Entry == null) continue;
+                    row.Root.anchoredPosition = new Vector2(0, -n * rowPitch);
+                    row.Name.text = row.Entry.Name;
+                    StyleFateRow(row.Background, row.Name, row.Entry, page.sizeDelta.x, rowHeight, 32, row.Rank);
+                    row.Delete.color = FateInk(row.Entry.Level);
                 }
                 column.verticalScrollbar.gameObject.SetActive(pageHeight > column.viewport.sizeDelta.y + .1f);
                 column.verticalNormalizedPosition = position;
@@ -1079,6 +1074,7 @@ namespace MOD_YtxSQ1.UI
         private RectTransform NewRect(string name, Transform parent)
         {
             var go = new GameObject("BHML_" + name);
+            WorkshopPerformance.RecordCreated(go);
             try
             {
                 go.layer = parent.gameObject.layer;
@@ -1214,34 +1210,26 @@ namespace MOD_YtxSQ1.UI
             Cleanup(ClearEditingView, "编辑视图");
             Cleanup(ReleasePortrait, "立绘资源");
             Cleanup(HideFateTips, "关闭气运提示");
+            foreach (var pool in ownedFateRows) pool.Clear(); Array.Clear(fateEmptyLabels, 0, fateEmptyLabels.Length);
+            foreach (var page in pages) page.Dispose();
+            pages.Clear(); contentHost = null; suspended = false;
+            var host = sleepingHost; sleepingHost = null;
             var previousRoot = root; root = null;
             if (previousRoot != null)
             {
                 Cleanup(() => previousRoot.SetActive(false), "隐藏视图");
-                Cleanup(() => UnityEngine.Object.Destroy(previousRoot), "视图对象");
+                Cleanup(() => ReleaseViewObject(previousRoot, "视图对象"), "视图对象");
             }
+            if (host != null) Cleanup(() => ReleaseViewObject(host, "休眠承载"), "休眠承载");
             var previousCloseTexture = closeTexture; closeTexture = null;
             if (previousCloseTexture != null) Cleanup(() => UnityEngine.Object.Destroy(previousCloseTexture), "关闭按钮纹理");
             // 只解除视图引用；固定美术纹理由ModMain.Destroy统一释放。
             skin = null;
             var previousFont = calligraphyFont; calligraphyFont = null;
             if (previousFont != null) Cleanup(() => UnityEngine.Object.Destroy(previousFont), "自建字体");
-            foreach (var graphic in hiddenGraphics)
-                if (graphic != null) Cleanup(() => graphic.enabled = true, "恢复原生图形");
-            for (int i = 0; i < nativeButtons.Count; i++)
-            {
-                var button = nativeButtons[i];
-                var interactable = nativeButtonStates[i];
-                var active = nativeButtonActiveStates[i];
-                if (button != null)
-                {
-                    Cleanup(() => button.interactable = interactable, "恢复原生按钮");
-                    Cleanup(() => button.gameObject.SetActive(active), "恢复原生按钮活动状态");
-                }
-            }
-            hiddenGraphics.Clear(); nativeButtons.Clear(); nativeButtonStates.Clear(); nativeButtonActiveStates.Clear();
-            tabImages.Clear(); tabLabels.Clear(); tabMarks.Clear(); tabBrushes.Clear();
-            content = null; font = null;
+            RestoreNativeControls();
+            tabLabels.Clear(); tabFrames.Clear();
+            content = null; font = null; interactionPending = false;
             characterName = null; characterRealm = null; attributeTexts.Clear();
             fateColumns.Clear(); fates = new CharacterFate[0];
             roster.Clear(); filteredRoster.Clear(); rosterRows.Clear(); rowIds.Clear();
@@ -1255,6 +1243,7 @@ namespace MOD_YtxSQ1.UI
         private static void ReleaseViewObject(GameObject previous, string part)
         {
             if (previous == null) return;
+            WorkshopPerformance.RecordDestroy(previous);
             // 隐藏触发原生回调可能抛错，销毁仍须独立尝试。
             Cleanup(() => previous.SetActive(false), "隐藏" + part);
             Cleanup(() => UnityEngine.Object.Destroy(previous), "销毁" + part);

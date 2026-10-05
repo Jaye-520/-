@@ -506,6 +506,13 @@ internal static class CharacterSaveHarness
         CharacterActions.Execute("npc","来",null,out quickMessage);
         Check(CharacterActions.Execute("npc","返",null,out quickMessage) && sameIdNpc.data.unitData.Point==new UnityEngine.Vector2Int(7,8),"replacement NPC come starts new return origin instead of inheriting stale one");
         Reset();var itemConf=new ConfItemPropsItem{id=10,isOverlay=1,name="probe"};g.conf.itemProps._allConfList.Add(itemConf);
+        ConfLocalText.Texts["probe"]="测试物品"; ConfLocalText.Texts["原配置介绍"]="原配置介绍正文"; ConfLocalText.Texts["新配置介绍"]="新配置介绍正文";
+        itemConf.desc="原配置介绍";
+        var deferredItem=ItemInventory.Catalog(false).Find(entry=>entry.Id==10);
+        Check(deferredItem.Description==null && deferredItem.Name=="测试物品","prepared item index omits descriptions while preserving names");
+        Check(ItemInventory.DescribeCatalogEntry(deferredItem)=="原配置介绍正文","first item hover resolves the current configuration description");
+        itemConf.desc="新配置介绍";
+        Check(ItemInventory.DescribeCatalogEntry(deferredItem)=="原配置介绍正文" && ItemInventory.DescribeCatalogEntry(ItemInventory.Catalog(false).Find(entry=>entry.Id==10))=="新配置介绍正文","item description is reused within an index and reread after index replacement");
         var itemContext=CharacterReader.ContextKey();var itemBag=g.world.playerUnit.data.unitData.propData;
         itemBag.AfterAdd=()=>{g.world=new World();g.data=new DataMgr();};
         bool itemRejected=false;try{ItemInventory.Give(itemContext,"player",10,2);}catch{itemRejected=true;}

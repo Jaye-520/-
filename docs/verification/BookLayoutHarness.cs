@@ -21,6 +21,7 @@ namespace UnityEngine
     }
     public class Object
     {
+        public int GetInstanceID() { return GetHashCode(); }
         public static GameObject Instantiate(GameObject source,Transform parent,bool world)
         {
             var clone=FakeRes.MakeField();clone.transform.SetParent(parent,false);
@@ -96,8 +97,8 @@ namespace UnityEngine
     public class GameObject : Object
     {
         public static string ThrowDeactivateName,ThrowLayerName,ThrowParentName;public static GameObject FaultAllocated;public bool Destroyed;
-        public string name;private int nativeLayer;public int layer {get{return nativeLayer;}set{if(name==ThrowLayerName){FaultAllocated=this;throw new Exception("layer failure");}nativeLayer=value;}} public bool activeInHierarchy=true; public RectTransform transform;
-        public bool activeSelf { get { return activeInHierarchy; } }
+        public string name;private int nativeLayer;public int layer {get{return nativeLayer;}set{if(name==ThrowLayerName){FaultAllocated=this;throw new Exception("layer failure");}nativeLayer=value;}} private bool localActive=true; public bool activeInHierarchy { get { return localActive && (transform.parent==null || transform.parent.gameObject.activeInHierarchy); } set { localActive=value; } } public RectTransform transform;
+        public bool activeSelf { get { return localActive; } }
         public readonly List<Component> Components = new List<Component>();
         public GameObject(string name) { this.name=name; transform=new RectTransform { gameObject=this }; Components.Add(transform); }
         public T AddComponent<T>() where T:Component,new()
@@ -117,6 +118,7 @@ namespace UnityEngine
         public Transform GetChild(int index) { return Children[index]; }
         public void SetParent(Transform value,bool world) {if(gameObject.name==GameObject.ThrowParentName){GameObject.FaultAllocated=gameObject;throw new Exception("parent failure");} if(parent!=null)parent.Children.Remove(this); parent=value; if(value!=null)value.Children.Add(this); }
         public void SetAsFirstSibling() { parent.Children.Remove(this); parent.Children.Insert(0,this); }
+        public void SetAsLastSibling() { parent.Children.Remove(this); parent.Children.Add(this); }
     }
     public class RectTransform : Transform
     {
@@ -136,7 +138,7 @@ namespace UnityEngine
         public Texture2D() { }
         public Texture2D(int width,int height,TextureFormat format,bool mipmap) { Width=width;Height=height;LiveProcedural++; }
         public void ReadPixels(Rect rect,int x,int y) { Pixels=new Color[Width*Height]; } public void SetPixels(Color[] pixels) { Pixels=pixels; }
-        public void Apply() { }
+        public void Apply() { } public void Apply(bool mipmap,bool nonReadable) { }
     }
     public enum TextAnchor { MiddleLeft,MiddleCenter,MiddleRight,UpperLeft }
     public enum HorizontalWrapMode { Wrap,Overflow }
@@ -400,6 +402,7 @@ internal static class BookLayoutHarness
 {
     private static IEnumerable<UnityEngine.Transform> Walk(UnityEngine.Transform node)
     {
+        if ((node.gameObject.name.StartsWith("BHML_页面_") || node.gameObject.name.StartsWith("BHML_气运行_")) && !node.gameObject.activeSelf) yield break;
         yield return node;
         foreach(var child in node.Children) foreach(var descendant in Walk(child)) yield return descendant;
     }
@@ -1102,6 +1105,80 @@ internal static class BookLayoutHarness
         ClickNamed(book,"卷目6");g.data.Complete(true);CharacterSave.Poll();
         Check(CharacterSave.Pending==0 && !CharacterSave.Busy,"item save retry clears pending only on success callback");
     }
+    private static void VerifyPerformanceReuse()
+    {
+        g.world = new World(); g.data = new DataMgr(); g.conf = new Config(); g.isDestroy = false;
+        g.world.playerUnit.data.unitData.propertyData.Name = "性能玩家";
+        CharacterEditSession.Shared.Sync(CharacterReader.ContextKey()); CharacterSave.Sync(CharacterReader.ContextKey());
+        var canvas = new UnityEngine.GameObject("performance canvas"); canvas.transform.sizeDelta = new UnityEngine.Vector2(1366,768);
+        g.ui = new LayoutUI { canvas=canvas.transform };
+        var view=new BookView(); var window=new UITextInfoLong(); view.Build(window,()=>{});
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        var pageList=(System.Collections.IEnumerable)typeof(BookView).GetField("pages",flags).GetValue(view);
+        var roots=new List<UnityEngine.RectTransform>();
+        foreach(var page in pageList)roots.Add((UnityEngine.RectTransform)page.GetType().GetField("Root",flags).GetValue(page));
+        Check(roots.Count==6 && roots.Count(r=>r.gameObject.activeSelf)==1,"performance: cold preparation creates six roots and activates only attributes");
+        Check(((List<InventoryItem>)typeof(BookView).GetField("bagItems",flags).GetValue(view)).Count==0
+            && ((List<MartialEntry>)typeof(BookView).GetField("martialEntries",flags).GetValue(view)).Count==0
+            && typeof(BookView).GetField("relationGraph",flags).GetValue(view)==null,"performance: hidden prebuilt pages do not read dynamic inventories, martials or relations");
+        var select=typeof(BookView).GetMethod("Select",flags); var book=(UnityEngine.RectTransform)Walk(window.transform).First(t=>t.gameObject.name=="BHML_秘录外框");
+        // Warm all dynamic pages once; repeated switching must preserve every root and its content.
+        for(int id=0;id<6;id++)select.Invoke(view,new object[]{id});
+        var created=WorkshopPerformance.Created; var destroyed=WorkshopPerformance.Destroyed;
+        for(int cycle=0;cycle<30;cycle++)for(int id=0;id<6;id++)select.Invoke(view,new object[]{id});
+        Check(WorkshopPerformance.Created==created && WorkshopPerformance.Destroyed==destroyed,"performance: 180 unchanged page switches allocate/destroy no self-owned controls");
+        Check(roots.All(r=>!r.gameObject.Destroyed) && roots.Count(r=>r.gameObject.activeSelf)==1,"performance: all registered roots survive switching with one active page");
+        // Poison an attribute getter: placeholders must not request any character snapshot.
+        g.world.playerUnit.data.dynUnitData.hp.Throw=true;
+        select.Invoke(view,new object[]{4}); view.RefreshCharacter(true); select.Invoke(view,new object[]{5}); view.RefreshCharacter(true);
+        Check(CharacterReader.LastFailure==null,"performance: both placeholder pages skip character detail reads");
+        g.world.playerUnit.data.dynUnitData.hp.Throw=false;
+        var sourceKey=(string)typeof(BookView).GetField("catalogsKey",flags).GetValue(view);
+        g.conf.itemProps=new ItemPropsConfig();typeof(BookView).GetMethod("CheckCatalogSources",flags).Invoke(view,null);
+        var changedSource=(string)typeof(BookView).GetField("catalogsKey",flags).GetValue(view);
+        Check(sourceKey!=changedSource,"performance: replacement configuration table invalidates value caches");
+        g.conf.localText=new ConfLocalText();typeof(BookView).GetMethod("CheckCatalogSources",flags).Invoke(view,null);
+        Check(changedSource!=(string)typeof(BookView).GetField("catalogsKey",flags).GetValue(view),"performance: replacement localization source invalidates catalog indexes");
+        var cyclesOk=true; var navigationOk=true; var builds=WorkshopPerformance.Created;
+        for(int cycle=0;cycle<30;cycle++)
+        {
+            select.Invoke(view,new object[]{cycle % 6});
+            builds=WorkshopPerformance.Created;
+            view.Suspend(); if(!view.CanResume() || ModelRenderTexture.Active!=0 || WindowInputScope.Registered.Count!=0)cyclesOk=false;
+            if(cycle==0)
+            {
+                var npc=new WorldUnitBase();npc.data.unitData.unitID="performance-npc";npc.data.unitData.propertyData.Name="新增名单人物";g.world.unit.Npcs.Add(npc);
+                g.world.playerUnit.data.dynUnitData.hp.Stored=654;
+            }
+            window=new UITextInfoLong();view.Resume(window,()=>{},null);
+            var frames=(List<UnityEngine.GameObject>)typeof(BookView).GetField("tabFrames",flags).GetValue(view);
+            if(!frames[0].activeSelf || frames.Count(frame=>frame.activeSelf)!=1)navigationOk=false;
+            if(WorkshopPerformance.Created!=builds || roots.Count(r=>r.gameObject.activeSelf)!=1 || !ReferenceEquals(book,Walk(window.transform).First(t=>t.gameObject.name=="BHML_秘录外框")))cyclesOk=false;
+        }
+        Check(navigationOk,"performance: resume from each of six pages selects only the attribute navigation frame");
+        Check(cyclesOk && WorkshopPerformance.Created==builds,"performance: 30 suspend/resume cycles reuse widgets and stop hidden renderers/input");
+        Check(((List<CharacterEntry>)typeof(BookView).GetField("roster",flags).GetValue(view)).Count==2
+            && Walk(book).Any(t=>t.GetComponent<UnityEngine.UI.Text>()!=null && t.GetComponent<UnityEngine.UI.Text>().text=="654"),"performance: resume rereads roster and changed character values");
+        typeof(BookView).GetMethod("ClearRelationTextures",flags).Invoke(view,null);
+        var cache=(Dictionary<string,UnityEngine.Texture2D>)typeof(BookView).GetField("relationTextureCache",flags).GetValue(view);
+        var uses=(Dictionary<string,long>)typeof(BookView).GetField("relationTextureUse",flags).GetValue(view);
+        for(int i=0;i<128;i++){var texture=new UnityEngine.Texture2D(1,1,UnityEngine.TextureFormat.RGBA32,false);texture.ReadPixels(new UnityEngine.Rect(0,0,1,1),0,0);cache.Add("probe-"+i,texture);uses.Add("probe-"+i,i);}
+        var reserve=(bool)typeof(BookView).GetMethod("ReserveRelationTexture",flags).Invoke(view,null);
+        Check(reserve && cache.Count==127 && !cache.ContainsKey("probe-0"),"performance: full thumbnail cache evicts the least recently used invisible texture");
+        typeof(BookView).GetMethod("ClearRelationTextures",flags).Invoke(view,null);
+        Check(cache.Count==0 && uses.Count==0,"performance: thumbnail cache cleanup clears texture ownership and recency metadata");
+        view.Suspend();canvas.transform.sizeDelta=new UnityEngine.Vector2(960,720);
+        Check(!view.CanResume(),"performance: canvas changes invalidate sleeping layout");canvas.transform.sizeDelta=new UnityEngine.Vector2(1366,768);
+        Check(view.CanResume(),"performance: unchanged canvas/context allows resume");
+        g.world=new World();
+        Check(!view.CanResume(),"performance: world replacement rejects old cached view");
+        var staleSlots=(List<UnityEngine.RectTransform>)typeof(BookView).GetField("bagSlots",flags).GetValue(view);
+        staleSlots.Insert(0,null);typeof(BookView).GetMethod("ClearItemsView",flags).Invoke(view,null);
+        Check(staleSlots.Count==0,"performance: missing native bag slots do not abort remaining item resource cleanup");
+        view.Dispose();view.Dispose();
+        Check(ModelRenderTexture.Active==0 && WindowInputScope.Registered.Count==0 && UnityEngine.Texture2D.LiveProcedural==0,"performance: final disposal releases sleeping resources idempotently");
+    }
+
     public static void Main(string[] args)
     {
         try { Run(args); }
@@ -1370,7 +1447,7 @@ internal static class BookLayoutHarness
             var itemButton=Walk(book).First(t=>t.gameObject.name=="BHML_卷目1").GetComponent<UnityEngine.UI.Button>();
             itemButton.onClick.Invoke();
             Check(Walk(book).First(t=>t.gameObject.name=="BHML_对象栏").gameObject.activeInHierarchy && ModelRenderTexture.Active==1,"items page shares target panel and existing portrait");
-            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_人物背包") && !book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="寿命"),"module switch replaces attributes with item page");
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_人物背包") && !book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="寿命" && t.gameObject.activeInHierarchy),"module switch replaces attributes with item page");
             VerifyMartials(bookView,book,args,(int)sizes[s][0]);
             VerifyItems(bookView,book,args,(int)sizes[s][0]);
             Walk(book).First(t=>t.gameObject.name=="BHML_卷目0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
@@ -1395,7 +1472,7 @@ internal static class BookLayoutHarness
             columnScroll.verticalNormalizedPosition=.4f;
             var stableRow=Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0");
             bookView.RefreshCharacter(true);
-            Check(columnScroll.content.childCount==34 && columnScroll.content.sizeDelta.y>columnScroll.viewport.sizeDelta.y && columnScroll.verticalScrollbar.gameObject.activeSelf,"all acquired entries live in clipped scrollable column");
+            Check(columnScroll.content.Children.Count(t=>t.gameObject.name.StartsWith("BHML_气运行_1_") && t.gameObject.activeSelf)==34 && columnScroll.content.sizeDelta.y>columnScroll.viewport.sizeDelta.y && columnScroll.verticalScrollbar.gameObject.activeSelf,"all acquired entries live in clipped scrollable column");
             Check(columnScroll.verticalNormalizedPosition==.4f && Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0")==stableRow,"unchanged refresh preserves inline rows and scroll position");
             ConfLocalText.Texts["tip1"]="第一条介绍";ConfLocalText.Texts["tip2"]="第二条介绍";bookView.RefreshCharacter(true);
             Walk(book).First(t=>t.gameObject.name=="BHML_气运行_1_0").GetComponent<UIEventListener>().OnPointerEnter(null);
@@ -1533,8 +1610,9 @@ internal static class BookLayoutHarness
         resetField.caretRectTrans=originalCaret.transform;resetField.m_Mesh=new object();resetField.m_CursorVerts=new object();
         typeof(BookView).GetMethod("ResetClonedInput",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).Invoke(null,new object[]{resetField,8f});
         Check(!Walk(resetHost.transform).Any(t=>t.gameObject.name.EndsWith(" Input Caret")) && originalCaret.activeInHierarchy && resetField.m_Mesh==null && resetField.m_CursorVerts==null,"cloned input removes orphan caret and shared mesh without destroying source caret");
+        VerifyPerformanceReuse();
         Console.WriteLine("BookView geometry, page binding and GDI previews complete. Not a game screenshot.");
     }
 }
 
-namespace MOD_YtxSQ1.UI { internal static class WindowInputScope { internal static readonly System.Collections.Generic.List<UnityEngine.UI.InputField> Registered = new System.Collections.Generic.List<UnityEngine.UI.InputField>(); internal static void Register(UnityEngine.UI.InputField field) { Registered.Add(field); } internal static void Unregister(UnityEngine.UI.InputField field) { Registered.Remove(field); } } }
+namespace MOD_YtxSQ1.UI { internal static class WindowInputScope { internal static readonly System.Collections.Generic.List<UnityEngine.UI.InputField> Registered = new System.Collections.Generic.List<UnityEngine.UI.InputField>(); internal static void Register(UnityEngine.UI.InputField field) { if(!Registered.Contains(field))Registered.Add(field); } internal static void Unregister(UnityEngine.UI.InputField field) { Registered.Remove(field); } } }

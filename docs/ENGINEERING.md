@@ -1,24 +1,25 @@
 # 工程手册
 
-> **文档定位**：代码结构、可执行流程与防错规则 ｜ **对应版本**：08.06 ｜ **最后更新**：2026-10-05
+> **文档定位**：当前代码导航、可执行流程与防错规则 ｜ **对应版本**：08.10 ｜ **最后更新**：2026-10-05
 
-仅维护实际结构、可执行流程和关键经验；当前状态与未验收边界见[项目记忆](../PROJECT_MEMORY.md)，逐版证据见[变更记录](CHANGELOG.md)，方向与阶段见[长期计划](LONG_TERM_PLAN.md)。
+现状见[项目记忆](../PROJECT_MEMORY.md)，方向见[长期计划](LONG_TERM_PLAN.md)，性能与接入见[性能文档](PERFORMANCE.md)。本手册保留有效技术约束，删除旧版过程、旧统计与已撤销实现。
 
 ## 目录
 
 - [代码导航](#代码导航)
-- [代码风格与结构约定](#代码风格与结构约定)
-- [构建和调试](#构建和调试)
-- [官方资料](#官方资料)
-- [必须保留的实现与失败经验](#必须保留的实现与失败经验)
-- [按变更验证](#按变更验证)
-- [小步迭代与文档维护](#小步迭代与文档维护)
-
-「必须保留的实现与失败经验」按主题组织：写入、动作与境界依据；常驻与释放审查范围；打开过渡；固定美术纹理生命周期；入口定位与坐标；视图异常释放；常驻节流与打开计时；视觉与布局约定；帮助标记与气运绘制；原生调用与数据换算防错；持久写入与配置依据。
+- [构建与验证](#构建与验证)
+- [官方接口与原生包装](#官方接口与原生包装)
+- [页面资源与输入](#页面资源与输入)
+- [写入与保存](#写入与保存)
+- [道具与气运](#道具与气运)
+- [功法](#功法)
+- [境界](#境界)
+- [关系与立绘](#关系与立绘)
+- [文档与Git](#文档与git)
 
 ## 代码导航
 
-源码根：`ModProject/ModCode/ModMain/`。
+源码根ModProject/ModCode/ModMain/。调用关系ModMain→WorkshopController→WorkshopWindow→BookView；读取/草稿/写入职责分离，不提供反射任意字段写入。
 
 | 文件 | 职责 |
 | --- | --- |
@@ -27,6 +28,8 @@
 | Core/WorkshopController.cs | 大地图条件、F8、输入编辑保护、窗口刷新 |
 | UI/WorkshopEntrances.cs | 原生双入口挂载、单值坐标转换、出厂位置常量、点击核对、独立于内容熔断的生命周期 |
 | UI/WorkshopWindow.cs | 原生UITextInfoLong承载、共享窗口所有权、开关与释放 |
+| UI/BookView.Pages.cs | 六页预建注册、活动/休眠/失效生命周期、配置缓存与气运行复用 |
+| Services/WorkshopPerformance.cs | 有界CPU计时样本、分位数及自建控件计数 |
 | UI/BookView.cs | 七项导航、四页共享人物与对象栏、名单/搜索/立绘及属性布局 |
 | UI/WindowInputScope.cs | 本视图登记输入的焦点保护、Text到Caret坐标转换、有限诊断与补丁释放 |
 | UI/PaperSkin.cs | 宣纸、墨刷和山水纹理加载与释放 |
@@ -45,7 +48,7 @@
 | Services/RelationOperations.cs | 两人身份和数据容器复核、好感setter、原生建立/解除动作及Pending |
 | Services/RelationLayout.cs | 分类整数槽布局、循环/重复人物合并后的不重叠位置 |
 | UI/BookView.Relations.cs | 关系图、筛选、拖动缩放、节点菜单、人物选择与确认弹窗 |
-| UI/BookView.RelationPictures.cs | 可见人物逐个生成静态小立绘、128张窗口内纹理缓存及释放 |
+| UI/BookView.RelationPictures.cs | 可见人物逐个生成静态小立绘、128张跨休眠LRU纹理缓存及释放 |
 | Services/ItemInventory.cs | 道具配置、背包快照、原生发放/逐件删除、境界药效补给与人物上下文预检 |
 | UI/BookView.Items.cs | 道具三栏、物品图鉴、背包网格与原生内容悬浮、绑定人物的添加/清空弹窗 |
 | UI/BookView.ItemMenu.cs | 背包右键菜单、按唯一ID修改/增加数量及移除单项、菜单释放 |
@@ -60,541 +63,118 @@
 | Example/Example.cs | 参与编译的官方示例；不是产品功能清单 |
 | Properties/AssemblyInfo.cs | 程序集元数据；产品版本取`ModVersion.Current`，AssemblyVersion/FileVersion保持纯数字 |
 
-调用关系：ModMain → WorkshopController → WorkshopWindow → BookView。视图使用读取/草稿/写入服务与PaperSkin；窗口负责输入补丁生命周期。当前没有独立Modules目录，写入通过明确字段适配和原生动作接入，不提供反射任意写入。
+## 构建与验证
 
-07.28用partial分开编辑与布局，07.29再拆图鉴；新增文件须登记csproj。同一次窗口打开期间切页/切人物保留草稿；每次重新打开清空未应用草稿，世界失效清理。候选读取本机具体_allConfList（IL2CPP IReadOnlyList包装无直接Count），性格按当前槽真实type匹配。输入复制搜索控件须清空旧回调，及时Register/Unregister到WindowInputScope；Attach/Detach归窗口所有；Attach清空旧登记后，从当前承载重新登记BHML_前缀的本视图输入，避免Build期间登记的气运搜索丢失保护。07.29的CharacterSave负责全批预检、原生字段写入/缓存维护、保存回调及主线程Poll；CharacterFateOperations负责即时气运生命周期，不能和只读/草稿服务混淆。替身不证明IL2CPP、Windows IME或保存重载结果。
-
-### 功法生命周期接口（07.72）
-
-本机Mono.Cecil签名与GameAssembly调用链缓存见`.tools/martial-lifecycle-api.txt`、`martial-actions-api.txt`、`martial-lifecycle-native.txt`、`martial-action-native.txt`、`martial-prefix-job.txt`。
-
-- 学习：原生`StudyActionMartialProp`建立唯一ID索引与类型缓存，并`CostPropItem(soleID,1,true)`消耗原秘籍。调用前`GetStudyTip`检查境界/资质/已学格数；快捷学习跳过小游戏/时间/灵石，不自动装备或补经验。
-- 修炼：`GetItems(unit,martial)`按实际词条数量返回数量+1条修炼配置、超表长度钳到末条；末项`GetExp(item,martial.grade)`按功法境界读grade1～10，禁止传秘籍品质level。原生`AddMartialExp`同样按grade钳制差额；已装备重建WorldUnitEquipMartial并UpdateConf读取新解锁效果。
-- 装备：列表、提交前校验和结果回读统一读取skillLeft/skillRight/step/ultimate/abilitys。普通物品IsEquipProps取GetAllEquipPropsSoleID，并非功法槽位，不得混用；托管替身也不能把它模拟成功法判断。动作仍走IsCreateAction/CreateAction(UnitActionMartialEquip/Unequip)，维护道点、同类心法、境界与效果，禁止直接写ID冒充装备。
-- 词条候选：运行时_allConfList读全库，GetItems/GetItem读本招式通用/专属；multi与require校验整个最终集合，随机weight只影响生成。可修改项排前，不能修改仍显示原因；GetMinMaxLevel空/短数组先拒绝该候选。强度区间(minTier-1)*100+1至GetPrefixMaxLevel*100，PrefixLevelToLevel查询实际颜色；效果等价档可合并，原有未改值可能高于归一上限，必须保留而非错误拒绝。
-
-- 数量与品质：`GetGradeMin(type,baseID)`读真实招式最低境界；`GetPrefixCount(6,grade,minGrade)`给红秘籍容量。官方BattleSkillLevel的白～红基础2～7条，每相对境界加1，差值钳0～4；因此红容量7～11，当前品质由`GetLevel(grade,minGrade,prefixCount)`取满足阈值的最高档。不能把11槽或任何品质的数量当常量；追加会提升品质和修炼上限，经验保持原值。
-- 序列化：`PropsData.GetValues()`含六项头（前三公共项、martialType/baseID/grade），然后全部词条编号、-1、对应原始强度及可能尾数据。SetPrefixsID只重排当前数量，**不会扩容**；07.71替身错误模拟扩容掩盖数组越界。追加在克隆上重建数组（长度+2），保留头、旧强度与尾数据，调用SetValues使hash/原生Info缓存失效。SetPrefixID/Level只用于已有槽。先验证分隔符和对应长度；异常记录单独隔离。原生UIIconTool按新hash重新产生Info，品质不是手写字段。
-- 修改与保存：右侧详情显示原生效果及实际容量；选择只改克隆草稿，不MarkDirty。保存时重新验证世界/人物/快照/经验/装备、最终规则、六项头及附加尾；已装备原生卸下、写完整数组、回读身份/每项/经验/传承、UpdateConf，再原槽原生装备。重新装备被原生需求拒绝时功法保持卸下，明确提示已应用，Pending保留，不重试或假回滚。成功应用后调用既有SaveData；顶部保存同样处理草稿。切换清理未应用草稿。装备/卸下直接动作，未装备心法用紧凑槽位下拉。
-
-原生只读核查：`.tools/martial-0772-native.txt`、`martial-quality-0772.txt`、`martial-level-0772.txt`；本机Assembly-CSharp签名、GameAssembly指令与官方BattleSkillLevel/Mastery/PrefixValue表交叉核对。新增替身使用真实数量/品质/境界修炼表，SetPrefixsID不扩容，禁止再用固定600经验代替原生机制。Player.log只有07.71加载/打开，没有本次截图报错完整栈，不凭日志声称已定位全部异常；新增意外操作异常栈记录。
-
-07.73零词条边界：原生MartialInfoData.GetPrefixs从索引6循环至values.Length，长度恰为6返回空列表；不能硬性要求至少7项或至少一个词条。六项头和七项头后仅-1的空词条均可读取/添加；六项头追加需+3（编号、分隔符、强度），已有分隔符追加才是+2。尾数据比较须按有无词条区计算，避免遍历找-1越界。真正少于6项仍拒绝，不推测补全实际存档。异常详情不把未知境界当后期或未知上限当圆满。依据`.tools/martial-0772-native.txt` GetPrefixs索引6入口、`.tools/martial-0773-native.txt` GetValues直读原始数组及GetActionMartial类型过滤、`martial-0773-fields.txt` type/baseID/grade分别索引3/4/5。截图不足以确认实际记录长度；修复的是已确认的校验误判，实际重载仍单独验收。
-
-完整官方配置与中文效果模板索引：[martial-prefix-catalog.csv](reference/martial-prefix-catalog.csv)，由`docs/verification/export-martial-prefix-catalog.py`从本机官方BattleSkillPrefixValue/LocalText导出1657条，不作为运行时数据源。颜色与最终数值依功法计算，不能给配置行贴固定“金/红”标签。原生换算核查缓存：`.tools/prefix-quality-native.txt`、`quality-range.txt`、`quality-detail.txt`。
-
-托管替身验证控制流和身份边界，不能证明原生学习回调、效果重算、传承套装与存档重载；本轮不操作游戏或真实存档。
-
-## 代码风格与结构约定
-
-- 文件与命名：一个文件一个职责；`partial`用于同一视图的明确切面（BookView.cs / BookView.Editing.cs / BookView.Actions.cs / BookView.FateLibrary.cs）；07.70的CharacterMartials按目录/读取与生命周期操作拆为两个服务切面，共用强类型记录校验，职责在代码导航分别登记。新增源码必须登记csproj并在上文“代码导航”表登记职责——`run-all.ps1`会自检“csproj ↔ 磁盘源码 ↔ 代码导航表”三者一致，任何一处漏登记都直接门禁失败。若该文件会被某个harness编译（如`UI/BookView.cs`、`UI/WorkshopEntrances.cs`、`UI/WorkshopWindow.cs`、`ModMain.cs`），还必须在对应`run-*.ps1`的编译清单里加上它，否则该harness编译失败——2026-10-03新增`ModVersion.cs`时正是漏了这一步，被门禁当场拦下。
-- 版本号唯一来源：`ModVersion.Current`（`ModVersion.cs`）。界面页脚与全部日志都引用它，升级只改这一处；`run-all.ps1`会检查当前版本字面量只出现在该文件，防止漏改造成“页脚显示旧版、日志显示新版”。**凡部署到调试包（即交付用户验证）的构建都升版**——纯内部重构只要交付也升版，否则两个内容不同的DLL会同名，用户无法据页脚判断游戏里加载的到底是哪一版。`WindowInputScope`中形如07.10/07.31的编号标记该诊断引入时的版本，属于历史事实，不随升级变动。
-- 命名不得遮蔽：方法内局部量不得与同类的static字段同名。2026-10-03`WindowInputScope.AlignCaret`中的`var input = __instance;`遮蔽了同名static字段`input`，已改名`field`；这类遮蔽会让后续维护者在方法内误以为在用字段。同时把该方法的“取字形上下边界”抽成`TryGetTextBounds`，主方法由63行降到约45行。
-- 方法规模以≤50行为准，但**不做机械拆分**：只有存在可分离阶段或重复逻辑时才抽方法——`CharacterActions.Execute`（133→38行）按操作拆分、`BookView.Build`（134→80行）抽出取字体、隐藏原生控件、建导航、滚到目标人物四段。纯粹的线性装配（如BookView的属性总览与搜索框克隆、CharacterReader的顺序读取）即使50–110行也保持单方法，拆成一堆5行助手反而更难读。`run-all.ps1`**刻意不**对方法长度设门禁，避免为了过闸而机械切割。拆分必须**保持分支顺序与报错语义**：`CharacterActions`的未知操作在原实现里会先校验NPC目标再报“未知快捷操作”，拆完仍要先校验。
-- 注释解释“为什么”，不复述代码：原生包装的坑（`Il2CppStructArray`不写回、`Single..ctor(IntPtr)`）、回退顺序与幂等理由必须留在代码旁；纯语言直译的注释不加。
-- 写操作失败一律`throw`，由调用处统一转成用户可见消息并记日志；日志统一`[八荒秘录]`前缀、重复失败去重，不用日志代替返回值表达状态。
-- 任何结构改动都要过`./docs/verification/run-all.ps1`；**行为无变化的重构也必须跑全套**，只编译通过不算验证。
-
-## 构建和调试
-
-工程身份为`MOD_YtxSQ1`，目标net472；新增游戏引用Private=False。build.ps1从csproj读取源码、引用和嵌入资源，新增文件必须登记；Art中的山水与墨刷嵌入DLL。工程笔记不放ModAssets。
-
-在工程根目录运行：
+工程身份MOD_YtxSQ1、目标net472，主类ModMain提供Init/Destroy。新增游戏引用Private=False，源码/嵌入资源登记csproj；新文件在导航表和受影响harness编译清单登记。partial按职责拆分，不机械按行数切方法；保持原分支和报错顺序。
 
 ```powershell
-& ./build.ps1                            # 编译 + 同步到游戏调试包 + 校验两端哈希
-& ./build.ps1 -NoDeploy                  # 只编译，不动调试包
-./docs/verification/run-all.ps1 -Build   # 编译部署 + 全套托管检查与脚本卫生
+./build.ps1                         # 编译、旧DLL备份、同步游戏加载目录、哈希校验
+./build.ps1 -NoDeploy               # 编译而不部署
+./docs/verification/run-all.ps1      # 脚本卫生、工程一致性及全部托管检查
+./docs/verification/run-all.ps1 -Build
 ```
 
-`build.ps1`默认**编译并部署**：编译成功后才覆盖`bin/Release`，随后复制到游戏实际加载的`debug/Mod_YtxSQ1/ModCode/dll/`并比对两端SHA256，不一致即报错。编译失败不覆盖任何产物；部署失败（例如游戏占用文件）明确报错并保留原文件，不会留下半个包。部署前会把调试包里原有的DLL按`ModVersion.Current`存档到`.tools/backups/before-<新版本>`，同名已存在则保持原样（重建同一版本不会覆盖真正的旧版）；`-NoDeploy`既不部署也不备份。只复制DLL、不部署PDB——官方调试流程只复制DLL，不往调试包里添加额外文件；部署目录若存在其它DLL只警告不阻断（可能是需要的插件DLL）。Release不混入额外DLL。
+使用项目脚本，不用系统MSBuild。Release只留本模组DLL；debug/Mod_YtxSQ1/ModCode/dll是官方游戏加载目录，不代表缩水版本。build读取AssemblyInformationalVersion与ModVersion.Current交叉校验，编译失败不覆盖成功产物，部署前备份至.tools/backups/before-<版本>，同名备份不覆盖。只部署DLL。磁盘同步不证明游戏已热重载，核对日志/页脚，不擅自终止游戏。
 
-**产物自述版本并交叉校验（2026-10-03新增）**：`AssemblyInfo.cs`把`AssemblyInformationalVersion`设为`ModVersion.Current`，因此DLL属性的“产品版本”就是游戏内版本号（`AssemblyVersion`/`FileVersion`必须保持纯数字，不参与）。构建后`build.ps1`读取该值并与源码里的`ModVersion.Current`比对，不一致即报错——用于发现“产物没被本次编译覆盖”这类静默失效。脱离源码时可用`[System.Diagnostics.FileVersionInfo]::GetVersionInfo(<dll>).ProductVersion`独立核对。注意`AssemblyInfo.cs`位于全局命名空间，引用`ModVersion`必须写全限定名`MOD_YtxSQ1.ModVersion.Current`，否则编译失败。
+产品交付内容变化须升ModVersion.Current，界面/日志/产物引用唯一来源。WindowInputScope诊断中的版本编号是引入编号，无须随版本改写。
 
-磁盘哈希一致只证明文件相同，不证明运行中的游戏已重载该版本；官方编辑器“进入游戏调试”也会复制Release DLL并加载。运行版本以日志、界面和实测反馈核对，不擅自终止游戏。
+.ps1保持UTF-8 BOM及CRLF以兼容Windows PowerShell5.1，.cs/.md按.gitattributes保持LF。原生字节编码不能为改行尾做有损文本往返；5.1的.NET文件API相对路径须解析绝对路径。run-all以每个子进程退出码判定，任何失败阻止交付，不累加旧统计。
 
-**脚本编码约定（2026-10-03实测并修复）**：`build.ps1`与`docs/verification/run-*.ps1`原先是无BOM的UTF-8且含中文字面量。PowerShell 7按UTF-8读取正常；**Windows PowerShell 5.1按系统ANSI读取，中文与其后的引号会被一起吞掉，脚本直接语法错误、完全无法运行**（2026-10-03当时会话为5.1：`$PSVersionTable.PSVersion`为5.1、`[Text.Encoding]::Latin1`不存在；修复前实测11个脚本全部解析失败，`build.ps1`含5处错误）。已给全部11个受跟踪`.ps1`加UTF-8 BOM（字节级前置，不改内容与换行，diff每文件仅首行），修复后11个全部解析通过，`./build.ps1`与`run-*.ps1`可直接在5.1下执行。**今后新增或改写`.ps1`必须保留BOM**（或写成纯ASCII），否则Windows PowerShell 5.1下可能再次整体失效；`.cs`不受影响——Roslyn优先按UTF-8读源码，所以游戏日志中文正常。另注意5.1下`[IO.File]`等.NET API用进程工作目录而非`Set-Location`的当前位置，相对路径须先`Resolve-Path`成绝对路径。**改写`.ps1`会丢掉BOM**：2026-10-03用文本编辑方式改`run-entrances.ps1`后脚本立即无法解析，须在改完后按字节重新前置`EF BB BF`，并在提交前用`[System.Management.Automation.Language.Parser]::ParseFile`复验全部受跟踪`.ps1`。
+代码结构/行为变化运行全门禁；仅文档检查事实、引用、导航表和行尾，不需重新操作游戏。布局预览是GDI替身，不是游戏截图。输入改动另核对IME/粘贴/焦点，写入改动另用获授权测试存档。run-mutations会临时修改源码，仅人工使用并保护脏工作区；不从干净Git假设恢复用户未提交修改。
 
-2026-10-02按用户指令在工程根建立本地Git，主分支main，无远程。初始提交包含当时07.15源码、工程会话入口、配置、源资源、检查脚本及文档；最新验收以项目记忆为准。未配置原用户提交身份，因此仅仓库内使用Codex <codex@localhost>作为自动化身份，不修改全局设置。
+## 官方接口与原生包装
 
-**行尾与哈希可复现（2026-10-03实测）**：`.gitattributes`声明`*.cs/*.md=lf`、`*.ps1/*.sln=crlf`。工作区行尾若与声明不一致，**同一个提交会编译出不同的DLL哈希**——本轮实测同一提交因`BookView.cs`为CRLF或LF而得到`DF70C229…`与`4D1C1166…`两个哈希，而`git status`仍显示干净（索引本就是LF，清洁过滤器会归一化行尾差异）。因此：跨机器或跨会话比对哈希前必须先确认行尾规范；“某版本可由提交X重现”只在行尾与声明一致时成立。工作区应等同于“新克隆会得到的状态”（`git checkout -- .`即按声明重写行尾）；`run-all.ps1`已用`git ls-files --eol`把该一致性纳入门禁（同时检出混合行尾）。
+本机资料：游戏根Mod/modFQA/代码编写教程（含模板与GGBH_API.chm）、配置修改教程、资源教程和MOD模板；docs/api-reference是CHM解包缓存。新增原生调用核对MelonLoader/Managed程序集及必要的GameAssembly实现，不能套网上新版签名。
 
-**改行尾必须走字节级，不得文本往返**：`Encoding.UTF8.GetString→GetBytes`对非UTF-8内容会做有损替换——2026-10-03用它规范化行尾时损坏了6个文件（官方Unity示例脚本为GBK中文编码）。正确做法是纯字节处理（丢弃`0x0D`、保留`0x0A`，或反之）；事后用`git diff --ignore-all-space`可区分“行尾差异”与“真实内容损坏”：前者被忽略，后者仍然显示。
+官方ModProject.cache保存soleID等编辑器身份，ModData.cache保存配置/命名空间；ModAssets随导出，不放工程笔记。配置源文件表名一致，MID&用于xlsx的excelMID偏移；只读官方表不是运行时新增配置。Unity资源工程采用官方2020.3系列路线，当前窗口仍使用原生UITextInfoLong承载，独立预制体迁移未实现。
 
-Git跟踪ModMain源码工程、Art、Unity Assets（含.meta）/Packages/ProjectSettings、ModAssets/ModExcel源内容、实测截图及小型历史文档归档。ModProject.cache/ModData.cache保存官方身份，必须跟踪。忽略.tools、debug、bin/obj、游戏引用dll、Unity临时目录/生成工程、日志、用户设置、可重建模拟截图及凭据。换行约定见.gitattributes；当前功能源码未因初始化而改写。
+- IL2CPP包装相同原生对象可能有不同托管引用。Unity控件登记/识别/注销用Unity ==，人物/容器/字段绑定用当前Pointer，不能用ReferenceEquals或List.Contains替代原生身份。
+- GetWorldCorners的Il2CppStructArray输出不是普通Vector3[]写回；读取真实包装索引或使用单值TransformPoint/InverseTransformPoint。
+- 原生泛型TryGetValue的byref float包装可能错误构造Single(IntPtr)，使用核实过的ContainsKey+索引路径。DataStruct<string,int>.t2门禁码以实际字段元数据偏移读取，不用错误包装getter或固定偏移。
+- PropsData与MartialData是读取视图关系，使用PropsData.To<MartialData>()；不得把TryCast为空当成普通物品，替身不得虚构继承。
+- 包装IsVirtual不是原生虚派发的完整依据，核对il2cpp_object_get_virtual_method；不能由基类空Destroy推导子类无副作用。
+- 原生getter也可能抛错，记录初始化/过滤/预读取放进单条保护。未知类型只读，不伪造类别；集合失效和native访问违规不由托管catch保证恢复。
 
-`ModProject.cache`是**游戏模组编辑器持续写入的活文件**：`exportVer`为编辑器自增的导出版本（2026-10-03一次会话内即从29→54→58），`tags`/`isCreateNPC`等只在编辑器里改。因此规则是——它单独提交并在提交信息里说明有意义字段的变化，**不搭进无关提交**；日常`git status`里出现该项属正常，不要顺手`git checkout --`丢掉编辑器的写入，也不要因为它长期显示已修改就把它加进`.gitignore`（那会丢掉官方身份的可复现性）。
+## 页面资源与输入
 
-变更前看git status/diff，完成独立小目标后核对暂存差异并提交相关文件，不混入他人未完成改动。检查用git diff --check；历史用git log --oneline。需要取回旧文件时先保护当前改动，避免无依据reset --hard或清空工作区。源码可回退不表示实际存档可回退；旧DLL等产物仍按需要放.tools/backups并记录版本/哈希。
+页面生命周期/计量规范见性能文档。重开先清旧导航再复位索引、强制激活属性页，即使关闭前已是属性。保存不参与页面选中。关闭休眠一套静态控件，动态模型/相机/图标和输入补丁释放；所有权/世界/画布失效及销毁最终释放。原生窗口已被别处占用时拒绝挂接，只关闭自己持有的窗口。
 
-首次导入的官方Unity序列化资源和部分旧源码带历史尾空白，已检查并保留原文，不为建立Git批量格式化源码；之后检查本轮新增差异。所有源码与资源在Git索引中按.gitattributes规范化换行，工作区未批量重写。
+创建对象先局部接管，配置/挂载成功才赋长期字段；失败释放局部并保留原异常。清理先拆引用，隐藏与Destroy独立尝试，一步异常不跳过其他资源；访问childCount前判断Unity对象存活。动态游戏引用不得跨休眠保存。
 
-## 官方资料
+PaperSkin主线程懒持有四张共享纹理，BookView借用；ModMain.Destroy先释放窗口再ClearCache。字体/关闭按钮纹理由视图拥有，最终释放；游戏字体回退是正常路径，失败字体不反复创建。动画0.16秒未缩放时间Smoothstep，仅透明度，不改布局；期间阻挡背景并禁操作，关闭可中断。
 
-游戏根在工程上两级；具体环境见项目记忆。
+输入从原生ModWorkshopUpload模板克隆，清旧EventTrigger/验证器/回调，清理仅属于克隆的Caret与mesh/cache。仅活动页输入登记，Attach/Detach归窗口所有；仅本输入正在编辑时拒绝inactive/不可交互焦点目标，正常对象/null放行，不逐帧抢焦点。日志“已阻止无效焦点转移”是保护命中，不是新异常。
 
-- `Mod/modFQA/`：`代码编写教程/`（含官方`ModMain`模板工程与`GGBH_API.chm`）、`资源修改教程/`、`配置修改教程/`、`鬼谷八荒MOD使用指南基础版 1.0/`、`MOD模板例子/`（DLC配置、静/动态立绘、技能配置、替换UI四个示例工程），以及工程`Example/Example.cs`。
-- `docs/api-reference/`是官方CHM解包缓存（约110034个htm，未纳入Git）；调用签名须核对本机`MelonLoader/Managed/`程序集，不能直接套网上新版接口。
-- 正式自定义UI路线涉及Unity2020.3.9、UIBase、预制体与组件注册，当前迁移未完成。原始教程研究细节保存在历史归档。
+Text字形首顶点与Caret原点的像素对齐不能混用；Text字形中心转换到Caret局部，保留X/宽度/闪烁，超文字内边距时缩高并夹紧。OnValueChanged先更新textComponent.text再测preferredWidth。IME组合不提交，正常失焦合法输入确认，Escape撤销当前输入或先关浮层。
 
-### 官方MOD工程结构与新建流程（2026-10-03只读核实）
+入口位置为代码常量：主入口textSPValue右边中点+40，NPC归一化中心0.2542969/0.746458352；56参照单位×参照缩放。无F9调整或文件覆盖。半秒同步入口/关闭状态，F8与保存Poll逐帧，异常控制器停止后由明确入口/F8恢复，不每帧重建或重放修改。
 
-教程正文很薄（代码教程53段、资源教程约60段、配置教程约50段），操作细节主要靠截图，本机未逐张核对截图。下列结构以官方模板工程、本机程序集和`Player.log`实测为准，不以教程叙述代替。
+## 写入与保存
 
-**新建流程（编辑器口径）**：游戏内`MOD`页面→`模组开发`→`更改目录`指定自建MOD文件夹→`新建项目`→模组编辑页（创建气运/NPC/宗门/道具/奇遇/副本等）→`保存项目`→右下角`进入游戏调试`。首次点击`编写代码`会生成VS工程与主类；主类名必须为`ModMain`，命名空间默认`MOD_<模组ID>`，改命名空间须同步程序集名与编辑器内设置。教程硬性要求：VS2022、net472、新增引用一律`Private=False`（否则Release会多出DLL导致MOD失效）、`bin/Release`只留本模组DLL、Harmony补丁在`Init`中手动`PatchAll`。
+上下文绑定玩家原生身份/ID与DataMgr。每项写入/回读/Undo以及可能触发回调的嵌套原生步骤前后重新解析目标，核对unit/data/unitData、相关父容器与字段Pointer、内容基准及保存状态。Pointer相同仍须内容冲突检查；对象替换或世界改变停止旧引用操作，不污染新Pending，不盲Undo。
 
-| 目录/文件 | 职责（模板工程与本机实测） |
-| --- | --- |
-| ModProject.cache | 模组身份JSON：soleID、name/author/desc/ver、exportVer、tags、excelEncrypt等；官方soleID为YtxSQ1 |
-| ModData.cache | 各配置表的模组自有行(groupName/items)、excelMID及modNamespace；实测`modNamespace = "MOD_" + soleID`，excelMID是`MID&`的偏移基准 |
-| ModCode/ModMain | C#工程；AssemblyName=MOD_YtxSQ1、net472；产物`bin/Release/MOD_YtxSQ1.dll` |
-| ModAssets | 随MOD一起导出的资产；`g.mod.GetModPathRoot("<soleID>")`取模组根目录 |
-| ModExcel | 配置表xlsx/json；文件名须与表名一致，json与xlsx不能同名 |
-| ModRes/ResBuildABProject | Unity 2020.3.9f1c1工程，菜单`游戏工具/更新/AB`输出`Assets/AssetBundle`；`Assets/Resources`下资源全部打AB |
-| debug/Mod_<soleID> | 编辑器调试导出实例：ModAssets、ModCode/dll/*.dll、ModRes/AssetBundle、ModExportData.cache |
+全批先预检，最后一次回调后再次完整回读。可回退步骤逆序Undo并核验；未知原生部分执行保留Pending，报告可能生效，不宣称事务。数字与境界草稿不能混批。
 
-**入口契约（官方模板`代码编写教程/ModMain/ModMain.cs`）**：`public class ModMain`提供`public void Init()`与`public void Destroy()`，用`g.timer.Frame(new Action(OnUpdate), 1, true)`做逐帧；Harmony须在`Init`中`new HarmonyLib.Harmony("<命名空间>")`后`PatchAll(Assembly.GetExecutingAssembly())`。教程只强制类名、未给签名，签名以模板工程为准。
+DynInt.value只读，明确持久baseValue setter与派生效果；差额表达式用long完整计算、checked转换后核范围，资源上限优先。倍率以独立DynInt复制计算规则、精确求基础整数，不复制事件或试写人物；固定覆盖/锁定/非单调/无精确解拒绝，应用前重求、单次写入后回读。满状态保留加法效果，不用max值直接覆盖baseValue。
 
-**加载证据**：`Player.log`记录`加载模组：<游戏根>\MODS_INIT\ModProject_<soleID>/debug/Mod_<soleID>/ModExportData.cache`，调用栈为`DLCConfMgr:Init`←`ConfMgr:Init`←`ModMgr:Init`内的`ModMgr:LoadAllMod`/`LoadMod`。模组工程根目录即`<游戏根>\MODS_INIT\`；磁盘DLL与debug目录同步只证明文件一致，不证明运行中的游戏已重载该版本——以日志和界面核对。
+DataMgr.SaveData回调只发布托管结果，主线程Poll更新UI/Pending；generation去重，旧世界或重复回调不能清新状态。派发异常若已收到同步结果仍等待Poll，未收到结果才保留显式重试。成功回调才清Pending；永久不回调保持Busy，无安全取消契约，不超时重试。原生自动保存可落盘即时内存修改。
 
-**配置表头来源**：本机在`Mod/modFQA/配置修改教程/配置表头`（761个xlsx）；`配置（只读）`128个中文名xlsx与`配置（只读）Json格式`761个json仅供查表，不放入模组；`配置对照/配置对照表.xlsx`与`效果配置对照表.xlsx`是条件/命令/效果对照。教程所称`StreamingAssets\modFQA\...`在本机不存在（该目录仅有`assets`），以本机实际路径为准。新增配置ID在xlsx里写`MID&XXXX`（json不支持），实际ID=excelMID+该值。
+姓名保持原二段结构，年龄/寿命年转月保留余数。兴趣三槽合并写入并绑定运行集合/顺序/身份，逐项移除自己的旧记录，不Clear当前列表；按配置重建运行类，不置cacheHobbyItems为null。初始化/集合冲突后保留未知状态并隔离再次修改，不能靠退出UI清隔离。性格按真实type候选、写原字段并更新权重。
 
-**教程未覆盖、须靠模板与本机核实**：各目录职责与两个cache字段、`Init`/`Destroy`签名、DLL在MOD内的确切落位与加载时机、日志位置、soleID概念、导出与创意工坊上传流程、`g.*`接口清单（见`Example/Example.cs`）。编辑器UI类型可在本机`MelonLoader/Managed/Assembly-CSharp.dll`核对，如`UIModMain`/`UIModMainProject`/`UIModCode`/`UIModExcel`/`UIModRes`/`UIModDress`/`UIModAllTable`与`ModMgr`/`ModExcelTool`/`ModExportTool`/`ModData*`。
+## 道具与气运
 
-## 必须保留的实现与失败经验
+AddProps(id,count,"")的空字符串触发原生唯一ID生成，null不等价。原生工厂维护编号/配置索引、附加效果与可见列表，不手拼记录；返回索引/编号/数量及批次最终结果必须回读。新增格数按GetGridCurNum(true)/GetGridMaxNum预检，不用可见条目数代替原生容量；满格工厂正常拒绝不能误判成成功。
 
-### 普通道具与突破材料的写入核查（07.51）
+数量修改按唯一ID/原数量/soleIDHashData绑定同一记录，保留附加值和索引。isOverlay仅0/1；允许正整数至int.MaxValue，0不隐式删除，追加先判溢出。满材料9999是快捷目标，按配置ID用long合计批次，不降低更大记录。
 
-用户本轮重点是普通可获得道具及突破材料对游戏和存档的影响。结论：现有发放走游戏原生创建、叠加及索引路径，未发现手工拼接存档结构或只往列表塞记录的做法；普通材料的结构处理有原生实现依据。**这不是零风险保证，也不是保存重载与突破使用已验证的结论。** 07.50用户确认发放和补给成功；本轮没有代操作游戏或写入存档。
+Read合并原生可见项与allProps中的隐藏资源，按soleID去重，隐藏红格前置且可修改数量；删除/清空明确excludeHidden，排除装备并每步重核可见性。补给按实际原生药效/境界选两药各20，合计格数/同药40数量先预检。后续每步重核同一人物与背包容器。
 
-#### 核查依据与范围
+背包显示指纹及格键含附加数据/Hidden/原生排序和容量；只复用可见格，尾部假空位禁用，缩短后立即夹紧滚动。原生图标创建失败清半成品，CloseIconInfo失败不阻断其他销毁。目录介绍按首次悬停缓存纯文本，来源失效重读。
 
-- 对照当前 `ItemInventory.cs`、`CharacterSave.cs` 与本机Managed/`GameAssembly.dll`。`UnitDataProps.AddProps`调用基类AddProps；非叠加分支逐件 `NewProps`，叠加分支复用已有记录或新建，再调用原生数量setter。创建路径执行 `WorldUnitEffectPropsDataEx.CreateValues`，包含物品附加效果及特殊数据初始化，不能用自己拼装values替代。
-- `PropsData.New`经 `CommonTool.SoleID`生成编号；`AddPropsItem`维护唯一ID索引、配置ID索引、物品总列表及可见列表。空字符串保留工厂编号的约定继续沿用。07.51除总数量外还核对原生返回编号非空、索引可读、配置ID及正数量；失败保留Pending并报告内存可能已改变，不自动重复发放、不假装回滚。
-- `propsCount`原生setter（RVA `0x3CEC0C0`）只更新 `values[2]`并使值哈希缓存失效，原生AddProps/DelProps也使用它。菜单只对可叠加、可见、未装备的指定记录设置正数量；保留唯一ID、其余values、附加数据和索引，不删了重建，不用按配置ID发放去修改某一堆。
-- 保存仍调用游戏 `DataMgr.SaveData`，不自行序列化存档；成功回调才清Pending。道具即时改内存，游戏自动保存也可能将变化落盘，不能把“未点修改器保存”当作撤销保障。
-- 原生分析保留于 `.tools/inventory-audit-native.txt`、`.tools/stack-native.txt`；配置核对脚本与输出为 `.tools/audit_inventory_config.py`、`.tools/inventory-config-audit.txt`。研究缓存为辅助证据，本节保留可交接结论。
+技能书识别propsType并To<MartialData>()，GetDesc后用真实BattleSkillValueData和GetDescRichText格式化，不删除模板变量冒充修复。物品提示移出即关、不接射线；长文只截获所属ScrollRect滚轮，关闭恢复。图鉴提示挂自己的遮罩，不能被浮层遮住。原生售价<0显示不可出售。
 
-官方只读 `ItemProps.json`有3295项；结合 `LocalText.json`与 `RoleGrade.json`抽查如下。配置依据为本机官方教程缓存，不代表逐件运行验证或第三方MOD配置。
+气运读取bornLuck/addLuck，conceal隐藏效果不展示；type=3逆天，1/6/11先天，其余按来源。介绍用真实人物/LuckData的ConfRoleCreateFeatureEx.tips并隔离回退；不可把角色随机生成的同组/成就/全局名额条件套主动修改。重复、无运行类和壶妖差异继续保护。先天维护bornLuck及CreateLuck/NewCreateLuck，后天/逆天走原生动作；失败不恢复整个旧快照，不假定返回null表示无部分运行对象。
 
-| 抽查物品 | 配置ID | 可叠加 | 依据与限制 |
-| --- | --- | --- | --- |
-| 六品补元丹 | 1011011 | 是 | 普通药物配置，hide=0；补给另按角色境界与原生实际药效选择 |
-| 六品至一品筑基丹 | 1011461–1011466 | 是 | RoleGrade行4的growItemRequire引用这些ID |
-| 六品至一品化晶丹 | 1011471–1011476 | 是 | RoleGrade行9的growItemRequire引用这些ID |
-| 火灵气、水灵气 | 5031724、5031735 | 否 | RoleGrade筑基配置引用；各自为独立物品，不能因属于材料就强制叠加或修改数量 |
-| 火灵果、水灵果 | 1051016、1051026 | 否 | 配置isOverlay=0，发放每次1件，菜单数量修改禁用 |
+拥有/候选/图鉴复用自绘色底与品阶，特殊2804/2805/2806天级雕饰按池绑定启闭，不改配置level。气运提示允许0.12秒移入滚动，物品提示没有此宽限。
 
-获得物品与自然掉落、剧情完成、突破是不同操作。发放不执行掉落奖励流程或补齐剧情条件；突破需求的配置引用与原游戏消耗逻辑保持原样。普通合法材料比依赖任务身份、专属字段或第三方脚本的物品更容易核对，但“正常能获取”不是无依赖证明。目录目前只过滤hide=1，不是安全白名单；不能把配置中看得见的所有条目称为已验证安全。
+## 功法
 
-#### 菜单与提交约定
+目录使用本机基础/传承配置，普通className=1；传承用(baseID,suitID)选择键，奖励约束由实际配置链解析，缺依据拒绝生成。按捕获境界奖励工厂/NewMartial入包，传承走suitID setter维护附加数据，不改名称伪造；整批容量/身份/境界检查及最终回读，失败不重复全套。完整书名先直搜，未命中仅已知原生前缀反查普通基型，不猜流派/词条。
 
-菜单紧贴图标，空间不足换侧并约束正文边缘，沿用纸底和细框；显示物品名、人物与数量。07.52提供修改总数量、增加数量、移除这一项，“检索同类”因只检索同一ID已移除。增加只作用于指定唯一ID，通过SetCount共用身份与快照检查；07.66移除9999自定义限制，先用int.MaxValue减当前数量判溢出再累加。非叠加记录禁用两种数量操作；可叠加物品可设置1–2147483647的总量或合法追加，0不隐式删除。移除前确认整项数量与不可撤销。
+学习调用GetStudyTip保留原生门禁，读取真实t2元数据码；StudyActionMartialProp消耗原秘籍。原对象count由1变0后soleIDHashData变化，学习前克隆计算数量0的预期完整签名；后验同指针/完整签名、原包消耗和已学归属，刷新后再验，不能只看数量增加。
 
-捕获世界上下文、人物ID和不可变物品快照；提交核对唯一ID、配置ID、原数量及仍在可见背包。身份或数量冲突、目标失效、保存进行中一律拒绝。同配置的其他记录不受影响。右键监听追加到原生UIEventListener，左键路径保留；菜单打开关闭介绍。滚动、背包刷新、切页、切人、关闭释放菜单与提示；Esc优先关闭菜单，点击外部关闭。新框复用07.50已认可的输入创建与Unity身份登记。
+修炼按实际词条数GetItems，GetExp用功法境界grade而不是品质level；按原生差额AddMartialExp，已装备重建运行对象/UpdateConf。装备通过原生IsCreateAction/CreateAction，使用skillLeft/skillRight/step/ultimate/abilitys，不混用物品IsEquipProps。恢复原槽前确认仍为空，不覆盖回调新增装备。
 
-#### 背包介绍与滚动柄（07.52）
+容量/品质按GetGradeMin、GetPrefixCount、GetLevel动态计算，不固定11槽/600经验。最终词条集合按multi/require/前置/互斥校验，随机weight不限制手动候选；空短强度数组拒绝，原未改值保留。
 
-先核查工厂：CreatePropsIcon已经分别调用CreatePropInfo/CreateMartialInfo；不能因某种物品不显示就重复绑定。UIEventListener.OnPointerEnter先调用onMouseEnterCall，再调用onMouseEnter。自建背包图标仅替换这两种悬浮路径，在本窗口提示层读取UIPropInfo.GetDesc；技能书必须按props.propsType == PropsDataType.Martial识别，再用props.To<DataProps.MartialData>()读取，之后走UIMartialInfoTool.GetDesc，不把真实功法附加数据当普通配置描述。数量、类型、售价读取propsInfoBase；读取失败显示名称数量与日志，不能影响菜单功能或把失败变成任何写入。普通原生左键详情仍保留；不重排或修改游戏全局窗口。介绍实际呈现和完整功法内容须由游戏核对，截图不能证明具体原生层级故障。
+GetValues含六项头、词条ID、-1、对应强度及尾数据；恰六项头或仅-1可合法零词条。SetPrefixsID不扩容；克隆追加重建完整数组，六项无分隔符追加+3，已有分隔符追加+2，保留头/旧强度/尾/经验/传承并SetValues失效缓存。保存前重核身份与全部内容，已装备先卸下、写回/UpdateConf、按原槽重装；重装失败说明已应用、保留Pending，不假回滚。
 
-ScrollHandle共用几何：轨高H、最小柄高m，滑动容器高H−m并在两端各留m/2；柄pivot=.5、anchoredPosition=0、sizeDelta=(0,m)，宽度由Scrollbar锚点驱动。原生size=s、value=v时，柄底=(1−s)×v×(H−m)，柄顶=底+s×(H−m)+m，始终在[0,H]。不能只加固定柄高而让容器仍覆盖整个轨道，也不能直接归零柄高导致长名单滑块小到不可见。小轨道m上限为H/2。
+异常无soleID条目只读，UI选择另用非零原生指针，同ID/签名不能替代写入身份。轻量刷新探针不取代完整写入校验。官方1657条参考CSV位于[词条目录](reference/martial-prefix-catalog.csv)，不作为运行时来源。搭配仅固定四套，出处保留于MartialBuilds；不自动装备气运/套装/器灵。
 
-07.52首次运行曾被Windows智能应用控制阻止，CodeIntegrity事件3077/3118为签名策略证据；用户自行关闭后重新运行，844项托管检查通过。遇到系统策略阻断时不能把编译或旧测试结果当成本轮运行通过，应记录限制；代理不擅自关闭或绕过策略。托管检查与500例独立几何模型仍不证明Unity真实运行，具体本轮结果见变更记录与项目记忆。
+## 境界
 
-#### 游戏内最小验证与证据边界
+境界编辑是配置成长差额，不等于自然突破奖励。读取玩家/NPC品质历史与当前已知来源配置，按GetAddAttr累计成长、寿命growAddLife按月、道点abilityPoint；SetGradeID同步经验/事件，注销旧锁经验气运，但不消费材料、随机奖气运或回退历史任务。
 
-07.51的772项托管检查覆盖普通发放、编号索引校验、数量/附加数据保留、同名记录隔离、非法数量、隐藏/装备保护与菜单释放；07.52扩展为844项，新增追加数量、悬浮内容和滚动柄边界检查。当前汇总与验收见项目记忆；不证明游戏原生回调或存档重载。
+同grade/phase/quality可能有多条成长配置，历史quality/luck不足以区分。记录已知来源到objData并验证来源，不能用首条配置替代已知历史或由当前属性猜自然成长。绑定所有相关数据容器/动态字段/历史字典、记录Pointer和内容戳，每步及Undo核对键集合、顺序、quality/luck，不Clear重建历史。
 
-针对用户指定的普通道具和突破材料，可在开发测试存档保留修改前备份后完成一轮核对：发放少量普通恢复药与当前境界所需的已知材料 → 从原游戏背包核对名称、品质、数量 → 保存成功 → 正常重载 → 再核对，并在条件满足时经原游戏使用药物或消耗材料。数量编辑另核对增加、减少及重载后品质/附加数据不变。这里是待执行验收步骤，未代操作；不用实际主存档验证，也不必为本轮功能开展长时间稳定性测试。任何原生异常或回读失败后先核对当前背包，避免盲目重试累加。
+BHML.realm.debt保存ideal-after的非正截断差额，零删除、负值InvariantCulture写读；null/非数值/正数/溢出拒绝，不吞错补偿。成长来源、品质、债务同步回读；未知原生事件不宣称可完整恢复。
 
-### 07.50故障复盘与后续排查顺序
+## 关系与立绘
 
-2026-10-03用户确认“修复都成功了”，本轮发放、补给、光标与题栏留白修复成为保留基线。原生接口和对象身份的具体依据见下节；本节记录排查方法，避免再次只修改表象。
+遍历RelationData真实结构，不调用可能清理死亡记录的GetRelation(type,true)代替只读。死亡人物从unitDie解析；朋友/仇怨按本机配置阈值而非可自由编辑身份。好感指向玩家和其他人物分别读取，按SetIntim的0.##量化目标，最终双向相等；未改值不记Pending，仅Undo实际尝试侧。
 
-| 故障 | 之前遗漏 | 后续规则与回归覆盖 |
-| --- | --- | --- |
-| 发放与补给同时失败，清空正常 | 只核对接口签名，误将null当作默认值；替身又把null自动转成编号，检查通过却掩盖原生错误 | 先查两个失败操作共用的Add路径，核实字符串哨兵值及新建编号分支；区分首次创建与已有物品叠加。替身按原生约定处理空字符串，检查新叠加药和非叠加物品的唯一编号 |
-| 对象搜索框正常，其他输入框光标仍下沉 | 反复检查偏移、坐标及克隆缓存，未先确认补丁命中；替身只使用同一个托管引用 | 把正常框与异常框的登记、Owns、回调、注销逐项比较，先查日志和身份判断，再查几何。模拟两个包装指向同一Unity对象，检查识别、去重、光标回调及注销 |
-| 各页题栏文字贴左边 | 标题与状态的起点按页面分支分别设置，造成留白不一致 | 在公共题栏统一左留白20，并同步减少文字宽度；保留对象栏、正文和右侧按钮位置 |
+结构操作捕获完整影响计划，绑定全部关联人物/容器/结构/原好感，全批原生门禁后每步前后及最终回读。建立血亲要求父母槽空、无祖先循环，明确姓氏/家谱副作用；不替换既有家谱或直接设置私生/同胞。解除夫妻/道侣/师徒/义亲及血亲按整体计划双向处理，不直接改列表。
 
-出现类似问题时，按以下顺序处理：
+UnitActionRelationSet(None,0)不会维护第三人同胞，因此父母—子女解除单独规划失去共同父母依据的既有同胞；保留另一父母和仍有依据同胞。重复/不对称/血亲多重冲突/连带其他身份/剧情保护/已故失效关联整批拒绝。共有父母同胞不得孤立解除，须从父母—子女入口；异常保留Pending，不补偿、不盲重试。原生研究缓存.tools/relief-0806-native.txt。
 
-1. 保留用户反馈和故障截图，明确哪些操作失败、哪些仍正常，用正常路径缩小范围。
-2. 检查公共入口、对象身份和补丁是否实际执行；没有命中证据时，不继续叠加位置补偿。
-3. 核实当前游戏程序集或原生实现的参数约定，特别是null、空字符串、唯一ID和枚举；不能只凭类型签名推断语义。
-4. 对照真实契约检查替身。替身不能自动修正原生会拒绝的参数，也不能省略包装对象身份差异。
-5. 只改已定位的错误路径，保留正常搜索框与已认可界面；通过对应回归、编译和部署校验后，再记录用户实测结论。
-6. 明确区分编译、托管检查与游戏确认。本次680项检查是交付证据，用户后续确认是修复验收；不自动扩大为存档重载、特殊物品或全部输入边界验收。
+图按可达展开集合/ID去重，节点/连线按键复用，仅拓扑变化重排。线宽按2/relationZoom补偿短边，长边保留；静态小立绘160×154匹配80×77卡片。等待原生模型完成回调，下一次刷新预渲染、测完整Renderer边界拟合，单任务、10秒超时，取消后迟到回调只销毁旧模型。
 
-### 07.49共享人物、道具与输入克隆
+原生ModelRenderTexture把模型设为相机子物体，取景前SetParent(null,true)保留世界姿态，随后拟合相机；模型/renderer分别finally释放。五朵金花按GetFiveFlowerDramaNpcID→ConfDramaNpc.CreateTexture和avatar/modelID分流，不强取普通拼装数据或新增第二渲染器。静态纹理缓存键/LRU/最终释放见性能文档。
 
-- `selectedUnitId`是四个人物页唯一选择源，对象栏不随切页重建。写入按世界上下文与明确人物ID解析，失效不回退玩家；弹窗切人/切页关闭，清空还核对唯一ID/配置ID/数量组成的排序指纹。世界切换关闭窗口，下一次由入口明确目标。
-- 道具发放走 `UnitDataProps.AddProps(id,count,"")`，数量回读；空字符串才是工厂生成唯一ID的约定。07.49误传null：原生比较 `customSoleID != ""`，将生成编号覆盖为null，唯一ID字典抛ArgumentNullException。替身也必须体现这项约定，覆盖首次叠加与非叠加发放。删除走 `DelProps(soleID)`保留装备生命周期；不以直接清列表的 `ClearAllProps`替代逐件删除。原生 `_allShowProps`排除隐藏资源和装备，图标关闭调用 `CloseIconInfo`并销毁；写入失败不宣称事务回滚，Pending保留。
-- 普通恢复药限定 `effectType=101`、可用、可叠加、非隐藏、不高于目标境界；使用 `GetPillAddValue(unit,id,false)`比较hp/mp实际药效，同效果按品质优先。两种药各增加20，先预检两项溢出再发放，第二项失败说明第一项已增加。
-- 克隆活跃输入框不能仅看 `caretRectTrans`：非序列化引用可能指向源框，而克隆层级已有独立“ Input Caret”子对象。只删除克隆内生成子对象，置空克隆的renderer/cache/mesh/cursorVerts，不销毁源网格或源Caret。
-- Text字形网格按首顶点 `PixelAdjustPoint`取整，InputField光标按原点取整；不能混用偏移。依据：[Unity InputField](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)、[Unity Text](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/Text.cs)，原生反汇编另留 `.tools/items-native.txt`。这项几何修正没有解决07.49克隆框漏执行，不能当成游戏验收；对象身份原因见下条。
-- 07.50排查确认克隆框的光标补丁漏执行：本机UnhollowerBaseLib的Il2CppObjectBase没有覆盖 `System.Object.Equals`；Unity包装仅提供 `Equals(Il2CppSystem.Object)`，不覆盖托管Equals。`List<InputField>.Contains/Remove`比较包装引用，而Harmony回调可收到新包装；主搜索用Unity `==`所以正常。登记去重、Owns和释放统一用Unity `==`；回归替身必须模拟不同包装指向同一对象，不能全程使用同一个托管引用。旧几何修正保留，07.50本轮光标修复已获用户游戏内确认。
-- 所有模块标题与状态文字统一左留白20，缩减相应文字宽度，保留右侧操作空间；不移动对象栏与正文卡片。
+## 文档与Git
 
+入口仅记现在与边界，计划仅记方向，手册记有效规则，变更记录保留精简交付证据。过程流水、旧统计、撤销方案和重复报告移出日常文档；必要时按需查Git历史或.tools备份，不全文带入新上下文。删除重复文档前修正链接。
 
-| 主题 | 已确认事实与开发规则 |
-| --- | --- |
-| 搜索 | 普通InputField取自UIType.ModWorkshopUpload；清理旧EventTrigger、验证器和回调，文字变化即时筛选。禁止用弹窗或手工拼接字符串替代 |
-| 失焦 | 实测焦点转移到TextInfoLong/Root/btnGroup/G:btnOK，active=False且不可交互。07.10保护实际命中；原生发起者完整栈未取得，不能断言是导航Update |
-| 焦点保护 | 仅本视图登记的输入框选中/编辑时拒绝inactive或不可交互目标；放行正常对象与null。关闭、失效、初始化失败必须卸载与恢复；不逐帧抢焦点或全局禁止失焦 |
-| 光标 | GenerateCaret后将Text字形中心转换到Caret局部坐标，再对齐本框四个顶点；空文本用占位文字，缓存缺失用文字矩形。保留宽度、X和闪烁；高度通常保留，但不能超过文字内边距矩形，紧凑框超长时缩短并夹紧中心（07.59）；不能只做平移 |
-| 属性 | 用真实getter与同人物原UI对照，不用猜测数据自证单位。年龄/寿命按月除12；暴击整数200直接显示200%，旧valueFloat×100及千分比猜测已被推翻 |
-| 字段 | gradeID是配置行ID，应查境界/阶段；水灵根字段basisFroze、功法抗性phycicalFree按本机实际拼写；映射以CharacterReader源码为准 |
-| 名单 | GetUnits(true)/GetUnit(id,true)包含隐藏单位，过滤死亡/无效、ID去重、自己置顶；按打开/刷新缓存，不逐帧扫描。203/204只是当时存档结果 |
-| 立绘 | 五朵金花用GetFiveFlowerDramaNpcID→ConfDramaNpc.CreateTexture，由原生按avatar/modelID分流；07.14强取拼装数据实测失败，不再使用。专属RawImage销毁触发原生autoDestroy检查、RenderTexture释放及计时器停止；不额外创建第二个渲染器，不强制启用原生已关闭的RawImage。普通修士保持原路径/取景；无纹理时隐藏RawImage，异常日志标注调用阶段 |
-| 页脚 | 全窗口居中固定“Jaye@2026-爱你一生一世”，动态反馈放相关正文区域，不再占用署名 |
-| 身份字段 | 性别按UnitSexType；兴趣用WorldUnitData.GetHobbyItems；性格按inTrait/outTrait1/outTrait2查roleCreateCharacter，sc5asd_sd34为名称，用静态ConfLocalText.GetText本地化。可选字段失败不清空独立数值 |
-| 气运 | bornLuck/addLuck拥有记录，type=3逆天改命，其他按来源归类；介绍用ConfRoleCreateFeatureEx.tips(item,选中unit,真实LuckData,2)，失败回退。07.27行使用UIEventListener的UnityEvent悬停回调，本视图面板控制尺寸/位置，不使用UISkyTipEffect默认窗。FateRowBounds累加本视图全左上锚点/左上pivot且单位localScale祖先的实际anchoredPosition，包含ScrollRect长页偏移；IL2CPP的parent显式GetComponent<RectTransform>，不以as强转包装；不再使用CalculateRelativeRectTransformBounds定位，FateTipBounds处理换侧/边界；长文ScrollRect，0.12秒退出过渡允许移入提示滚动。原列表滚动/重建/切换/失效/关闭清理。提示行无Button，不写游戏对象；托管替身不证明原生缩放/指针事件顺序 |
-| 界面资源 | 圆形×的64×64自绘纹理归BookView所有，随视图释放；不得借用未知Sprite或漏掉失败清理。正文统一BodyTop，左右共底边须随适配改动检查 |
-| 重开读取 | WorkshopWindow每次打开新建BookView，Build→Select(0)重读名单并强制读取当前人物；打开期间属性每秒更新，名单不逐帧扫描，无独立刷新按钮 |
+Git跟踪源代码、源资源、验证脚本与当前文档，忽略.tools/debug/bin/obj及游戏依赖；截图feedback为问题依据、layout为模拟。旧zip归档仅按需追溯。ModProject/ModProject.cache是编辑器活文件，不随无关提交夹带，不回滚、不忽略；有意义配置变化另行提交。
 
-同一症状连续两次修复失败，先补真实事件证据；区分安装、分支命中和行为改变。不要把禁用控件状态、托管测试或模拟预览当成原生游戏验证。
-
-### 写入、动作与境界依据
-
-- 数值输入在OnValueChanged回调中先设置textComponent.text，再读preferredWidth；Unity回调发生在UpdateLabel之前，不能用旧字符串的宽度。克隆InputField清理继承的caretRectTrans/m_CachedInputRenderer/m_InputTextCache，销毁属于克隆的Caret，规范文字/占位矩形并AssignPositioningIfNeeded/UpdateLabel；不销毁原搜索框Caret，保留已认可GenerateCaret平移补丁。真实光标仍需游戏核对。
-- 气运07.32以统一自绘纯色底、细线和品阶文字绘制，sprite=null，不再使用原生气运贴图。取消修改器自加的同组、lockLuck/globalMax限制，不改配置或成就全局状态；重复、隐藏、无运行类和壶妖类型仍保护。UnitActionLuckAdd.IsCreate原生检查并不使用成就/全局名额条件，不能把随机角色生成条件套入主动修改。
-- CharacterActions独立处理AddExp、背包propsCount/UpdateAllShowProps、UnitActionSetPoint、双向SetIntim；传送仅读回位置且动作结果为0才成功，无移动拒绝不增加Pending。原位置按上下文/人物缓存，重复来不覆盖。原生RelationData.SetIntim保留游戏关系上限；读取原浮点值叠加，不能先GetIntim取整，也不能把双方合并一个字段。
-- 物品isOverlay只有0/1，不是数量上限；本机PropsData.propsCount setter直接存整数，无各物品最大堆叠配置。用户明确选择9999，因此补满现有可叠加物品到9999，不增加独立物品记录，也不降低已有更大数量。不能称9999为游戏官方最大值。
-- CharacterRealmChange读取玩家DataWorld.World.playerLog.upGrade或NPC的npcUpGrade品质历史，按阶段调用原GetAddAttr(conf)累加，目标减原成长差额写DynInt持久setter，寿命growAddLife按月，道点abilityPoint。SetGradeID同步经验基线与事件；不执行ActionUpGradeComplete剧情、材料、随机气运奖励及历史任务回滚。旧材料/丹药/装备额外部分保留，不声称还原所有历史成长率。
-- RoleGrade.lockFeature配置120等对应RoleEffect1201=limitGradeExp_1_1；旧瓶颈不注销会继续限制新境界经验。直接改境界通过LuckDel注销这些实际拥有记录，回退通过原LuckData/CreateLuck/NewCreateLuck恢复。满修为只走PropertyData.AddExp，其原生路径处理锁定效果、瓶颈及经验事件，不直接赋exp，也不改境界。
-- 降阶的体力/寿命/道点下限及截断差额存人物objData的BHML.realm.debt:*键，下一次升阶补偿截断，避免反复升降加值；失败回退恢复原字段/经验/品质/扩展记录。复杂原生回调仍可能产生不能简单撤销的事件，托管回退不等于游戏事务。数字草稿和境界不能混批保存。
-- WorkshopWindow成功取得承载后、Build之前Clear未应用草稿；切页/切人物仍保留当次草稿。真正磁盘保存失败的已应用内存Pending继续保留，原生保存成功回调才清零。预检错误包含具体人物和字段，范围以原生DynInt为准，不为消除报错而盲目扩大寿命/资源范围。
-### 常驻与释放审查范围
-
-| 范围 | 已核对的机制 | 仍需游戏证据 |
-| --- | --- | --- |
-| 长时间闲置 | 关闭时保留帧入口/F8/保存Poll，世界失效低频清会话；每次重开新建视图重读名单，存活目标重新解析；模拟4小时后打开通过 | 正常推进月份、战斗、菜单及闲置2–4小时后重开、读数与原UI一致 |
-| 更新异常 | 释放失败控制器但保留F8人工恢复，不每帧重建，不重放人物修改；显式卸载停止计时器 | IL2CPP异常及换场景真实行为；严重原生崩溃不在托管保护范围 |
-| 关闭释放 | 输入补丁UnpatchSelf，导航恢复；控件/动态字体/圆形×/立绘释放；静态四张美术纹理MOD持有，卸载清空 | Unity延迟Destroy、原生特殊立绘autoDestroy及RenderTexture实际释放、内存趋势 |
-| 世界隔离 | 草稿托管值，世界键/人物ID，不持有原生目标；NPC返程字典仅ID/坐标，下一次传送核对世界键后清旧记录 | 快速换档、对象死亡/替换、旧记录不可跨世界使用 |
-| 保存 | 全批预检/原值冲突/回读/回退、原生SaveData、成功回调才清Pending、失败重试不重放；反馈异常与状态隔离 | 测试存档实际保存重载、自动保存、磁盘失败。回调长期不返回会保留Busy，尚无安全取消契约；不能盲目超时解锁 |
-| 兼容 | Harmony唯一ID，仅三处输入方法补丁，条件限制本输入，关闭UnpatchSelf；共享TextInfoLong已有窗口拒绝占用，关闭验证所有权 | 本次日志仅本模组加载，缺第三方MOD共存证据；F8同键及相同Harmony方法补丁仍可能冲突 |
-
-资源关闭后允许有界常驻四张自身纹理、帧计时器及少量托管状态；不要求总内存回到同一值，不以一次进程内存/工作集判断泄漏。长期趋势必须考虑地图/战斗/游戏资产缓存。正常存档不代做写入试验；保持独立备份，保存与重载专项在测试存档进行。实测重点为2–4小时正常游玩不使用秘录后F8、名单刷新、搜索/切人物、关闭、日志；不需要为闲置测试改数值。
-
-### 打开过渡
-
-书页遮罩CanvasGroup只由BookView持有，构建后开始0.16秒未缩放时间Smoothstep透明度变化，无缩放/布局变化。过渡期间interactable=false、blocksRaycasts=true，完成才恢复操作；TickAppearance放在属性刷新节流前，每帧执行。关闭无需等淡入完成，Dispose清状态及引用。检查初态/中途/完成，GDI替身不渲染动画。同步打开日志不含过渡时间，不能将淡入称为消除构建卡帧。
-
-### 固定美术纹理生命周期
-
-PaperSkin.Acquire在主线程懒创建唯一四纹理缓存（纸、刷、山水、标题）；BookView只借用，Dispose不销毁共享纹理。ModMain.Destroy先释放控制器/窗口，再ClearCache；不放人物/世界对象、不开后台Unity线程。生成逐像素数学用System.Math，避免Mathf原生包装重复往返。`run-paper-skin.ps1`编译真实实现、嵌入实际PNG，验证固定数量、重复获取、释放/重建、部分失败及重试；图像解码是替身，不测GPU或Unity原生泄漏。窗口/人物重建规则保持，现有逐阶段日志用来验证冷/热打开收益。
-
-### 入口定位与坐标
-
-- 07.39错误：GetWorldCorners实际签名为Il2CppStructArray<Vector3>，普通Vector3[]隐式转换只复制输入到新数组；读取原数组仍是零。不能把本机原生包装API当普通Unity托管方法。处理输出数组须读原生包装索引或改用单值返回；当前使用reference.rect→TransformPoint→root.InverseTransformPoint。禁止恢复原代码，托管数组替身通过不能证明原生写回。
-- 出厂位置全部是代码常量，不从任何文件读取：主界面=textSPValue右边中点+40单位，按原生参照控件计算；NPC=归一化中心`0.2542969,0.746458352`（2026-10-03用户在2560x1600游戏内实测微调后固化），参照控件`btnAppellationAttack`只用于缩放与就绪判断。两处尺寸均为56参照单位×参照缩放。根矩形/缩放未就绪拒绝，半秒挂载核对，错误3秒重试。保持原UI层，不使用截图像素硬编码原生坐标。
-- F9自由移动在07.42整体移除：不再有调整模式、拖动、滚轮缩放、坐标文件读写与点击抑制，`EntranceLayout`与`entrance-layout.ini`一并废弃。不要以“方便微调”为由恢复文件读取——那会重新引入“磁盘文件静默覆盖代码默认值”的隐患；位置改动改为改常量、重编译并同步DLL。用户目录里遗留的`BHML/entrance-layout.ini`已无任何作用，可留可删。
-- 入口由ModMain独立持有，内容熔断后点击重建控制器，不重放修改；关闭/离图/换世界/卸载清理回调及原生对象。不逐帧查原生世界/UI，只在半秒节流内Sync；点击时仍重新核对上下文、所有权与顶层。
-- 图标v2减少细碎纹饰；mipmap=true+Trilinear处理1254原图缩小采样。原图高清不能自证56单位下清晰；必须按真实游戏截图评估。只共用一张纹理，卸载释放。
-- run-entrances.ps1编译真实入口，21项涵盖双入口出厂位置、F9失效的反向断言（按键/拖动/滚轮都不改位置且不产生文件）、点击门禁、缩放与边界、释放与内容熔断重试；不模拟IL2CPP、CanvasScaler或真实指针时序。原生方法签名/隐式转换IL已用本机Cecil核对；同类byref/数组输出必须再查包装语义。
-
-### 视图异常释放
-
-原生窗口创建/初始化须与视图/补丁安装共同在局部异常边界内，恢复前确认共享UI所有权，回退失败只关闭自己窗口。清理先拆持有引用，各原生步骤单独捕获；一个输入/立绘失败不能跳过纹理及原控件恢复。输入endingEditor由finally复位。生命周期托管检查含30次重复开关与OpenUI/null/InitData/回退/Attach故障；布局检查对四画布真实BookView注入输入停用错误，观察注销、Destroy和后续资源释放。替身Destroy从父Children移除但不清parent，断言遵守替身模型，不以它证明Unity销毁时序或内存无泄漏。
-
-### 常驻节流与打开计时
-
-关闭时WorkshopController不逐帧查询地图UI，半秒复核世界失效及窗口所有权；保存回调Poll与F8逐帧，按键不受节流限制。`run-controller-idle.ps1`编译真实控制器核对节流、F8、保存结果收取、离图、退出世界及输入/顶层UI保护。不会以托管计数证明游戏CPU收益。
-
-WorkshopWindow打开总计覆盖原生窗口、视图及输入补丁；BookView阶段日志拆字体/纸墨、骨架/搜索模板、名单/排序、属性控件、快照/编辑、立绘及气运。总计是同步调用耗时，不包含下一帧渲染/GPU呈现；首次与重复打开需分别记录。诊断只在打开构建期间，Dispose清除失败计时状态。名单局部getter复用不保留跨帧原生引用。性能优化须据真实日志，不做后台预读游戏对象或过期名单缓存。
-
-### 视觉与布局约定
-
-- 微小帮助标记叠加在按钮角上，不通过标题缩进或缩宽给它占位；满状态没有说明。命中区独立，保留父按钮中心线。布局增加正文高度时同步页脚边界，宽版共底、小画布滚动及Box越界检查不能失效。
-- 三项天级天赋有明确配置编号2804/2805/2806，原level=6并不意味着所有6都为神；显示快照特判这三项，不改配置、不靠本地化名称识别。天级雕饰随行池绑定启闭，回用普通条目必须关掉，不能遗留金框。
-
-### 帮助标记与气运绘制
-
-- 除满状态无介绍外，按钮介绍只绑角落帮助标记，不绑父按钮；点有独立点击接收器，防止把看介绍变成执行操作。提示与对象栏/正文共同使用书页坐标，按按钮下方/上方定位，不能将左栏提示强行约束到正文区域。
-- 气运贴图的等比与拉伸均已被用户否定；按当前需求统一自绘色底，不再恢复SpriteTool.GetLuckBG。level在读取快照时保存；滚动池只更新颜色和文字，不加载贴图或重建装饰。名称保留固定品阶栏、删除空间和单行BestFit，检查拥有/检索/图鉴三个入口。
-
-### 原生调用与数据换算防错
-
-- 本机Unhollower生成的`Dictionary<TKey,TValue>.TryGetValue`对byref值使用引用包装构造，`float`会报`Single..ctor(IntPtr)`。用Mono.Cecil核对Il2Cppmscorlib的IL后，采用ContainsKey+索引getter的PointerToValueGeneric解箱。新增涉及原生泛型byref基本类型时先核实生成IL，普通托管字典替身不会暴露此问题。
-- UnitActionSetPoint成功和坐标回读不代表地图人数已经刷新。后续走MapWorldMgr.UpdateGridUI/UpdateGridUICmd及UIMapMain.uiGridUnit.UpdateUI(curSelectPoint)，不通过重建单位或直接改人数掩盖显示错误；游戏回归覆盖来、重复来、返和去。
-- 07.30等比和07.31拉伸贴图均被后续用户反馈否定，不能继续当成现行方案。当前气运sprite=null，名称用固定左上矩形、品阶栏和删除预留，避免锚点/offset混用。性格描述字段为xdash_54sd；气运/性格保留既有提示路径，快捷说明使用共同书页坐标及下方/上方定位。
-- 资源显示上限不是资源baseValue；满状态和境界后恢复使用`baseValue + max.value - value`保留加法效果，锁定/倍率/固定状态拒绝任意反解。六项先预检，失败恢复所有已尝试字段并核对，无法恢复时保留Pending，不能谎称无修改。
-- 不把所有资质随境界提高当成既定游戏规则。RoleGrade和ItemRarityMaterials官方只读配置、UnitActionRoleUpGrade原生代码应共同核对；保留丹药/修炼和特殊气运效果，不制造无配置的固定资质奖励。
-- 光标连续反馈失败后不能再用托管测试自证：07.31记录每输入框空/非空的真实字形范围、原光标范围、转换位移和两矩形位置。按Unity原生AssignPositioningIfNeeded同步矩形，并将Text字形坐标转换到Caret局部坐标；诊断命中及游戏画面对照仍待取得。参考[Unity InputField源码](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Runtime/UGUI/UI/Core/InputField.cs)，具体接口以本机包装程序集为准。
-- 性能结论必须测量：空气运检索不加载全配置，介绍按悬停查询，已失败字体创建不重复执行，去掉逐次悬停日志；界面构建Stopwatch日志供新版实测。保留每次打开重读名单，不用过期世界缓存换取打开速度。
-
-### 持久写入与配置依据
-
-- 用户明确唯一存档是开发测试存档，授权本轮接入真实写入；不终止游戏。使用本机Managed程序集、官方CHM的WorldUnitBase.CreateAction/DataMgr.SaveData和官方RoleCreateFeature/RoleGrade表头及JSON核实接口。新增引用保持Private=False。
-- DynInt.value只读。baseValue setter负责钳制及原生变化回调；加法效果保留，目标显示值换算基础差值，年份保存时保留月余数。07.98倍率效果用独立原生DynInt复现当前值，再在其基础值范围内括区间/二分求解；只复制计算列表、倍率/偏移/缩放和钳制，不复制持久setter或变化事件，不试写实际人物。求不到精确显示整数、非单调/溢出、固定覆盖、锁定及缺持久setter仍拒绝。应用前重新求值核对，写回一次后回读；尚未开始写入的步骤不做无谓Undo。全批先准备，应用顺序资源上限优先；异常逆序回退可回退字段并读回原值。不声称游戏原生复杂动作可事务回退。原生只读依据`.tools/dynint-0798-native.txt`、`dynint-0798-api.txt`；托管替身仅覆盖分段取整与保存控制流，真实效果/重载仍待验证。
-- 名字原GetName只拼二段数组，保持二段结构；兴趣三个ID合并一次写入，重复拒绝；Destroy旧allHobby、按配置item的竖线/下划线拆分调用WorldFactory.CreateUnitHobby/Init重建，GetHobbyItems比较ID更新缓存。不可直接把cacheHobbyItems设null（原生路径会访问它）。性格按真实配置type候选，写入三个原字段并GetCharacterWeight更新。
-- UnitActionRoleUpGrade原生路径修改能力点、寿命、成长属性、资源、品质/日志和相关逆天气运。SetGradeID不能替代完整突破。07.29仅下一阶段CreateAction的方案已被07.30的CharacterRealmChange成长差额编辑替换：允许升降配置行及品质，不执行材料/突破剧情/随机奖励；境界不可和数字草稿混批。此处保留原生研究依据，不作为旧实现指令。
-- 气运：官方表头type=1先天、2后天、3逆天、4仙人恩赐、5战前（后天）、6壶妖先天、11扩展先天。全库来自roleCreateFeature._allConfList，conceal=1不作为可见配置。原UINPCInfoProperty对type=2且conceal=1过滤，与敖瑶日志8012523/231125吻合；不能转而读取其他玩法DLCUnitData填世界人物。
-- 后天/逆天用UnitActionLuckAdd，删除用UnitActionLuckDel注销运行回调和addLuck；先天添加保留bornLuck记录并CreateLuck/NewCreateLuck，删除补齐原动作不负责的bornLuck。当前保护重复、隐藏/缺失配置、无运行类及壶妖修士差异；07.30已移除随机生成的同组、成就和全局名额限制，不恢复这些主动赋予门槛。气运动作即时影响内存，记录待保存；复杂原生调用可能部分执行，错误后强制重读，不谎称无变化。
-- DataMgr.isSaveData为静态并发标志，调用g.data.SaveData(Il2CppSystem.Action<bool>)。保留托管/IL2CPP委托，回调只发布托管结果，WorkshopController.Update主线程Poll刷新；成功才清待保存，失败仍可保存内存而不重放草稿；上下文切换的旧回调不清新世界状态。不能承诺游戏不会自动保存。
-- Native反汇编依据存于忽略的.tools（writes/apply/npcinfo/binding及fate-style-native等研究输出）；自动符号共享地址有误标，结论须结合字段偏移/配置/实际调用。诊断文件是研究缓存，不进入ModAssets或发布包。
-
-## 按变更验证
-
-| 改动 | 相关检查 | 游戏重点 |
-| --- | --- | --- |
-| 仅文档 | 本地链接、事实、版本与路径 | 无需编译或重测游戏 |
-| 布局/资源 | 编译、布局脚本适配时运行 | 当前分辨率、裁切、长文字、切模块；改适配时补1920×1080/1366×768 |
-| 输入 | 编译、run-input-scope.ps1 | IME、粘贴/清空、正常失焦、F8、关闭卸载、其他输入框 |
-| 读取/名单/气运 | 编译、run-character-reader.ps1、气运改动运行run-character-fates.ps1及run-book-layout.ps1 | 原UI同角色对照、隐藏/死亡、目标失效、切存档；气运长列表/说明及分类 |
-| 窗口生命周期 | 编译、run-lifecycle.ps1 | 连续开关、离开地图、共享窗口、失败回退 |
-| 新写入 | 字段依赖研究、run-character-save.ps1及相关UI检查 | 仅测试存档、原UI变化、保存重载、对象失效；临时补丁验证关闭及离场释放 |
-
-脚本在`docs/verification/`，使用前核对当前源码适配性。托管替身不覆盖Unity事件顺序、IL2CPP及Windows IME；run-book-layout.ps1会写screenshots模拟预览，必须与实测截图区分。
-
-**统一验证入口（2026-10-03新增）**：`./docs/verification/run-all.ps1` 一条命令跑完全部托管检查，并先做三项自检——脚本卫生（每个受维护`.ps1`必须有UTF-8 BOM且能被解析）、工程一致性（csproj登记的源码、磁盘源码、手册“代码导航”表三者相同；当前版本字面量只出现在`ModVersion.cs`；产品源码无未使用的`private/internal`成员，类/结构/枚举声明不作候选，确有正当例外时加入脚本内的白名单并写明理由），以及全部harness。它逐项打印通过数与退出码，汇总通过/失败/卫生问题/一致性问题/耗时，任一问题即输出`RESULT: FAIL`并返回退出码1；加`-Build`会先执行`build.ps1`（含部署与旧版备份）。新增或修改harness后直接跑它，不要再用临时循环统计——本机曾因临时正则写成`^PASS:`而漏掉使用`PASS `写法的三个harness，把15/19/11项误报为0。报告检查数一律以该脚本的汇总行为准，每个harness在独立进程中运行、以退出码为唯一权威判据。
-
-**变异测试：确认harness真能抓到缺陷（2026-10-03）**。harness全绿只说明“当前没坏”，不说明“坏了会被发现”。方法是故意向产品源码植入真实缺陷、运行**应该抓到它的那个harness**、确认失败后立刻还原（`git checkout -- <文件>`，仅对git干净的文件做）。首轮6组探针中5组被抓到、**1组暴露真实缺口**（`BodyTop`改小使正文压住卷目区而365项检查全过），修复后补验“抓害不抓变”——有害变异报错、无害变异（整体位移但不重叠）通过。
-
-**统一入口：`./docs/verification/run-mutations.ps1`（2026-10-03新增）**。内含12组探针，覆盖全部10个harness；逐组打印“已抓到/未抓到”、汇总缺口数，结束时核对所有探针目标已还原，任一缺口或未还原即`RESULT: FAIL`。该脚本会**临时修改产品源码**，因此从`run-all.ps1`的harness枚举中显式排除，只手动运行（`run-all.ps1`只把它当作脚本卫生检查对象）。验证过正反两面：正常12/12抓到、耗时约60秒；把探针故意指向错误harness后报`覆盖缺口`并`RESULT: FAIL`。两个实现坑已留档：①子harness失败时会向stderr写异常文本，PS 5.1在`$ErrorActionPreference='Stop'`下会把原生命令的stderr当终止错误而中断整个脚本（`NativeCommandError`），故本脚本用`Continue`、以**子进程退出码**为权威判据；②探针里的文件路径是相对`ModCode/ModMain`的，交给git时必须补上仓库根前缀`ModProject/ModCode/ModMain/`，否则还原会失败并把变异留在工作区。
-
-托管检查项按当轮计，报告时说明轮次与累计口径，不与历史项相加。验收结论与未验收边界只在[项目记忆](../PROJECT_MEMORY.md)维护，逐版证据只在[变更记录](CHANGELOG.md)；全部数字字段与单位、IME全流程、多分辨率、跨场景/存档和地图输入隔离尚未全量验收。编译、托管检查、磁盘同步、编辑器加载和游戏结果分别记录。
-
-**代码复审的边界**：复审以**写入路径与状态机**优先（写入前后回读、失败回滚、上下文切换清理、空值防御、运算优先级与溢出），结论记入变更记录；“复审未发现缺陷”本身就是有效结论，**不要对同一批文件重复通读**——覆盖率问题应交给`run-mutations.ps1`回答，而不是靠反复读代码。
-
-## 小步迭代与文档维护
-
-1. 读项目记忆和长期计划，按任务查本手册及真实代码/官方接口。
-2. 定一个可独立验收的小目标，保护基线，完成实现和相关检查。
-3. 同步需要的产物，取得游戏证据；没有证据就写待验证。持久写入先分析依赖并用测试存档。
-4. 更新项目记忆现状和下一步，在CHANGELOG追加简短记录；范围变化才改计划/调查，结构与流程变化才改本手册。
-
-变更记录统一写：日期/版本、目标与文件、接口或用户证据、编译/同步/游戏结果、未覆盖项及下一步。仅重大问题需要独立专项文档，普通小迭代不新建文件。状态为研究中、实现中、待游戏验证、已验收或延期；用户成功反馈只覆盖当轮需求。
-
-记忆只放当前事实、约束和下一步；代码映射不逐行复制到文档，历史不常驻会话入口。删除重复文件前保留必要证据并修正链接。归档只按需打开，不自动全文读取。
-
-### 技能书转换防错（07.53）
-
-PropsData与MartialData是包装与读取视图关系，并非继承关系；TryCast会返回空，使技能书误走普通物品描述。原生UIIconMartialBase.OpenMartialInfo通过PropsData.To<MartialData>()传入UIMartialPropInfo.InitData，官方CHM缓存493e4156-d577-4352-0552-9e6f64422251.htm也列出To<T>。本机签名、propsType枚举与原生流程复核记录在.tools/skill-book-api.txt、.tools/skill-book-native.txt。
-
-07.52替身把MartialData继承PropsData，虚构了游戏不存在的继承关系，导致检查通过而实际介绍缺失。替身现拆成两个独立类型，以PropsData.Martial及To<T>模拟包装读取；已有悬浮用例必须通过此路径才能取得真实功法内容。以后不能凭可编译的IL2CPP强转推定数据模型；先核查原生转换和类型关系，再建替身。此路径只读取，不写入功法或存档；844项检查通过不等于游戏验收。
-
-### 物品悬浮滚轮与容量检查（07.54）
-
-物品提示移出所属图标立即Hide，不沿用气运提示的0.12秒移入窗口宽限；CanvasGroup.blocksRaycasts=false，不能抢指针。长介绍上限400并限于窗口内；溢出时暂时关闭背包滚轮灵敏度，TickItemTipWheel每帧一次读Input.mouseScrollDelta，以介绍真实溢出高度换算归一化位置，Hide恢复原值。短介绍不截获背包滚轮；背包滚动条仍可拖动，滚动后释放旧提示防止池格子错配。
-
-GetPropsNum回读不一致不能一概称为工厂异常或部分写入：原生AddProps会在满格新增记录时正常返回空结果。发放前按原生hide=0、已有叠加记录与GetGridCurNum(true)/GetGridMaxNum判断，拒绝发生在Sync/MarkDirty之前；不得绕过容量、盲重试或仅删除回读校验。原生反汇编依据.tools/bulk-items-native.txt，接口依据.tools/hover-capacity-api.txt及官方CHM。截图无物品ID/当时容量，不据此宣称排除了所有回读原因。
-
-### 容量格底与网格池（07.55）
-
-ItemInventory.ReadCapacity只读GetGridCurNum(true)/GetGridMaxNum，与原生新增记录判断一致。UnitDataProps计格有物品类型、hide/playerShow与drop/dieDrop分支，不能把可见条目数当占用数；本机依据.tools/capacity-native.txt。空格严格为max(0,total-used)，虚拟网格长度为可见物品数+剩余格数，末行多余位置禁用；已有超容量物品仍完整显示。
-
-容量纳入刷新指纹；每个池格缓存键包括激活状态，防止原本禁用的尾部位置变为空格时跳过绘制。格底与细线不拦射线，无UIEventListener，原生图标在其上并保留独立悬浮/菜单。Box不接受负坐标，所以采用78×78池格、72×72图标居中，不以负坐标向外扩格底。仅视口附近池格创建Unity对象，空格数量不导致全量实例化。
-
-### 技能书模板格式化防错（07.56）
-
-GetDesc不是最终可读正文：身法/心法模板会含&技能数值键&及$伤害类型$。须GetDesc → new BattleSkillValueData(真实MartialData) → UIMartialInfoTool.GetDescRichText(desc,valueData,2) → 本窗口统一去富文本标签；不能把模板直接ShowFateTip，也不能正则删除变量冒充修复。字符串重载原生可选颜色键为y/e，按本机接口默认值调用；UIMartialPropInfo.UpdateUI的完整格式化流程及UIPropInfo使用的字符串重载见.tools/martial-format-native.txt，签名和默认值由本机Managed反射核对。替身覆盖模板调用链和记录身份，具体原生数值仍须游戏对照。
-
-### 道具页收尾防错（07.57）
-
-- 共用ShowFateTip时必须传入正确模块条件。道具检索/图鉴也传itemTip=true；图鉴提示挂在自己的遮罩内，不能被遮罩盖住。每个长提示保存所属ScrollRect，临时关闭并恢复该来源滚轮；不一律操作背包滚轮。筛选改变池行前释放旧提示，移出行立即关闭。
-- RunItemOperation返回是否应关闭确认框：未写入拒绝保留输入且弹窗内显示原因；成功关闭；进入原生修改后发生异常则记Pending、说明可能部分写入并关闭，防止对旧输入盲目重复提交。不要把catch统一视为成功，也不要承诺事务回滚。
-- 补给先检查两种药合计新增格数；同一种两次20须在第一次写入前按40检查溢出。普通药drop/dieDrop均为0时不增加GetGridCurNum(true)，但满格时原生工厂仍拒绝新hide=0记录。每次后续原生调用前重新RequireTarget，避免前一次回调切档/开始保存后继续写入。
-- soleIDHashData原生getter由唯一ID、values与valuesStr拼接而成，包含序列化附加数据。本机只读反汇编证据在.tools/items-closeout-native.txt；快照校验与清空指纹纳入它，数量不变但词条/品阶改变也拒绝旧操作。显示指纹保留原生顺序，清空确认指纹仍按唯一ID排序，避免把排序动作误当删除范围变化。图标缓存键同步包含附加数据；不能只改页面指纹而漏掉池格键。
-- 清空在每次DelProps前再次核验人物/世界、保存状态、完整快照及可见性。上一件原生回调可能装备/改变下一件；发现变化停止，不删除原本已受保护的记录，不回滚已发生的原生操作。
-- 背包内容/容量缩小后立即夹紧anchoredPosition再渲染池格，不能等Unity下一帧自动处理。读取失败释放菜单/提示。原生图标创建中途失败需清掉新建的半成品，保留格底并提供可操作文字替代；CloseIconInfo失败不能阻止其他孩子销毁。释放时清掉容量文字引用及剩余格数。
-
-审查范围、原生调用证据、76项新增针对性检查及尚未游戏验收的边界统一见CHANGELOG的07.57条目。不要把替身检查、只读反汇编或旧版本日志写成实际新版本运行结果。
-
-### 搜索框光标与组合栏基线（07.59–07.61）
-
-原生模板的Caret高度在克隆到26单位紧凑气运框时可能超过文字区域，中心对齐仍可贴底；不再以“只平移且必须保留高度”为绝对规则。AlignCaret把文字矩形边界转换到Caret局部坐标，限定高度并夹紧中心，再按原顶点的相对位置重绘；保留X/宽度、输入内容、选区和闪烁。新用例覆盖超长原生Caret进入紧凑文字区域后的边界，旧字形/像素偏移/占位/不同局部原点/其他窗口检查继续保留。
-
-FrameSearchInput统一修士搜索和CreateSearchInput创建的气运、气运列表、道具、物品列表搜索，使用纸色底与现有双细线Border；边框挂在host而非克隆体，避免继续克隆时复制叠加边框，线条不拦指针。ResetClonedInput上下内边距由2改4，与修士框一致；不同位置高度和字号仍按布局保留。CreateSearchInput也用于道具数量输入，沿用同一框线与内边距；属性原位数字编辑未加入新边框。实际字体与光标显示仍需游戏核对，GDI不画真实光标。
-
-07.60：FrameSearchInput调用Border(..., transparentInner:true)，内侧上下线alpha为0，节点/尺寸保留；外侧框线可见。线条只是装饰，实际留白和光标安全区域由文字内边距/AlignCaret保障，不依赖线条是否可见。其他卡片默认transparentInner=false。
-
-07.61：SearchWithLibrary负责气运/道具检索和列表入口组合；CreateSearchInput(..., framed:false)及MakeButton(..., framed:false)关闭组合内部的各自外框，只在组合父节点Border一次。按钮仍是独立Button，分隔线不拦射线；移除气运第四题栏的额外Border，避免三层框挤压。独立搜索与其他按钮默认framed=true。
-
-### 功法获取接口依据（07.63）
-
-本机 BattleSkillAttack / BattleStepBase / BattleAbilityBase 的普通 className=1 配置形成五类目录，排除怪物及专属内部招式。招式 ID 跨境界固定，gradeMin/gradeMax 决定是否可生成；奖励工厂按境界选择数值、消耗和合法前缀。GetSkillReward 用指定 baseID，GetStepReward/GetAbilityReward 用原生 ReturnAction 过滤精确 ID；然后 PropsData.NewMartial 创建秘籍唯一身份，AddProps(PropsData) 入包，GetProps(soleID) 回读核对。未直接拼装词条、附加数据或序列化存档。红品质 level=6 为当前获取默认，词条随机；不伪造掉落事件或特定产地。
-
-整批先按 GetGridCurNum(true)/GetGridMaxNum 检查每本一格，再全批生成并检查 ID/境界，逐次入包前重验世界/人物/保存状态/境界/剩余容量。原生回调可能部分写入，异常保留 Pending 并关闭获取弹窗，不盲重试、不宣称事务回滚。新增秘籍即时改变内存，顶部保存负责持久化，原生自动保存也可能落盘。托管替身加载官方只读 JSON 验证目录和分支，但不能证明游戏奖励工厂、真实入包、词条或保存重载成功。
-
-### 传承目录与身份（07.64）
-
-07.63只枚举基础表，遗漏过龙门等传承心法；不能称185项为全部秘籍。BattleAbilitySuitBase 的35个系列以 suitMember 关联基础心法，展开182个独立成员，目录合计367项，其中心法223项。普通心法与同baseID不同suitID必须有不同选择键；基础搭配解析仅选suitID=0，避免误用传承替代普通版本。查询名称/ID时跨五类检索；点分类清空查询、回到分类列表，底部显示结果数。不可生成的配置仍显示并说明原因。
-
-生成沿用原生奖励工厂和NewMartial，再调用 PropsAbilityData.suitID setter；本机SetRewardPropsDataAttr也使用此setter，native调用链确认它更新AbilityData、序列化回原生PropsData附加数据并清除缓存，禁止仅改名称冒充传承或手写JSON。校验suitMember、生成品质/招式/境界与suitID，入包前捕获唯一ID/签名，入包后复核签名及传承身份。未添加运行效果或自动装备，学习/装备后的套装激活走游戏机制、仍待游戏验证。
-
-生成境界从 GameItemRewardAbilitySuit → GameItemReward → BattleAbilityCombine.rewardGradeID 交叉核对：过龙门及24种流派传承为登仙，渡江云等通用传承有羽化版本；这是生成版本约束，不宣称复刻掉落、剧情和区域条件。残天式、卧龙劲在只读数据中只引用无对应奖励项的900001/900002，暂显示但禁用获取，不猜境界。动态配置可能与只读JSON不同，以实际配置解析结果为准。替身加载四张新增真实表，不能证明原生setter/介绍/套装效果或保存重载正确。
-
-### 完整书名检索（07.65）
-
-本机ConfBattleSkillPrefixName.GetName按词条数值选择index=1/2两段前缀，AbilityInfoData/SkillInfoData再拼接基础名称；书名不只由境界决定。目录不枚举所有随机前缀组合。SearchCatalog先匹配真实目录名称/ID，未命中才验证原生前缀并反查普通基础类型；神功等共有后缀返回所有流派候选，UI明确要求选择流派，不根据前缀猜流派或承诺获得同名词条。传承名称直接匹配优先，不把普通候选替换成传承。未知前缀不能只按后缀模糊匹配；已学列表保留真实完整名搜索。获取仍按捕获的当前境界、level=6原生生成，目录提示不改变身份或发放规则。
-
-### 大数量与灵石例外（07.66）
-
-用户明确撤销自定义发放/菜单数量的9999上限，满材料仍保留9999目标。propsCount及AddProps数量是int，UI解析正整数，服务在原生写入前以int.MaxValue-current检查总量溢出；修改单堆还以long核对所有同类记录合计不超过int.MaxValue，防止游戏总数量统计溢出。不放宽非叠加规则、快照或存档/人物校验。灵石本机ItemProps id=10001、hide=1、isOverlay=1，作为唯一隐藏资源检索/发放白名单，走原生AddProps(id,amount,空字符串)并核对总量/编号，不伪造可见背包格；仍被_allShowProps排除，不加入清空或单项菜单。其他隐藏资源继续拒绝。千万灵石与百万数量用原生替身核对，游戏实际资源显示/回调及保存重载待用户验证。
-
-### 隐藏资源前置展示与秘籍类型（07.67）
-
-用户明确要求所有隐藏资源进入目录和修改器背包。Catalog移除hide过滤，Give允许真实配置；Read默认合并_allShowProps与allProps中hide=1的正数量记录，按soleID去重，仍不展示普通装备。隐藏资源有Hidden标志，UI稳定按配置ID/soleID排到最前，普通记录保留原生顺序，红色格底/边线和普通灰格区分。显示池数量为隐藏资源数+普通记录数+原生剩余格数，容量直接沿用GetGridCurNum/GetGridMaxNum，不扣隐藏资源、不修改原生格数。标题分别统计普通项和资源。只展示已持有的正数量资源，未持有者由全目录原生添加。
-
-RequireItem数量修改允许当前持有隐藏记录，保留世界/人物/soleID/数量/签名检查；非叠加禁用。单项移除及Clear仍用Read(includeHidden:false)和原生可见资格，隐藏资源删除按钮禁用；清空弹窗也捕获同一过滤快照，避免显示范围扩大导致清空资源。此节替代07.66仅灵石白名单规则。秘籍每条元信息包含类别/流派/传承及境界/品质，窄版自动缩字号。
-
-### 今日收尾与大数量交叉回归（07.68）
-
-大数量自定义开放后，必须检查旧快捷操作：满材料按配置ID汇总所有相关堆的补满后数量，使用long预检同类总数，超过int.MaxValue则整批拒绝，尚未写入或MarkDirty；精确边界允许，超过9999的堆不降低。显示指纹和单格键都包含Hidden，避免仅配置隐藏状态变化时复用旧颜色/菜单。Read在原生_allShowProps中也检查当前hide，includeHidden=false明确排除；即使可见缓存滞后也不能将资源加入清空。隐藏非叠加菜单标注数量固定，仍禁用删除。真实回调/装备/存档验证边界不因托管回归而缩小。
-
-### 保存回调身份与部分传送恢复（07.74）
-
-每次SaveData具有独立saveGeneration，saveGate只保护托管身份、去重与completion发布，不在锁内访问游戏/UI。旧请求回调和同请求第二次结果不可覆盖当前completion或修改Busy/Pending。派发抛错时，尚无结果则取消此请求身份、保留Pending供用户显式重试；已收到同步结果则继续Busy等待Poll，不能丢弃已接受结果。原生从未回调不强制超时重试，以免重放写入。100轮/40000次交错回调是托管竞争检查，不是游戏保存验证。
-
-“来”动作确认位置改变后立即在finally保留首次原位置和Pending，即使后续原生回调抛错，也支持用户显式“返”；未改变位置不创建记录，重复召回不覆盖首次原点，“返”成功才删除。历史证据见[审计归档](archive/documentation-closeout-2026-10-05.zip)，当前范围见项目记忆；不自动续跑旧矩阵。
-
-### 批写上下文与嵌套原生回调（07.75）
-
-ContextKey同时绑定玩家原生指针、人物ID和DataMgr指针；存档管理器缺失时不可编辑。CharacterSave.RequireCurrentTarget核对上下文、保存状态及重新解析的人物指针，每项Apply/Undo前后执行。切换世界后不再读取或回退旧对象，也不向新DataMgr派发旧批次保存；同世界对象失效/自动保存中断仍报告可能部分改变，保留Pending供明确核对。
-
-多步骤动作必须在内部每次可能触发原生回调的操作后校验，不能仅在外层返回后校验。境界SetGradeID/UpdateConf/成长setter/瓶颈运行类及兴趣Destroy/Init/GetHobbyItems按此规则保护。兴趣销毁使用快照，避免原生Destroy修改正在遍历的列表。此规则当前已接入上述属性保存流程，其余页面仍在审计，不把共用辅助方法存在当成全产品覆盖。
-
-### 快捷操作上下文与返回身份（07.76）
-
-快捷操作入口检查ContextKey及保存忙状态；Guard绑定人物指针与存档上下文，满状态/满材料每项写入、回读及回退都校验，满修为在原生AddExp后重新确认对象。MarkDirty(context)只能归入同一当前存档；世界切换仅同步，不将旧操作计入新存档。无法确认当前对象的部分操作保留可能生效提示，不再读取旧引用凑回读。
-
-返回原点同时绑定NPC ID及原生指针，人物替换不能继承旧位置；替换后重新“来”会建立新原点。好感度使用SetIntim维护关系缓存，预检有限数值及增量可表示性，本机原生SetIntim以Single.ToString("0.##")再Parse存值，先量化目标；第一侧必须等于量化目标且第二侧保持原值才继续，最终双方都须等于各自目标。失败逆序回退，只恢复已尝试步骤，并再次校验双方。
-
-### 道具容器身份与气运回调后快照（07.77）
-
-道具Guard绑定上下文、人物原生指针和DataProps指针。原生调用后必须先校验，再刷新或读取旧容器；清空最后一次DelProps也需要后置校验。补给全部步骤绑定同一目标，禁止第二次重新解析同ID后默默转移到替换对象。CharacterSave.MarkDirty(expectedContext)用于原生部分执行的finally，只能计入同一当前存档；切换后同步而不污染新存档。
-
-气运CreateLuck执行虚拟初始化/创建，后续NewCreateLuck仍遵循原生LuckAdd顺序；每一步后置校验，不能因有拥有记录就假定运行对象成功。先天注销回调可能新增其他记录，应过滤回调后的当前bornLuck而非恢复旧快照；此处保留同存档可能部分执行的Pending，不宣称原生生命周期可完整事务回滚。
-
-### 功法对象身份及原槽恢复（07.78）
-
-ItemInventory.Guard供功法复用，绑定人物和背包指针；GuardLearned额外绑定ActionMartialData/PropsData指针，签名或经验相同也不能代替身份核查。获取、学习、圆满、装备、卸下与词条保存在原生步骤后先Guard再读旧对象，MarkDirty使用原上下文。圆满DestroyEquip后不能继续创建已失效人物的运行对象；已装备词条修改原生卸下后，恢复前及门禁后确认原槽仍为空，不覆盖回调中新装备。
-
-原生门禁IsCreateAction后也要确认对象和目标槽。获取生成过程尚未入包时不能MarkDirty；入包部分失败保留可能生效标记，不自动重复全套。此处验证只支持托管交错及本机原生只读顺序，不替代原生需求、解锁、套装或保存重载。
-
-### 单条读取保护与UI管理器消失（07.79）
-
-单条ReadError隔离必须覆盖初始化器及预读取：soleIDHashData/GetValues也是原生getter，不可在try之前执行。功法列表保留异常条目并拒绝操作，正常条目继续读取；未获得类别显示类别未读取，不映射为神通。当前隔离覆盖元数据getter，集合本身读取/遍历异常及实际失效原生对象仍需单独核查。
-
-UI管理器不存在时Close释放本视图及输入隔离；RefreshOwnership不能先解引用g.ui。世界已退出时即使旧地图UI仍活跃也关闭。仅UI暂不可用不等于当前存档失效，不能因此清Pending；保存Poll仍逐帧执行。重复释放、30次打开关闭和4小时模拟闲置通过只证明托管控制流。
-
-### UI隐藏与销毁分开尝试（07.80）
-
-清理已经清空字段时，SetActive(false)失败后不能跳过Destroy，否则对象不再可通过字段找回。ReleaseViewObject将两步独立Cleanup；各页浮层、列表子对象、提示与背包格内容均复用。介绍滚轮恢复失败也不阻断后续状态重置。若Destroy自身失败，记录日志而不宣称资源已释放。
-
-验证实际BookView源代码的24轮Build/页面/图鉴/Dispose，不使用LifecycleHarness中的BookView替身作为这组覆盖。Unity API仍是托管替身，Destroy即时移除模拟子树；结果证明代码调度及受观测资源计数，不证明真实延迟销毁/内存耗用或所有原生实例释放。
-
-### 入口未完成对象的清理（07.81）
-
-Create返回前，外层字段尚未拥有新入口；失败时不能依赖ClearEntries找回对象。隐藏和Destroy均应独立保护，并用原始throw保留初始化异常；清理失败单独记录。托管字体/隐藏故障注入验证该路径，不推导其他初始化阶段或Unity延迟销毁已经通过。
-
-### 分配与字段接管之间的资源（07.82）
-
-对象初始化器的native setter会在赋值给接管字段之前调用；失败时字段仍为空，外层Dispose无法回收该分配。先取得局部对象，再在try中配置并成功后交给长期字段。GameObject子对象挂载前仍由局部引用负责失败清理，不依赖销毁父级。入口21项阶段探针只覆盖入口；PaperSkin/NewRect同类路径仍须单独审查。
-
-满材料复用道具背包Guard；同人物与同存档不能证明背包仍是原容器。部分写入后背包替换，停止旧容器写入/回退，保留Scoped Pending供核对。
-
-### 共用工厂的分配失败（07.83）
-
-PaperSkin.NewTexture与BookView.NewRect均先局部接管native对象，再在保护区配置；配置或挂载失败时负责释放局部对象，原异常重抛。调用方根视图/缓存字段只接管成功返回的对象。12纹理阶段及2控件阶段替身覆盖，不将托管释放计数写为GPU或Unity原生长期验收。
-
-### 单条读取保护的边界（07.84）
-
-初始化器/过滤判定之前的原生getter同样属于记录读取。功法已学data/exp、背包propsType纳入单条保护，null记录不生成假条目。类型未取得时明确“物品类型未读取”且只读；不得将未知记录作为功法写入。集合自身失效与进程级native访问违规不由单条托管catch证明可恢复。
-
-### 无编号诊断条目的选择身份（07.85）
-
-null或空soleID不构成身份，不得用相等匹配多个异常记录。功法只读列表另记录原生对象指针，以同对象优先、有编号沿用编号、无编号仅同InBag/Type/非零指针匹配的方式保留选择；指纹包含指针。该字段仅供UI刷新，不是持久标识，不替代写入前真实编号/签名/上下文/容器校验。
-
-### 中断写入后的只读观察（07.86）
-
-移动finally不能以保存状态为由丢弃已生效操作的首次原点。单独按上下文、ID、原生指针与Resolve存活性确认只读目标，读位置后再确认，才更新进程内返回缓存；Scoped Pending保留不确定状态。该路径不调用写入API，后续写入/地图刷新仍受RequireCurrentTarget的Busy/isSaveData限制；不把只读目标校验作为写入门禁替代品。
-
-### 气运初始化失败的状态归属（07.87）
-
-本机CreateLuck把运行对象加入列表后才执行初始化虚方法；失败不意味着未注册。兼容层返回null也不能证明没有运行对象或其他回调新增记录。不得恢复整个旧bornLuck快照；保留可能已生效的拥有记录与Pending、报告未完成和部分效果。未核实运行类Destroy依赖前不自动注销未知半初始化对象，重读后重复添加依然拒绝。
-
-### 差额运算的最终范围（07.88）
-
-基础值+目标显示值-当前显示值的中间相加可能超int，最终基础值仍可能合法。用long完成完整表达式，再checked转换int并核对DynInt的min/max；不要因中间溢出拒绝合法结果，也不能截断真正越界结果。满状态及境界资源补满按此规则，回读和原有失败路径保留。
-
-### 成长差额的持久格式（07.89）
-
-BHML.realm.debt为ideal-after，正常写入仅为非正数；零删除、负值用InvariantCulture持久化。读取也必须使用Integer/InvariantCulture，存在键而值null、非数值或正值均拒绝；减法必须checked，不得把长整数下溢写成正补偿。区域/非法记录/极值替身检查不扩大为原生历史或DLC验收。
-
-### 同品质境界成长来源（07.90）
-
-GetGradeItem的品质键为(grade*10+phase)*100+quality；OnInit遇到已有键跳过，不能区分同键的多条成长配置。GradeData历史只有quality/luck。当前gradeID为已知来源；离开初期前保留配置ID到objData，历史初期累计优先用经grade/phase/quality校验的来源。新来源、品质历史、成长和截断差额必须同步处理与回读，Undo恢复键原来的存在性，不用首条配置替代已知来源。未知自然历史不能凭基础属性倒推，不宣称完整恢复自然突破材料/随机奖励。
-
-本机只读证据：.tools/audit-realm-branches-native.txt、audit-realm-config-native.txt、audit-realm-complete-native.txt；官方表形状audit-realm-config-shape.json，修复前数值复现audit-realm-branch-before.txt，维护检查CharacterSaveHarness与audit-0790-all.txt。这些不是运行时配置/实际存档与DLC兼容验收。
-
-### 境界数据容器的所有权（07.91）
-
-同一WorldUnitBase不能证明内部数据容器仍相同。境界Plan捕获WorldUnitData、UnitInfoData、WorldUnitDynData、PropertyData、DataObjectData及实际玩家/NPC突破历史的Pointer；每步调用前后及Undo都从当前人物重新解析并核对。包装getter可能返回新的托管对象，禁止ReferenceEquals代替原生指针。容器替换后停止旧引用写入/回退、保留不确定状态，不自动保存；Pointer一致仍不能证明内容/字段/回调未改变，这些依赖继续审计。
-
-### 突破历史的内容冲突（07.92）
-
-字典Pointer相同不证明内容相同；保存GradeData引用的浅快照也不能检测其quality/luck被改。准备阶段用独立不可变戳保存记录Pointer、quality、luck和空记录身份，每步检查键集合与戳。预期状态只随着自己成功执行的按键删除/赋值推进；不要Clear重建整个历史。外部新增/删除/替换/原位修改发生后，Undo同样必须拒绝盲快照恢复，保留Pending提示核对。记录实际字段以本机IL2CPP包装签名为依据，不把托管对象引用相等当原生身份；SetGradeID本机指令会Emit事件，不能假定调用期间没有第三方监听器。
-
-### 动态属性字段身份（07.93）
-
-动态数据容器相同不代表其中DynInt字段未被替换。境界累计用GetValues重新解析字段数量/顺序/Pointer，补满及境界设置另外绑定gradeID、hp/mp/sp与hpMax/mpMax/spMax；普通数字保存用CharacterEditData.Number重新解析。写入前后及Undo都必须校验；不能从缓存旧字段回读成功就报告当前人物修改成功。GetValues的返回集合可由原生委托生成，不校验集合身份。此保护只确认字段归属，不等于校验所有倍率/锁/固定效果与内容竞争；后者及其他属性类别仍在审计。
-
-### 普通属性的父容器归属（07.94）
-
-姓名/性别/性格持有PropertyData、兴趣运行类重建跨原生Destroy/Init，都需要确认WorldUnitData、UnitInfoData、PropertyData未被替换。共用普通保存ensure按原生Pointer绑定这三层，Apply/Undo及兴趣合并空步骤均使用；性格赋值后、权重查询前后分别检查。GetCharacterWeight真实返回int[]并缓存结果；故障替身返回值只对齐调用签名，不模拟真实权重，AfterWeight仅为注入钩子。归属保护不能代替姓名/性格派生效果、兴趣集合内容变化和长期运行验证。
-
-### 兴趣运行集合与失败回退（07.95）
-
-Destroy回调可改变allHobby，不能对旧快照销毁后Clear当前列表。绑定集合和记录Pointer/顺序，只逐项移除自己拥有的旧记录；允许当前Destroy自行移除自己，其他增删/替换均为冲突。新记录加入后Init，失败保留拥有记录、停止同次提交Undo自动重建；成功Apply之后的Undo也先验证运行集合未被外部改变。
-
-Unhollower包装方法的Cecil.IsVirtual可为false，但IL中il2cpp_object_get_virtual_method才是实际原生派发依据。WorldUnitHobbyBase.Destroy为空，Action子类Destroy则注销事件；禁止用基类指令推导所有兴趣无副作用。托管钩子只验证调度和保留，不证明原生部分初始化可安全Destroy或手动重复修改，后续隔离仍待核查。
-
-## 兴趣修改异常后的再次操作（07.96）
-
-原生兴趣修改一旦开始，集合冲突或初始化失败后保留Pending与未知运行对象，并按世界/人物运行身份隔离再次修改。UI短暂退出或保存管理器替换不得清除该隔离；新世界身份可清除，其他人物不继承。写入前校验失败未开始原生修改，不隔离、不做盲Undo，允许纠正后重试。托管检查只覆盖这些控制路径，不能代替原生保存重载验证。
-
-### 关系图与原生编辑（07.99）
-
-关系读取直接遍历RelationData的parent/children/childrenPrivate/brother/parentBack/childrenBack/brotherBack/married/lover/master/student，避免GetRelation(type, true)清理死亡记录。已故人物从DataMgr.unitDie.GetUnitDie读取；好友/仇人按本机GameParameter的friendCloseRequire/haterCloseRequire判定（只读配置60/-60），不是可任意设置的独立身份。部分阈值读取失败保留已读身份并标注。接口依据为官方CHM的UnitActionRelationSet(WorldUnitBase, UnitRelationType, Int32)与本机Managed程序集；原生反汇编见.tools/relations-api.txt、relations-native.txt和relations-reading-native.txt。
-
-好感用双方各自SetIntim，指向玩家时读取intimToPlayerUnit，其他指向读取intimToUnit；输入按本机原生0.##量化，指纹保留实际float；限制在原生GetIntim整数读数可表示范围内，量化后未改变则不写入也不新增Pending。确认绑定世界、双方unit/data/unitData/relationData身份、整组结构指纹和原好感；回调后先复核，再修改第二侧；仅回退实际尝试的步骤，无法确认结果则保留Pending。结构写入走IsCreateAction/CreateAction，不直接改关系容器。夫妻/道侣/师徒/义亲建立与解除核对反向类型；建立时拒绝重复、已有身份及已有配偶冲突，不自动换人。07.99单身份解除限制已由08.06整体解除规则替代，见下节。
-
-血亲新增通过UnitActionRelationSetParent，仅父母槽为空且不形成祖先循环时开放；明确会更新兄弟姐妹、子女和后代姓氏。已有家谱不替换；直接设置私生/同胞身份未开放。08.06整体解除规则见下节。结构动作可能影响原生行为、声望与事件，失败不伪装事务回滚，不盲重试。
-
-### 08.06 整体解除与连带家谱
-
-官方CHM `html/05049abf-b91e-0efc-b2e6-58d11a1b7b15.htm` 核对构造签名。本机原生OnCreate=0x1836fcf10，分别两次ClearRelation=0x1836fc370并UpdateAllUnitRelation；ClearRelation委托=0x183acf4e0逐个清除匹配的两个父母槽、九个列表和配偶，List.Remove只删首条，不能以它修复重复记录。新增实机文件只读核查`.tools/inspect-relief-0806.py`和`.tools/relief-0806-native.txt`包含GameAssembly/metadata哈希与委托反汇编。该路径不会调用SetParent.UpdateBrother，故必须单独规划失去共同父母依据的既有同胞；直接清兄弟列表或重建整族均不可替代原生动作。
-
-RelationOperations.PlanRemoval绑定完整影响清单与保留的同胞，解除父母/正常子女/私生关系时保留另一父母；仍共有父母的同胞保留，失去依据的既有同胞通过额外原生None动作双向解除。连带同胞有其他身份或任一方向剧情保护，整批拒绝。主对非血亲多重身份可整体解除；血亲多重身份、父母槽异常、容器缺失/重复/自关联、不对称家谱、已故/失效关联拒绝，不隐式修复。不直接删除仍共有父母的同胞身份，提示从父母—子女入口处理。姓名/好感保留，各自后代与其他子女不拆除。
-
-RemoveRelations全批复核unit/data/unitData/relationData身份、结构和原好感，全部IsCreateAction通过后才开始；每步前再次预检，预计算仅删指定ID的预期结构，动作后核对所有关联人物的精确结构/好感，再执行下一步。首笔动作后异常保留Pending并关闭确认，不自动补偿或盲重试；不保证原生事件回退。浮层直接显示可滚动整体影响清单，捕获计划直到确认，取消不写入；自动保存边界保持。托管替身补上实际父母/血亲列表清理，验证22个新增断亲/冲突/四尺寸交互检查，不能证明游戏原生事件、月份推进、保存重载和其他MOD兼容。
-
-图面按可达expanded集合展开，ID合并、有限访问避免循环；首次/回到中心按图面范围适配缩放。每次只为可见节点临时创建一个静态模型，160×154截图后释放模型/相机，最多缓存128张静态纹理；不为每个节点常驻动态模型。模拟预览不验证原生画面；专属人物按avatar/modelID分流，拼装模型走GetPortraitModelDataInModel，独立资源走原生CreateTexture回调取得模型；截图后销毁临时专属承载，原生autoDestroy释放其资源。依据补充见.tools/relations-special-native.txt；真实静态图效果仍须游戏核对，失败有占位。关闭浮层先注销其中InputField，再独立隐藏/销毁；切人/切页/退出清理。
-
-### 08.00 小立绘加载时序
-
-关系卡必须等待 `PortraitModel.CreateModel` 的 `onCreateCall` 或专属立绘原生完成回调，下一次视图刷新再生成静态快照；不把刚返回的root当作所有部件已完成。先预渲染，再按完整Renderer边界居中取景，160×154截图与80×77图区等比例，边界倍率1.12。窗口只保留一个加载任务，切页/切人清理；已取消任务的迟到回调销毁旧模型，不能写入新人物卡。10秒未完成标记加载失败，不自动重试。
-
-### 08.01 原生相机父子关系
-
-本机GameAssembly反汇编确认 `ModelRenderTexture.CreateRenderTex(GameObject,...)` 将人物root设为相机对象（实例+0x10）子物体，随后设置其世界位置为相机位置加offset。`CreateRenderTex(int,int,Transform)`将相机对象写入+0x10、Camera组件写入+0x20。若直接设置camera.position，root会跟随，取景中心调整失效；小立绘先 `modelRoot.transform.SetParent(null, true)`，保留世界姿态再测量和拟合。原生renderer与脱离后的root仍分别在finally释放。托管渲染器补上相机父子关系，四尺寸回归检查在移除此修正时均失败，加回后通过。证据：`.tools/portrait-native-metadata/render-disassembly.txt`及`.tools/relations-0801-before-fix.txt`；不等同于实际GPU验收。
-
-### 08.02 关系连线缩放
-
-连线Image原始1单位短边随图面缩到0.45后可能被像素对齐舍掉。保存每段横/竖方向，`UpdateRelationLineWidths`只将短边改为 `2 / relationZoom`，使图面缩放后的线宽稳定；长边不改，保留路由长度。绘图、自动居中与手动缩放统一更新，不依赖重新构图恢复线条。关系专项四尺寸连续缩放及居中检查覆盖尺寸补偿，08.05当前分辨率三节点按钮缩小到0.45及回到中心已实测；其它GPU/复杂布局仍需实际验证。
-
-### 08.03 写入收尾与所有权
-
-每步回读通过仍可能被后续setter、原生事件或UpdateConf改写。属性全批在磁盘保存启动前重新核对全部目标；满状态、材料、双药补给及整批秘籍在最后回调后复核。可回退字段在整批回退后也核验原值；不能恢复则保留Pending，不声明成功或盲重试。气运和满修为绑定unit/data/unitData/propertyData及相关动态字段，替换后停止后续写入；材料绑定当前包中的原记录，禁止回退到脱离背包的旧对象。功法学习、修炼和词条保存须在刷新/重新装备之后确认最终记录、消耗、经验、装备及词条。复杂原生动作不承诺事务回滚。
-
-本机SetIntim的0.##格式来自当前GameAssembly及metadata解析，不以托管替身反推API；详见[08.03证据](CHANGELOG.md#0803--系统审查与写入结果确认)。替身覆盖可控回调中断，不代表原版实际出现这些干扰或已游戏验收。
-
-### 08.04–08.05 本机学习返回码与消耗签名
-
-本机Unhollower 0.4.18的DataStruct<string,int>.t2值字段getter经PointerToValueGeneric重复装箱，可能返回对象头的随机整数。学习门禁仍调用原生GetStudyTip，使用实际对象类的t2字段元数据偏移读取int；缺返回对象或字段立即拒绝，不使用固定偏移或忽略非零失败码。依据及实际游戏复现见[变更记录](CHANGELOG.md#08040805--游戏学习故障修复及运行验证)。
-
-StudyActionMartialProp将原秘籍对象写入已学记录，DelProps将同一对象数量从1减为0再移出包；soleIDHashData包含数量。因此学习前克隆计算数量0的预期完整签名，学习后检查原指针、完整签名、原包已消耗、已学归属，刷新完成后再次核验。不能保留错误的“学习前后签名完全相同”假设；也不能仅检查已学数量增加就报成功。替身必须模拟同对象count归零，成功提示回归与刷新后重插书/改经验/改词条拒绝回归同时保留。该契约只在当前游戏二进制核实，升级游戏/Unhollower需要重新核对。
+提交前检查status、暂存范围与diff --check，保留用户修改，不reset --hard或批量清目录。用户要求本地提交不意味着推送，无远程时不宣称push。全局AI记忆只在明确要求时写指定扩展note，不直接修改记忆索引。

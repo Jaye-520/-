@@ -27,7 +27,15 @@ namespace MOD_YtxSQ1.UI
         public void Open(string unitId)
         {
             if (IsOpen) { if (view != null) view.FocusTarget(unitId); return; }
-            ReleaseView();
+            var warm = view != null && view.CanResume();
+            using (MOD_YtxSQ1.Services.WorkshopPerformance.Measure(warm ? "重复打开CPU" : "首次打开CPU")) OpenCore(unitId);
+        }
+
+        private void OpenCore(string unitId)
+        {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (IsOpen) { if (view != null) view.FocusTarget(unitId); return; }
+            if (view != null && !view.CanResume()) ReleaseView();
             ownedWindow = null;
             var openTimer = System.Diagnostics.Stopwatch.StartNew();
             try
@@ -44,8 +52,22 @@ namespace MOD_YtxSQ1.UI
                 var nativeMs = openTimer.ElapsedMilliseconds;
                 MOD_YtxSQ1.Services.CharacterEditSession.Shared.Clear();
                 ownedWindow.InitData("八荒秘录", "正在读取人物信息…", "合上秘录");
-                view = new BookView();
-                view.Build(ownedWindow, Close, unitId);
+                if (view == null)
+                {
+                    view = new BookView(); view.BeginInteractionTiming(false, started);
+                    using (MOD_YtxSQ1.Services.WorkshopPerformance.Measure("首次视图构建CPU")) view.Build(ownedWindow, Close, unitId);
+                }
+                else
+                {
+                    view.BeginInteractionTiming(true, started);
+                    try { using (MOD_YtxSQ1.Services.WorkshopPerformance.Measure("复用视图CPU")) view.Resume(ownedWindow, Close, unitId); }
+                    catch (Exception cacheError)
+                    {
+                        Debug.LogWarning("[八荒秘录] 缓存恢复失败，重新构建：" + cacheError.Message);
+                        ReleaseView(); view = new BookView(); view.BeginInteractionTiming(false, started);
+                        view.Build(ownedWindow, Close, unitId);
+                    }
+                }
                 var viewMs = openTimer.ElapsedMilliseconds;
                 WindowInputScope.Attach(ownedWindow, view.SearchInput);
                 Debug.Log("[八荒秘录] " + ModVersion.Current + "打开总计=" + openTimer.ElapsedMilliseconds + "ms；原生窗口=" + nativeMs + "ms；视图初始化=" + (viewMs - nativeMs) + "ms；输入补丁=" + (openTimer.ElapsedMilliseconds - viewMs) + "ms");
@@ -82,11 +104,13 @@ namespace MOD_YtxSQ1.UI
 
         public void RefreshCharacter()
         {
-            if (IsOpen && view != null) view.RefreshCharacter();
+            if (IsOpen && view != null)
+                using (MOD_YtxSQ1.Services.WorkshopPerformance.Measure("活动页帧CPU")) view.RefreshCharacter();
         }
 
         public void RefreshOwnership()
         {
+            if (ownedWindow == null && view != null && !view.CanResume()) ReleaseView();
             // 原生返回/关闭也可能结束窗口；及时移除布局，避免共享窗口复用时残留。
             if (ownedWindow != null && (g.ui == null || !ownedWindow.gameObject.activeInHierarchy ||
                 g.ui.GetUI(UIType.TextInfoLong) != ownedWindow))
@@ -100,11 +124,19 @@ namespace MOD_YtxSQ1.UI
         {
             var previous = ownedWindow;
             ownedWindow = null;
-            ReleaseView();
+            if (view != null && previous != null)
+            {
+                try { WindowInputScope.Detach(); view.Suspend(); }
+                catch (Exception ex) { Debug.LogWarning("[八荒秘录] 窗口休眠失败，释放缓存：" + ex.Message); ReleaseView(); }
+            }
+            else if (view != null && !view.CanResume()) ReleaseView();
             if (previous == null) return;
+            MOD_YtxSQ1.Services.WorkshopPerformance.Closed();
             // 共享 UI 已被其他窗口替换时，不关闭别人的实例。
             try { if (g.ui != null && g.ui.GetUI(UIType.TextInfoLong) == previous) g.ui.CloseUI(previous, false); }
             catch (Exception ex) { Debug.LogWarning("[八荒秘录] 释放施工窗口失败：" + ex.Message); }
         }
+
+        internal void Dispose() { Close(); ReleaseView(); }
     }
 }

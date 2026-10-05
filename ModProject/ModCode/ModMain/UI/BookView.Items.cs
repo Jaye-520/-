@@ -88,9 +88,9 @@ namespace MOD_YtxSQ1.UI
         }
         private bool LoadItemCatalog()
         {
-            var context = CharacterReader.ContextKey();
+            var context = CatalogKey();
             if (context == itemCatalogContext && itemCatalog.Count > 0) return true;
-            try { itemCatalog = ItemInventory.Catalog(); itemCatalogContext = context; return true; }
+            try { itemCatalog = ItemInventory.Catalog(false); itemCatalogContext = context; return true; }
             catch (Exception ex) { SetEditStatus("物品配置读取失败：" + ex.Message, true); return false; }
         }
         private static bool MatchesItem(ItemEntry entry, string query)
@@ -132,7 +132,7 @@ namespace MOD_YtxSQ1.UI
                 BindFateHover(row.Button.gameObject, () =>
                 {
                     if (row.Entry != null && row.Button.gameObject.activeInHierarchy && (!library || itemLibrary != null)) ShowFateTip(row.Button.GetComponent<RectTransform>(), new CharacterFate(row.Entry.Id, 0, row.Entry.Name,
-                        row.Entry.Description + "\n编号：" + row.Entry.Id + (row.Entry.Stackable ? " · 可叠加" : " · 不可叠加")), library ? itemLibrary.GetComponent<RectTransform>() : content, false, true, scroll);
+                        ItemInventory.DescribeCatalogEntry(row.Entry) + "\n编号：" + row.Entry.Id + (row.Entry.Stackable ? " · 可叠加" : " · 不可叠加")), library ? itemLibrary.GetComponent<RectTransform>() : content, false, true, scroll);
                 }, () => { if (fateTipOwner == row.Button.GetComponent<RectTransform>()) HideFateTips(); });
                 rows.Add(row);
             }
@@ -223,7 +223,9 @@ namespace MOD_YtxSQ1.UI
                     var props = unit.data.unitData.propData.GetProps(bagItems[index].SoleId);
                     if (props == null) continue;
                     // 原生图标保留品阶、数量；介绍由本窗口承载，避免不同原生提示层互相遮挡。
-                    var icon = UIIconTool.CreatePropsIcon(unit, props, slot, 1, false, false, false);
+                    UIIconItemBase icon;
+                    using (WorkshopPerformance.Measure("背包图标创建")) icon = UIIconTool.CreatePropsIcon(unit, props, slot, 1, false, false, false);
+                    WorkshopPerformance.NativeIconsCreated++;
                     if (icon == null) throw new InvalidOperationException("图标未返回");
                     var rect = icon.GetComponent<RectTransform>();
                     var scale = rect.rect.width > 0 ? 72 / rect.rect.width : .72f;
@@ -311,6 +313,8 @@ namespace MOD_YtxSQ1.UI
         }
         private void ClearBagSlot(RectTransform slot, int keepChildren = 0)
         {
+            // Unity null also covers native objects already destroyed by an external window close.
+            if (slot == null || slot.gameObject == null) return;
             for (int j = slot.childCount - 1; j >= keepChildren; j--)
             {
                 var child = slot.GetChild(j).gameObject;

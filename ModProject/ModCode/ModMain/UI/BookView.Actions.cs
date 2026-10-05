@@ -55,7 +55,7 @@ namespace MOD_YtxSQ1.UI
             dot.raycastTarget = true;
             // 单独的点击接收器阻止说明点点击向父按钮传递操作。
             var help = dot.gameObject.AddComponent<Button>(); help.targetGraphic = dot;
-            BindFateHover(dot.gameObject, () => ShowFateTip(rect, new CharacterFate(0, 0, label, hint), content.parent.GetComponent<RectTransform>(), true), () => { fateTipCloseAt = Time.unscaledTime + .12f; });
+            BindFateHover(dot.gameObject, () => ShowFateTip(rect, new CharacterFate(0, 0, label, hint), contentHost.parent.GetComponent<RectTransform>(), true), () => { fateTipCloseAt = Time.unscaledTime + .12f; });
             return button;
         }
         private void BuildRestoreButton(RectTransform parent, float y, float width)

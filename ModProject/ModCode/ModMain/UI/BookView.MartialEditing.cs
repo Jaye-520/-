@@ -136,8 +136,11 @@ namespace MOD_YtxSQ1.UI
         {
             try
             {
-                if (selectedIndex != 2 || martialDraft == null || martialDraftEntry?.SoleId != entry.SoleId) return;
-                var candidates = all ? CharacterMartials.AllPrefixes(selectedUnitId, entry, original.Index, quality, martialDraft) : CharacterMartials.Candidates(selectedUnitId, entry, original.Index, false, quality, true, martialDraft);
+                if (selectedIndex != 2) return;
+                if (martialDraft == null) BeginMartialDraft(entry);
+                if (martialDraftEntry?.SoleId != entry.SoleId) return;
+                if (all && !LoadMartialCatalog()) return;
+                var candidates = all ? CharacterMartials.AllPrefixes(selectedUnitId, entry, original.Index, quality, martialDraft, martialCatalog) : CharacterMartials.Candidates(selectedUnitId, entry, original.Index, false, quality, true, martialDraft);
                 var panel = MartialOverlay("选择第 " + (original.Index + 1) + " 条词条"); var width = panel.sizeDelta.x; var height = panel.sizeDelta.y;
                 Label(panel, "当前：" + original.Number + " · " + original.Description, 16, 48, width - 32, 58, 16, Ink);
                 var tabWidth = (width - 32 - 6 * 6) / 7;

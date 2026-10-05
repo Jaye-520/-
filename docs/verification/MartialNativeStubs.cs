@@ -104,6 +104,7 @@ public class ConfBattleSkillMastery
 }
 public class ConfBattleSkillLevel
 {
+    public IntPtr Pointer {get{return new IntPtr(GetHashCode());}}
     public int[][] Counts;
     public int GetGradeMin(MartialType type,int id){if(type==MartialType.Ability)return g.conf.battleAbilityBase.GetItem(id).gradeMin;if(type==MartialType.Step)return g.conf.battleStepBase.GetItem(id).gradeMin;return g.conf.battleSkillAttack.GetItem(id).gradeMin;}
     public int GetPrefixCount(int level,int grade,int minimum){return Counts[level-1][Math.Max(0,Math.Min(4,grade-minimum))];}
@@ -113,6 +114,7 @@ public class ConfBattleSkillPrefixValueItem {public int id,skillType=1;public in
 public class SkillPrefixData {public int index,prefixLevel,level=3;public string prefixValueItemDesc;public ConfBattleSkillPrefixValueItem prefixValueItem;}
 public class ConfBattleSkillPrefixValue
 {
+    public IntPtr Pointer {get{return new IntPtr(GetHashCode());}}
     public List<ConfBattleSkillPrefixValueItem> Items=new List<ConfBattleSkillPrefixValueItem>{new ConfBattleSkillPrefixValueItem{id=1,number=1,desc="伤害提升",multi=11},new ConfBattleSkillPrefixValueItem{id=1,number=2,desc="冷却降低"},new ConfBattleSkillPrefixValueItem{id=1,number=3,desc="射程提升"},new ConfBattleSkillPrefixValueItem{id=1,number=4,desc="互斥词条",require="-1"},new ConfBattleSkillPrefixValueItem{id=1,number=5,desc="依赖词条",require="1"},new ConfBattleSkillPrefixValueItem{id=1,number=6,desc="连击提升"},new ConfBattleSkillPrefixValueItem{id=1,number=7,desc="红色效果"}};
     public List<ConfBattleSkillPrefixValueItem> _allConfList=new List<ConfBattleSkillPrefixValueItem>();
     public List<ConfBattleSkillPrefixValueItem> GetItems(int type,int id){return Items;}
@@ -149,7 +151,7 @@ public class ConfBattleSkillPrefixNameItem {public int id,index;public string te
 public class ConfGameItemRewardAbilitySuitItem {public int id,rewardID,suitID,level,rate,weight;}
 public class ConfGameItemRewardItem {public int id,rewardID,itemType,item;}
 public class ConfBattleAbilityBaseItem { public int id,type,gradeMin,gradeMax;public string name,basType;public int[] className; }
-public class MartialConfig<T> where T:class { public List<T> _allConfList=new List<T>();public T GetItem(int id){return _allConfList.First(x=>(int)typeof(T).GetField("id").GetValue(x)==id);} }
+public class MartialConfig<T> where T:class { public IntPtr Pointer {get{return new IntPtr(GetHashCode());}} public List<T> _allConfList=new List<T>();public T GetItem(int id){return _allConfList.First(x=>(int)typeof(T).GetField("id").GetValue(x)==id);} }
 public sealed partial class Config
 {
     public ConfBattleSkillMastery battleSkillMastery=new ConfBattleSkillMastery();

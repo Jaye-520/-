@@ -13,6 +13,7 @@ namespace MOD_YtxSQ1
 
         public void Init()
         {
+            var initTimer = System.Diagnostics.Stopwatch.StartNew();
             Destroy();
             updateFailed = false;
             controller = new WorkshopController();
@@ -21,6 +22,7 @@ namespace MOD_YtxSQ1
             {
                 updateTimer = g.timer.Frame(new Action(OnUpdate), 1, true);
                 Debug.Log("[八荒秘录] " + ModVersion.Current + "已初始化；点击主界面或NPC面板玉简打开秘录，F8备用。");
+                Debug.Log("[八荒秘录] 初始化CPU=" + initTimer.Elapsed.TotalMilliseconds.ToString("F2") + "ms");
             }
             catch { Destroy(); throw; }
         }
@@ -46,9 +48,16 @@ namespace MOD_YtxSQ1
                 catch (Exception ex) { Debug.LogWarning("[八荒秘录] 释放控制器失败：" + ex); }
             }
             MOD_YtxSQ1.UI.PaperSkin.ClearCache();
+            MOD_YtxSQ1.Services.WorkshopPerformance.Report();
+            MOD_YtxSQ1.Services.WorkshopPerformance.Clear();
         }
 
         private void OnUpdate()
+        {
+            using (MOD_YtxSQ1.Services.WorkshopPerformance.Measure("模组帧CPU")) OnUpdateCore();
+        }
+
+        private void OnUpdateCore()
         {
             if (entrances != null) entrances.Update();
             if (updateFailed && !Input.GetKeyDown(KeyCode.F8)) return;

@@ -65,6 +65,8 @@
     <Compile Include="UI\WorkshopEntrances.cs" />
     <Compile Include="UI\WindowInputScope.cs" />
     <Compile Include="UI\BookView.cs" />
+    <Compile Include="UI\BookView.Pages.cs" />
+    <Compile Include="Services\WorkshopPerformance.cs" />
     <Compile Include="UI\BookView.Editing.cs" />
     <Compile Include="UI\BookView.Actions.cs" />
     <Compile Include="UI\BookView.FateLibrary.cs" />

@@ -25,7 +25,7 @@ namespace MOD_YtxSQ1.Services
             try { var text = ConfLocalText.GetText(key); return string.IsNullOrEmpty(text) || text == key ? fallback : text; }
             catch { return fallback; }
         }
-        internal static List<ItemEntry> Catalog()
+        internal static List<ItemEntry> Catalog(bool includeDescriptions = true)
         {
             var result = new List<ItemEntry>(); var seen = new HashSet<int>();
             var items = g.conf.itemProps._allConfList;
@@ -34,9 +34,21 @@ namespace MOD_YtxSQ1.Services
                 var item = items[i];
                 if (item == null || item.id <= 0 || !seen.Add(item.id)) continue;
                 result.Add(new ItemEntry { Id = item.id, Name = LocalText(item.name, "道具 #" + item.id),
-                    Description = LocalText(item.desc, "暂无介绍"), Stackable = item.isOverlay == 1 });
+                    Description = includeDescriptions ? LocalText(item.desc, "暂无介绍") : null, Stackable = item.isOverlay == 1 });
             }
             return result;
+        }
+        internal static string DescribeCatalogEntry(ItemEntry entry)
+        {
+            if (entry == null) return "暂无介绍";
+            if (entry.Description != null) return entry.Description;
+            try
+            {
+                var item = g.conf.itemProps.GetItem(entry.Id);
+                entry.Description = item == null ? "暂无介绍" : LocalText(item.desc, "暂无介绍");
+                return entry.Description;
+            }
+            catch { return "介绍暂不可读取"; }
         }
         internal static List<InventoryItem> Read(string unitId, bool includeHidden = true)
         {

@@ -20,6 +20,14 @@ namespace MOD_YtxSQ1.UI
         private readonly Dictionary<string, Vector2> relationPositions = new Dictionary<string, Vector2>(StringComparer.Ordinal);
         private readonly Dictionary<string, RawImage> relationPictures = new Dictionary<string, RawImage>(StringComparer.Ordinal);
         private readonly Dictionary<string, Texture2D> relationTextures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
+        private readonly Dictionary<string, Texture2D> relationTextureCache = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
+        private readonly Dictionary<string, long> relationTextureUse = new Dictionary<string, long>(StringComparer.Ordinal);
+        private long relationTextureClock;
+        private readonly Dictionary<string, Text[]> relationCardLabels = new Dictionary<string, Text[]>(StringComparer.Ordinal);
+        private readonly Dictionary<string, Image> relationLinePool = new Dictionary<string, Image>(StringComparer.Ordinal);
+        private readonly HashSet<string> relationLineUsed = new HashSet<string>(StringComparer.Ordinal);
+        private string relationTopology;
+        private int relationLinePart;
         private readonly HashSet<string> relationPictureFailures = new HashSet<string>(StringComparer.Ordinal);
         private readonly List<Image> relationLines = new List<Image>();
         private readonly List<bool> relationLineVertical = new List<bool>();
@@ -98,23 +106,23 @@ namespace MOD_YtxSQ1.UI
                 else relationPage.anchoredPosition = relationDragPosition + RelationMouse() - relationDragMouse;
             }
             if (RelationMouseInside() && Input.mouseScrollDelta.y != 0) ZoomRelations(Input.mouseScrollDelta.y * .08f);
-            TickRelationPictures();
+            using (WorkshopPerformance.Measure("关系立绘帧CPU")) TickRelationPictures();
         }
         private void RefreshRelations(bool force)
         {
             if (relationPage == null || string.IsNullOrEmpty(selectedUnitId)) return;
             bool changedOwner = relationOwner != selectedUnitId;
-            if (changedOwner) { CloseRelationOverlay(); relationExpanded.Clear(); relationOwner = selectedUnitId; relationGraph = null; ClearRelationTextures(); }
+            if (changedOwner) { CloseRelationOverlay(); relationExpanded.Clear(); relationOwner = selectedUnitId; relationGraph = null; ResetCurrentRelationPictures(); }
             var graph = CharacterRelations.ReadGraph(selectedUnitId, relationExpanded, relationFilter);
             if (!force && relationGraph != null && graph.Fingerprint == relationGraph.Fingerprint) return;
             if (relationGraph != null && graph.Fingerprint != relationGraph.Fingerprint) CloseRelationOverlay();
             if (relationGraph != null) foreach (var person in graph.People.Values)
             {
                 RelationPerson previous;
-                if (relationGraph.People.TryGetValue(person.Id, out previous) && (previous.DramaId != person.DramaId || previous.Dead != person.Dead))
+                if (relationGraph.People.TryGetValue(person.Id, out previous) && (previous.DramaId != person.DramaId || previous.Dead != person.Dead || previous.Appearance != person.Appearance))
                 {
                     Texture2D old;
-                    if (relationTextures.TryGetValue(person.Id, out old)) { UnityEngine.Object.Destroy(old); relationTextures.Remove(person.Id); }
+                    if (relationTextures.TryGetValue(person.Id, out old)) relationTextures.Remove(person.Id);
                     relationPictureFailures.Remove(person.Id);
                 }
             }
@@ -132,35 +140,62 @@ namespace MOD_YtxSQ1.UI
         }
         private void DrawRelations()
         {
-            for (int i = relationPage.childCount - 1; i >= 0; i--) ReleaseViewObject(relationPage.GetChild(i).gameObject, "关系图旧内容");
-            relationCards.Clear(); relationPictures.Clear(); relationPositions.Clear(); relationLines.Clear(); relationLineVertical.Clear(); relationLineLinks.Clear();
+            var topology = new List<string>();
+            foreach (var id in relationGraph.People.Keys) topology.Add("P:" + id);
+            foreach (var link in relationGraph.Links) topology.Add("L:" + link.From + ":" + link.To + ":" + link.Type);
+            topology.Sort(StringComparer.Ordinal);
+            var topologyKey = selectedUnitId + ":" + string.Join("|", topology.ToArray());
+            foreach (var id in new List<string>(relationCards.Keys)) if (!relationGraph.People.ContainsKey(id))
+            {
+                ReleaseViewObject(relationCards[id].gameObject, "移出的关系节点");
+                relationCards.Remove(id); relationPictures.Remove(id); relationCardLabels.Remove(id); relationPositions.Remove(id);
+            }
+            if (relationTopology != topologyKey)
+            {
+            relationTopology = topologyKey; relationPositions.Clear();
             var placed = RelationLayout.Arrange(selectedUnitId, relationGraph.Links);
             float minX = 0, minY = 0, maxX = 0, maxY = 0;
             foreach (var position in placed.Values) { minX = Mathf.Min(minX, position.Column * 126); minY = Mathf.Min(minY, position.Row * 164); maxX = Mathf.Max(maxX, position.Column * 126); maxY = Mathf.Max(maxY, position.Row * 164); }
             var offset = new Vector2(64 - minX, 80 - minY);
             relationPage.sizeDelta = new Vector2(maxX - minX + 128, maxY - minY + 160);
             foreach (var entry in placed) relationPositions[entry.Key] = new Vector2(entry.Value.Column * 126, entry.Value.Row * 164) + offset;
+            }
+            relationLines.Clear(); relationLineVertical.Clear(); relationLineLinks.Clear(); relationLineUsed.Clear();
             foreach (var link in relationGraph.Links)
             {
                 Vector2 from, to;
                 if (!relationPositions.TryGetValue(link.From, out from) || !relationPositions.TryGetValue(link.To, out to)) continue;
                 // Orthogonal routes stay behind cards. Reciprocal native links can share a route.
                 float bend = (from.y + to.y) / 2;
+                relationLinePart = 0;
                 RelationLine(link, from.x, from.y, from.x, bend);
                 RelationLine(link, from.x, bend, to.x, bend);
                 RelationLine(link, to.x, bend, to.x, to.y);
             }
+            foreach (var key in new List<string>(relationLinePool.Keys)) if (!relationLineUsed.Contains(key))
+            { ReleaseViewObject(relationLinePool[key].gameObject, "移出的关系连线"); relationLinePool.Remove(key); }
             foreach (var person in relationGraph.People.Values)
             {
                 Vector2 position; if (!relationPositions.TryGetValue(person.Id, out position)) continue;
-                var captured = person;
-                var button = MakeButton(relationPage, "关系人物_" + person.Id, position.x - 46, position.y - 65, 92, 130, "", () => OpenRelationMenu(captured));
-                var rect = button.GetComponent<RectTransform>(); relationCards[person.Id] = rect;
-                var image = button.GetComponent<Image>(); image.color = person.Id == selectedUnitId ? new Color(.79f, .73f, .55f, .9f) : Paper;
+                RectTransform rect; Text[] cardLabels;
+                if (!relationCards.TryGetValue(person.Id, out rect))
+                {
+                var id = person.Id;
+                var button = MakeButton(relationPage, "关系人物_" + person.Id, position.x - 46, position.y - 65, 92, 130, "", () =>
+                { RelationPerson current; if (relationGraph != null && relationGraph.People.TryGetValue(id, out current)) OpenRelationMenu(current); });
+                rect = button.GetComponent<RectTransform>(); relationCards[person.Id] = rect;
                 Border(rect, 92, 130);
                 var picture = Texture(rect, "关系人物小立绘", 6, 5, 80, 77, null, new Rect(0, 0, 1, 1)); picture.enabled = false; relationPictures[person.Id] = picture;
-                Texture2D existing; if (relationTextures.TryGetValue(person.Id, out existing)) { picture.texture = existing; picture.enabled = true; }
-                Label(rect, person.Name, 3, 83, 86, 22, 15, Ink, TextAnchor.MiddleCenter).resizeTextForBestFit = true;
+                cardLabels = new[] { Label(rect, "", 3, 83, 86, 22, 15, Ink, TextAnchor.MiddleCenter),
+                    Label(rect, "", 3, 106, 86, 20, 12, Muted, TextAnchor.MiddleCenter),
+                    Label(rect, "", 8, 14, 76, 62, 30, Muted, TextAnchor.MiddleCenter) };
+                cardLabels[0].resizeTextForBestFit = true; relationCardLabels[person.Id] = cardLabels;
+                }
+                else cardLabels = relationCardLabels[person.Id];
+                rect.anchoredPosition = new Vector2(position.x - 46, -(position.y - 65));
+                cardLabels[0].text = person.Name;
+                var existing = CachedRelationPicture(person.Id); var portrait = relationPictures[person.Id];
+                portrait.texture = existing; portrait.enabled = existing != null;
                 var labels = new List<string>();
                 if (person.Id == selectedUnitId) labels.Add("中心人物");
                 else foreach (var link in relationGraph.Links)
@@ -172,16 +207,22 @@ namespace MOD_YtxSQ1.UI
                     if (link.To == person.Id && !labels.Contains(label)) labels.Add(label);
                 }
                 var caption = person.Dead ? "已故" : !person.Valid ? "人物失效" : string.Join("／", labels.ToArray());
-                Label(rect, caption, 3, 106, 86, 20, 12, person.Dead || !person.Valid ? Cinnabar : Muted, TextAnchor.MiddleCenter);
-                if (!person.Valid) Label(rect, person.Dead ? "故" : "？", 8, 14, 76, 62, 30, Muted, TextAnchor.MiddleCenter);
+                cardLabels[1].text = caption; cardLabels[1].color = person.Dead || !person.Valid ? Cinnabar : Muted;
+                cardLabels[2].text = person.Dead ? "故" : "？"; cardLabels[2].gameObject.SetActive(!person.Valid);
             }
             UpdateRelationLineWidths();
             HighlightRelation(relationSelection);
         }
         private void RelationLine(RelationLink link, float x1, float y1, float x2, float y2)
         {
+            var key = link.From + ":" + link.To + ":" + link.Type + ":" + relationLinePart++;
             if (Math.Abs(x1 - x2) < .01f && Math.Abs(y1 - y2) < .01f) return;
-            var line = Fill(relationPage, "关系连线", Mathf.Min(x1, x2), Mathf.Min(y1, y2), Mathf.Max(1, Math.Abs(x2 - x1)), Mathf.Max(1, Math.Abs(y2 - y1)), Gold);
+            Image line;
+            if (!relationLinePool.TryGetValue(key, out line))
+            { line = Fill(relationPage, "关系连线", Mathf.Min(x1, x2), Mathf.Min(y1, y2), Mathf.Max(1, Math.Abs(x2 - x1)), Mathf.Max(1, Math.Abs(y2 - y1)), Gold); relationLinePool.Add(key, line); }
+            line.rectTransform.anchoredPosition = new Vector2(Mathf.Min(x1, x2), -Mathf.Min(y1, y2));
+            line.rectTransform.sizeDelta = new Vector2(Mathf.Max(1, Math.Abs(x2 - x1)), Mathf.Max(1, Math.Abs(y2 - y1)));
+            line.rectTransform.SetAsFirstSibling(); relationLineUsed.Add(key);
             relationLines.Add(line); relationLineVertical.Add(Math.Abs(x1 - x2) < .01f); relationLineLinks.Add(link);
         }
         private void UpdateRelationLineWidths()
@@ -378,14 +419,15 @@ namespace MOD_YtxSQ1.UI
         private void ClearRelationTextures()
         {
             CancelRelationPicture();
-            foreach (var texture in relationTextures.Values) if (texture != null) Cleanup(() => UnityEngine.Object.Destroy(texture), "关系静态立绘");
-            relationTextures.Clear(); relationPictureFailures.Clear();
+            foreach (var texture in relationTextureCache.Values) if (texture != null) Cleanup(() => UnityEngine.Object.Destroy(texture), "关系静态立绘");
+            relationTextureCache.Clear(); relationTextureUse.Clear(); relationTextures.Clear(); relationPictureFailures.Clear();
         }
         private void ClearRelationsView()
         {
             CloseRelationOverlay(); ClearRelationTextures(); relationDragging = false;
             relationGraph = null; relationOwner = null; relationSelection = null; relationPage = null; relationViewport = null; relationSummary = null;
             relationCards.Clear(); relationPictures.Clear(); relationPositions.Clear(); relationLines.Clear(); relationLineVertical.Clear(); relationLineLinks.Clear(); relationExpanded.Clear(); relationFilters.Clear();
+            relationCardLabels.Clear(); relationLinePool.Clear(); relationLineUsed.Clear(); relationTopology = null;
         }
     }
 }
