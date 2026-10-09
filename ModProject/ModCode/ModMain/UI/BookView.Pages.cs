@@ -153,7 +153,7 @@ namespace MOD_YtxSQ1.UI
                         RefreshMartials, () => { martialOwner = martialFingerprint = martialProbe = null; }));
                     pages.Add(new Page(this, 3, true, true, "以左侧人物为中心；点击关系人物查看、展开或修改", BuildRelations,
                         RefreshRelations, () => { relationGraph = null; relationOwner = null; }));
-                    pages.Add(new Page(this, 4, false, false, "功能尚未开放"));
+                    pages.Add(new Page(this, 4, true, true, "辅助仅玩家；人物操作绑定左侧对象；◆ 查看条件", BuildFeatures, RefreshFeatures, InvalidateFeatures, dispose: DisposeFeatures));
                     pages.Add(new Page(this, 5, false, false, "功能尚未开放"));
                     foreach (var page in pages)
                     {
@@ -198,7 +198,7 @@ namespace MOD_YtxSQ1.UI
         {
             FinishInlineEdit(true); CloseDropdown(); HideFateTips(); CloseFateLibrary();
             CloseItemMenu(); CloseItemDialog(); CloseItemLibrary(); CloseMartialOverlay(); ResetMartialDraft();
-            CloseRelationOverlay(); CancelRelationPicture(); relationDragging = false;
+            CloseRelationOverlay(); CloseFeatureOverlay(); CancelRelationPicture(); relationDragging = false;
         }
         private void RestoreNativeControls()
         {

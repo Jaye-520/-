@@ -1,6 +1,6 @@
 # 工程手册
 
-> **文档定位**：当前代码导航、可执行流程与防错规则 ｜ **对应版本**：08.10 ｜ **最后更新**：2026-10-05
+> **文档定位**：当前代码导航、可执行流程与防错规则 ｜ **对应版本**：08.17 ｜ **最后更新**：2026-10-09
 
 现状见[项目记忆](../PROJECT_MEMORY.md)，方向见[长期计划](LONG_TERM_PLAN.md)，性能与接入见[性能文档](PERFORMANCE.md)。本手册保留有效技术约束，删除旧版过程、旧统计与已撤销实现。
 
@@ -60,6 +60,11 @@
 | Services/CharacterRealmChange.cs | 境界配置成长差额、品质/经验/瓶颈及降阶截断记录 |
 | UI/BookView.Editing.cs | 原位输入、独立选择按钮、下拉浮层及保存校验反馈 |
 | Services/CharacterPortrait.cs | 原生身份解析与ConfDramaNpc.CreateTexture分流，普通修士保持原路径 |
+| Services/WorkshopFeatures.cs | 功能目录、开关/动作类型、未核实禁用原因及容量溢出检查 |
+| Services/FeatureOperations.cs | 可用性、对象/容器绑定、原生动作及工具单次执行、容量回读、异步隔离与Pending |
+| Services/CapacityRuntime.cs | 扩容独立持久记录、原生加法效果、读档/运行数据重建恢复与自身释放 |
+| Services/FeatureRuntime.cs | 当前世界玩家辅助、独立帧服务、战斗运行实例补丁及自身补丁释放 |
+| UI/BookView.Features.cs | 功能三栏、悬停禁用原因、原生工具、角色/物品/宗门选择和影响确认 |
 | Example/Example.cs | 参与编译的官方示例；不是产品功能清单 |
 | Properties/AssemblyInfo.cs | 程序集元数据；产品版本取`ModVersion.Current`，AssemblyVersion/FileVersion保持纯数字 |
 
@@ -93,6 +98,7 @@
 - 原生泛型TryGetValue的byref float包装可能错误构造Single(IntPtr)，使用核实过的ContainsKey+索引路径。DataStruct<string,int>.t2门禁码以实际字段元数据偏移读取，不用错误包装getter或固定偏移。
 - PropsData与MartialData是读取视图关系，使用PropsData.To<MartialData>()；不得把TryCast为空当成普通物品，替身不得虚构继承。
 - 包装IsVirtual不是原生虚派发的完整依据，核对il2cpp_object_get_virtual_method；不能由基类空Destroy推导子类无副作用。
+- 不以托管ConstructorInfo补丁通过或回调早退证明IL2CPP构造安全；08.16新建/读档失败的首要嫌疑是全局WorldUnitDynData构造补丁。容量恢复只在主线程完整世界就绪后进行，不钩人物构造，不触及创建/加载线程。
 - 原生getter也可能抛错，记录初始化/过滤/预读取放进单条保护。未知类型只读，不伪造类别；集合失效和native访问违规不由托管catch保证恢复。
 
 ## 页面资源与输入
@@ -170,6 +176,12 @@ UnitActionRelationSet(None,0)不会维护第三人同胞，因此父母—子女
 图按可达展开集合/ID去重，节点/连线按键复用，仅拓扑变化重排。线宽按2/relationZoom补偿短边，长边保留；静态小立绘160×154匹配80×77卡片。等待原生模型完成回调，下一次刷新预渲染、测完整Renderer边界拟合，单任务、10秒超时，取消后迟到回调只销毁旧模型。
 
 原生ModelRenderTexture把模型设为相机子物体，取景前SetParent(null,true)保留世界姿态，随后拟合相机；模型/renderer分别finally释放。五朵金花按GetFiveFlowerDramaNpcID→ConfDramaNpc.CreateTexture和avatar/modelID分流，不强取普通拼装数据或新增第二渲染器。静态纹理缓存键/LRU/最终释放见性能文档。
+
+## 功能页
+
+实现状态和本机原生依据见[功能记录](FEATURES.md)。界面不写游戏字段，服务分目录/可用性与执行/持续辅助。人物、玩家与剧情左右角色绑定原生身份和数据容器；宗门变化在确认执行时检查原生动作与配置，并回读职位/部门，容量基础值setter原生为空，扩容保存objData独立BHML.capacity.bonus，并用DynInt.AddValue接入；世界和人物完整就绪后由主线程恢复已有单位，之后每秒只检查已扩容人物的字段替换；容量模块不安装原生构造补丁，卸载DelValue仅移除自身效果，记录不删。绑定扩容记录容器和内容，回读原基础值不变及value/GetGridMaxNum增长；不改DataProps格数副本。持久执行保留Pending，已开始执行后的异常隔离同世界再次写入；非零条件拒绝不设隔离，持续开关/死亡名单不被写入隔离锁住；原生异步角色动作等待AddEndCall，不以超时重试。可用性检查必须只读：IsCreateAction会Init并可触发剧情，绝不能在刷新中调用。执行仅一次Init，先安装原生结束处理再注册本模组回调，由CreateAction检查一次原生条件；教功选择回调单次消费。结婚必须使用UnitActionRoleRelation(Married, 原生配置)并设置isRequestMarried=true，由原生求婚/选址/婚期维护；UnitActionRoleMarry是婚礼结果动作，不能作为求婚入口或传入普通地图位置。求婚保留原生UI的性别/年龄/前置关系/配偶冲突门禁，确认绑定双方关系容器与配置指针。
+
+玩家辅助补丁使用独立Harmony ID，只释放自己的补丁；地图视野控制UIMinMap.imgMask与GridBaseUI.goMask/goMaskView显示并恢复原状态；格子刷新前恢复、刷新后接管，HideGrid/Destroy/InitData释放，只处理当前已显示格子；已探索/可见格不通过创建型getter制造迷雾，不钩逐像素IsOpenGrid、不写探索数组；地图移动用原生地图点选、人物动作及模型/镜头同步，过滤拖动和遮挡。关系必定在104接受判定写state后、feedbackLog读取前处理，仅玩家请求，不跳过IsCreate；玩家104范围内跳过DramaPackageFeedback，避免剧情包专用拒绝及其剧情字段副作用，其他SpecialFeedback与关系冲突保留。职位变更沿用DramaFunction.SetSchoolPost的isTest管理选项，保留名额和玩家职位上限，不主动清退其他人物。逃跑/学习只临时使用动作自带选项，保留IsCreate和原生成本/完成事件。无冷却在真实SkillAttack/StepBase.IsCreate期间临时添加运行cd动态覆盖，finalizer移除，cdTime仅负责图标。资源只拦截玩家原生减少事件与动态资源setter，不自动补满，不修改上限；体力开关同时锁定玩家地图精力减少。玩家道号文本使用独立DataObjectData扩展键，原生UI显示，原生配置称号ID/效果不改。关窗服务继续，退档/世界变更/卸载清标志；缺可靠单项路径的功能禁用，不以改原生配置或整体强制成功代替。
 
 ## 文档与Git
 

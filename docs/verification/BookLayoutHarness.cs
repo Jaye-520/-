@@ -252,7 +252,7 @@ public sealed class UITextInfoLong : UnityEngine.Component
         var inactive=new UnityEngine.GameObject("native inactive");inactive.transform.SetParent(gameObject.transform,false);inactive.AddComponent<UnityEngine.UI.Button>();inactive.SetActive(false);
     }
 }
-public class UIType { public string uiName="NativeInput"; public static readonly UIType MapMain=new UIType(); public static readonly UIType ModTableInputStringLong=new UIType(); public static readonly UIType ModWorkshopUpload=new UIType(); }
+public class UIType { public string uiName="NativeInput"; public static readonly UIType MapMain=new UIType(); public static readonly UIType TeachSkill=new UIType(); public static readonly UIType ModTableInputStringLong=new UIType(); public static readonly UIType ModWorkshopUpload=new UIType(); }
 public sealed class LayoutUI
 {
     public UnityEngine.Component canvas;public UIModTableInputStringLong Editor;
@@ -1131,7 +1131,7 @@ internal static class BookLayoutHarness
         // Poison an attribute getter: placeholders must not request any character snapshot.
         g.world.playerUnit.data.dynUnitData.hp.Throw=true;
         select.Invoke(view,new object[]{4}); view.RefreshCharacter(true); select.Invoke(view,new object[]{5}); view.RefreshCharacter(true);
-        Check(CharacterReader.LastFailure==null,"performance: both placeholder pages skip character detail reads");
+        Check(CharacterReader.LastFailure==null,"performance: features and batch pages skip attribute detail reads");
         g.world.playerUnit.data.dynUnitData.hp.Throw=false;
         var sourceKey=(string)typeof(BookView).GetField("catalogsKey",flags).GetValue(view);
         g.conf.itemProps=new ItemPropsConfig();typeof(BookView).GetMethod("CheckCatalogSources",flags).Invoke(view,null);
@@ -1448,6 +1448,23 @@ internal static class BookLayoutHarness
             itemButton.onClick.Invoke();
             Check(Walk(book).First(t=>t.gameObject.name=="BHML_对象栏").gameObject.activeInHierarchy && ModelRenderTexture.Active==1,"items page shares target panel and existing portrait");
             Check(Walk(book).Any(t=>t.gameObject.name=="BHML_人物背包") && !book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text=="寿命" && t.gameObject.activeInHierarchy),"module switch replaces attributes with item page");
+            var sharedTarget=targetPanel;
+            Walk(book).First(t=>t.gameObject.name=="BHML_卷目4").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(Walk(book).First(t=>t.gameObject.name=="BHML_对象栏")==sharedTarget && targetPanel.anchoredPosition.x==24,"features reuse single target panel on left at "+sizes[s][0]);
+            foreach(var feature in WorkshopFeatures.Assists.Concat(WorkshopFeatures.Interactions).Concat(WorkshopFeatures.Schools))
+                Check(Walk(book).Any(t=>t.gameObject.name=="BHML_功能_"+feature.Id),"feature entry exists: "+feature.Id+" at "+sizes[s][0]);
+            var featureHost=(UnityEngine.RectTransform)typeof(BookView).GetField("contentHost",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(bookView);
+            Check(featureHost.anchoredPosition.x>targetPanel.anchoredPosition.x+targetPanel.sizeDelta.x,"feature content clears left shared target panel at "+sizes[s][0]);
+            var helpButton=Walk(book).First(t=>t.gameObject.name=="BHML_功能_age");helpButton.GetComponent<UIEventListener>().onMouseEnter.Invoke();
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_气运介绍") && book.GetComponentsInChildren<UnityEngine.UI.Text>(true).Any(t=>t.text.Contains("不可用：")),"disabled feature hover opens full reason tooltip on features page at "+sizes[s][0]);
+            helpButton.GetComponent<UIEventListener>().onMouseExit.Invoke();typeof(BookView).GetMethod("HideFateTips",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).Invoke(bookView,null);
+            Check(!Walk(book).First(t=>t.gameObject.name=="BHML_功能_age").GetComponent<UnityEngine.UI.Button>().interactable,"unverified feature grey with explicit reason at "+sizes[s][0]);
+            using(var bitmap=new Bitmap((int)book.sizeDelta.x,(int)book.sizeDelta.y)) using(var graphics=Graphics.FromImage(bitmap))
+            {graphics.TextRenderingHint=System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;Paint(graphics,book,0,0,true);bitmap.Save(Path.Combine(args[1],"features-layout-"+(int)sizes[s][0]+".png"),ImageFormat.Png);}
+            Walk(book).First(t=>t.gameObject.name=="BHML_功能_dead").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(Walk(book).Any(t=>t.gameObject.name=="BHML_功能确认层"),"feature read-only overlay opens at "+sizes[s][0]);
+            Walk(book).First(t=>t.gameObject.name=="BHML_卷目1").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+            Check(!Walk(book).Any(t=>t.gameObject.name=="BHML_功能确认层") && targetPanel.anchoredPosition.x==24,"page switch closes feature overlay and restores original target position at "+sizes[s][0]);
             VerifyMartials(bookView,book,args,(int)sizes[s][0]);
             VerifyItems(bookView,book,args,(int)sizes[s][0]);
             Walk(book).First(t=>t.gameObject.name=="BHML_卷目0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke();

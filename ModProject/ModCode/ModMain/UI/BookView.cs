@@ -302,6 +302,7 @@ namespace MOD_YtxSQ1.UI
                 if (selectedIndex >= 0) pages[selectedIndex].Deactivate();
                 var page = pages[index];
                 targetPanel.gameObject.SetActive(page.UsesTarget);
+                targetPanel.anchoredPosition = new Vector2(24, -BodyTop);
                 contentHost.anchoredPosition = new Vector2(page.UsesTarget ? targetWidth + 52 : 24, -BodyTop);
                 contentHost.sizeDelta = new Vector2(page.Root.sizeDelta.x, contentHeight);
                 SetNavigationSelection(index); selectedIndex = index;
@@ -508,7 +509,7 @@ namespace MOD_YtxSQ1.UI
         public void FocusTarget(string unitId)
         {
             if (string.IsNullOrEmpty(unitId) || !FinishInlineEdit(false)) return;
-            CloseDropdown(); HideFateTips(); CloseItemDialog(); CloseItemLibrary(); CloseFateLibrary(); CloseMartialOverlay(); CloseRelationOverlay();
+            CloseDropdown(); HideFateTips(); CloseItemDialog(); CloseItemLibrary(); CloseFateLibrary(); CloseMartialOverlay(); CloseRelationOverlay(); CloseFeatureOverlay();
             selectedUnitId = unitId;
             ReleasePortrait();
             RefreshCharacter(true);
@@ -833,6 +834,7 @@ namespace MOD_YtxSQ1.UI
                 if (selectedIndex == 1) RefreshBag(true);
                 if (selectedIndex == 2) RefreshMartials(true);
                 if (selectedIndex == 3) RefreshRelations(true);
+                if (selectedIndex == 4) RefreshFeatures(true);
                 var failure = CharacterReader.LastFailure;
                 if (failure != null && failure != lastReadFailure)
                     Debug.LogWarning("[八荒秘录] 角色读取失败：" + failure);
@@ -1001,7 +1003,7 @@ namespace MOD_YtxSQ1.UI
         private void ShowFateTip(RectTransform row, CharacterFate entry, RectTransform area = null, bool belowButton = false, bool itemTip = false, ScrollRect itemSource = null)
         {
             HideFateTips();
-            if (row == null || !row.gameObject.activeInHierarchy || selectedIndex != (itemTip ? 1 : 0)) return;
+            if (row == null || !row.gameObject.activeInHierarchy || (itemTip ? selectedIndex != 1 : selectedIndex != 0 && selectedIndex != 4)) return;
             fateTipOwner = row;
             area = area ?? content;
             var width = Mathf.Min(280, area.sizeDelta.x - 20);

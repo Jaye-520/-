@@ -20,6 +20,7 @@ namespace MOD_YtxSQ1
             entrances = new MOD_YtxSQ1.UI.WorkshopEntrances(OpenFromEntrance);
             try
             {
+                MOD_YtxSQ1.Services.CapacityRuntime.Initialize();
                 updateTimer = g.timer.Frame(new Action(OnUpdate), 1, true);
                 Debug.Log("[八荒秘录] " + ModVersion.Current + "已初始化；点击主界面或NPC面板玉简打开秘录，F8备用。");
                 Debug.Log("[八荒秘录] 初始化CPU=" + initTimer.Elapsed.TotalMilliseconds.ToString("F2") + "ms");
@@ -30,6 +31,10 @@ namespace MOD_YtxSQ1
         public void Destroy()
         {
             updateFailed = false;
+            try { MOD_YtxSQ1.Services.CapacityRuntime.Dispose(); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 释放扩容运行效果失败：" + ex.Message); }
+            try { MOD_YtxSQ1.Services.FeatureRuntime.Dispose(); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 释放功能辅助失败：" + ex.Message); }
             var oldEntrances = entrances; entrances = null;
             if (oldEntrances != null)
                 try { oldEntrances.Dispose(); }
@@ -59,6 +64,11 @@ namespace MOD_YtxSQ1
 
         private void OnUpdateCore()
         {
+            try { MOD_YtxSQ1.Services.CapacityRuntime.Tick(); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 扩容恢复未完成：" + ex.Message); }
+            try { MOD_YtxSQ1.Services.FeatureRuntime.Tick(); }
+            catch (Exception ex) { Debug.LogWarning("[八荒秘录] 功能辅助更新已停止：" + ex.Message);
+                try { MOD_YtxSQ1.Services.FeatureRuntime.Dispose(); } catch (Exception release) { Debug.LogWarning("[八荒秘录] 辅助释放失败：" + release.Message); } }
             if (entrances != null) entrances.Update();
             if (updateFailed && !Input.GetKeyDown(KeyCode.F8)) return;
             if (controller == null && !updateFailed) return;
@@ -76,6 +86,7 @@ namespace MOD_YtxSQ1
             {
                 // 熔断后仅等待F8人工重试，保留帧入口，不每帧重建或重放写入。
                 updateFailed = true;
+                MOD_YtxSQ1.Services.FeatureRuntime.Dispose();
                 Debug.LogError("[八荒秘录] 已暂停本模组更新，可按F8重试：" + ex);
                 var failed = controller; controller = null;
                 if (failed != null)

@@ -199,6 +199,14 @@ internal static class LifecycleHarness
         MOD_YtxSQ1.Core.WorkshopController.ThrowUpdate = false; retainedEntrance.Open("npc-retry");
         Check(MOD_YtxSQ1.Core.WorkshopController.OpenId == "npc-retry" && !(bool)typeof(ModMain).GetField("updateFailed", BindingFlags.NonPublic|BindingFlags.Instance).GetValue(mod), "NPC entrance recovers faulted content with selected ID");
         mod.Destroy(); Check(retainedEntrance.Disposed, "unload releases retained entrances");
+        Reset(); mod = new ModMain(); mod.Init(); var featureTicks=MOD_YtxSQ1.Services.FeatureRuntime.Ticks; g.timer.Callback();
+        Check(MOD_YtxSQ1.Services.FeatureRuntime.Ticks==featureTicks+1,"feature runtime ticks independently of window visibility");
+        var featureReleases=MOD_YtxSQ1.Services.FeatureRuntime.Releases; mod.Destroy();
+        Check(MOD_YtxSQ1.Services.FeatureRuntime.Releases==featureReleases+1,"mod unload releases feature runtime");
         Console.WriteLine("TOTAL: " + passes);
     }
 }
+
+namespace MOD_YtxSQ1.Services { internal static class FeatureRuntime { internal static int Ticks,Releases; internal static void Tick(){Ticks++;} internal static void Dispose(){Releases++;} } }
+
+namespace MOD_YtxSQ1.Services { internal static class CapacityRuntime { internal static void Initialize(){} internal static void Tick(){} internal static void Dispose(){} } }
